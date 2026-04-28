@@ -1,0 +1,92 @@
+{
+  "app": {
+    "title": "Datasets Deputy",
+    "subtitle": "Composite dataset manager",
+    "statusReady": "Ready for manual dataset curation",
+    "statusScope": "MVP: UI, file management, manual annotation",
+    "language": "Language"
+  },
+  "nav": {
+    "datasets": "Datasets",
+    "profiles": "Annotation profiles",
+    "exports": "Export presets",
+    "settings": "Settings"
+  },
+  "actions": {
+    "importFolder": "Import folder",
+    "newProfile": "New profile",
+    "export": "Export",
+    "save": "Save",
+    "cancel": "Cancel",
+    "addTag": "Add tag",
+    "remove": "Remove",
+    "select": "Select",
+    "clear": "Clear",
+    "refresh": "Refresh"
+  },
+  "toolbar": {
+    "searchPlaceholder": "Search filename, tag, or caption",
+    "profileFilter": "Profile",
+    "allProfiles": "All profiles",
+    "selectedCount": "{{count}} selected",
+    "datasetCount": "{{count}} images"
+  },
+  "tree": {
+    "projects": "Project folders",
+    "hint": "Select a dataset folder to show its image grid on the right."
+  },
+  "welcome": {
+    "title": "Let's build",
+    "description": "Select a dataset project on the left, or import an image folder to start browsing, curating, and manually annotating."
+  },
+  "import": {
+    "title": "Importing dataset",
+    "scanning": "Scanning image files...",
+    "progress": "Processed {{processed}} / {{total}}",
+    "summary": "Imported {{imported}}, skipped {{skipped}}, failed {{failed}}"
+  },
+  "table": {
+    "preview": "Preview",
+    "filename": "Filename",
+    "dimensions": "Dimensions",
+    "size": "Size",
+    "tags": "Tags",
+    "caption": "Caption",
+    "updated": "Updated",
+    "emptyTitle": "No images imported yet",
+    "emptyDescription": "Import a folder to start browsing and annotating a dataset."
+  },
+  "detail": {
+    "title": "Image details",
+    "noSelection": "Select an image to edit annotations.",
+    "tagsLabel": "Tags",
+    "captionLabel": "Caption",
+    "notesLabel": "Notes",
+    "profileLabel": "Profile",
+    "tagsPlaceholder": "tag one, tag two",
+    "captionPlaceholder": "A training caption for this image.",
+    "metadata": "Metadata",
+    "path": "Path",
+    "hash": "Hash"
+  },
+  "profiles": {
+    "manualTags": "Manual tags",
+    "manualCaption": "Manual caption",
+    "formatTags": "Tags",
+    "formatCaption": "Caption",
+    "sourceManual": "Manual"
+  },
+  "export": {
+    "txtPerImage": "Text file per image",
+    "jsonl": "JSONL",
+    "presetSd": "SD training captions",
+    "presetJsonl": "Basic JSONL",
+    "selectFolder": "Select export folder"
+  },
+  "errors": {
+    "unknown": "Something went wrong.",
+    "importFailed": "Folder import failed.",
+    "saveFailed": "Could not save annotations.",
+    "exportFailed": "Dataset export failed."
+  }
+}

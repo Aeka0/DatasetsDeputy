@@ -1,0 +1,92 @@
+{
+  "app": {
+    "title": "Datasets Deputy",
+    "subtitle": "复合数据集管理器",
+    "statusReady": "已准备好进行手动数据集整理",
+    "statusScope": "MVP：界面、文件管理、手动标注",
+    "language": "语言"
+  },
+  "nav": {
+    "datasets": "数据集",
+    "profiles": "标注方案",
+    "exports": "导出预设",
+    "settings": "设置"
+  },
+  "actions": {
+    "importFolder": "导入文件夹",
+    "newProfile": "新建方案",
+    "export": "导出",
+    "save": "保存",
+    "cancel": "取消",
+    "addTag": "添加标签",
+    "remove": "移除",
+    "select": "选择",
+    "clear": "清空",
+    "refresh": "刷新"
+  },
+  "toolbar": {
+    "searchPlaceholder": "搜索文件名、标签或描述",
+    "profileFilter": "方案",
+    "allProfiles": "全部方案",
+    "selectedCount": "已选择 {{count}} 项",
+    "datasetCount": "{{count}} 张图片"
+  },
+  "tree": {
+    "projects": "工程文件夹",
+    "hint": "选择一个数据集文件夹后，右侧会切换为图片网格列表。"
+  },
+  "welcome": {
+    "title": "Let's build",
+    "description": "选择左侧的数据集工程，或导入一个图片文件夹来开始浏览、整理和手动标注。"
+  },
+  "import": {
+    "title": "正在导入数据集",
+    "scanning": "正在扫描图片文件...",
+    "progress": "已处理 {{processed}} / {{total}}",
+    "summary": "导入 {{imported}}，跳过 {{skipped}}，失败 {{failed}}"
+  },
+  "table": {
+    "preview": "预览",
+    "filename": "文件名",
+    "dimensions": "尺寸",
+    "size": "大小",
+    "tags": "标签",
+    "caption": "描述",
+    "updated": "更新时间",
+    "emptyTitle": "还没有导入图片",
+    "emptyDescription": "导入一个文件夹后即可开始浏览和手动标注数据集。"
+  },
+  "detail": {
+    "title": "图片详情",
+    "noSelection": "选择一张图片来编辑标注。",
+    "tagsLabel": "标签",
+    "captionLabel": "描述",
+    "notesLabel": "备注",
+    "profileLabel": "方案",
+    "tagsPlaceholder": "标签一, 标签二",
+    "captionPlaceholder": "这张图片的训练描述。",
+    "metadata": "元数据",
+    "path": "路径",
+    "hash": "哈希"
+  },
+  "profiles": {
+    "manualTags": "手动标签",
+    "manualCaption": "手动描述",
+    "formatTags": "标签",
+    "formatCaption": "描述",
+    "sourceManual": "手动"
+  },
+  "export": {
+    "txtPerImage": "每图一个文本文件",
+    "jsonl": "JSONL",
+    "presetSd": "SD 训练描述",
+    "presetJsonl": "基础 JSONL",
+    "selectFolder": "选择导出文件夹"
+  },
+  "errors": {
+    "unknown": "发生未知错误。",
+    "importFailed": "文件夹导入失败。",
+    "saveFailed": "无法保存标注。",
+    "exportFailed": "数据集导出失败。"
+  }
+}

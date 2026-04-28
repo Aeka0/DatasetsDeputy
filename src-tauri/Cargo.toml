@@ -1,0 +1,31 @@
+[package]
+name = "datasets-deputy"
+version = "0.1.0"
+description = "Composite dataset manager desktop app."
+authors = ["Datasets Deputy"]
+edition = "2021"
+
+[lib]
+name = "datasets_deputy_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+chrono = { version = "0.4", features = ["serde"] }
+image = "0.25"
+rusqlite = { version = "0.32", features = ["bundled"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+tauri = { version = "2", features = ["protocol-asset"] }
+tauri-plugin-dialog = "2"
+tauri-plugin-fs = "2"
+thiserror = "2"
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+tracing = "0.1"
+tracing-appender = "0.2"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+walkdir = "2"
+windows = { version = "0.61", features = ["Win32_Graphics_Dwm"] }
