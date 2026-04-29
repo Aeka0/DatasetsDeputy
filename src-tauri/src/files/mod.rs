@@ -1,6 +1,6 @@
 use std::{
     collections::HashSet,
-    fs::File,
+    fs::{self, File},
     io::Read,
     path::{Path, PathBuf},
 };
@@ -23,6 +23,11 @@ pub struct ImportSummary {
     pub failed: usize,
 }
 
+pub struct ImportImageResult {
+    pub inserted: bool,
+    pub has_annotation: bool,
+}
+
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ImportPreview {
@@ -34,12 +39,14 @@ pub struct ImportPreview {
 }
 
 pub fn collect_image_paths(folder: &Path) -> Vec<PathBuf> {
-    WalkDir::new(folder)
+    let mut paths = WalkDir::new(folder)
         .into_iter()
         .filter_map(Result::ok)
         .map(|entry| entry.into_path())
         .filter(|path| path.is_file() && is_supported_image(path))
-        .collect()
+        .collect::<Vec<_>>();
+    paths.sort_by_key(|path| path.to_string_lossy().to_ascii_lowercase());
+    paths
 }
 
 pub fn scan_import_preview(folder: &Path) -> ImportPreview {
@@ -73,18 +80,38 @@ pub fn scan_import_preview(folder: &Path) -> ImportPreview {
     }
 }
 
-pub fn import_image(db: &Database, path: &Path, thumbnail_dir: &Path) -> AppResult<bool> {
+pub fn import_image(
+    db: &mut Database,
+    path: &Path,
+    thumbnail_dir: &Path,
+    import_profile_id: Option<i64>,
+) -> AppResult<ImportImageResult> {
     let hash = hash_file(path)?;
     let metadata = std::fs::metadata(path)?;
     let thumbnail = thumbnail::create_thumbnail(path, thumbnail_dir, &hash)?;
 
-    db.insert_image_if_missing(&NewImage {
+    let (image_id, inserted) = db.insert_image_if_missing(&NewImage {
         path: path.to_path_buf(),
         thumbnail_path: Some(thumbnail.path),
         width: Some(thumbnail.width),
         height: Some(thumbnail.height),
         file_size: Some(metadata.len() as i64),
         file_hash: hash,
+    })?;
+
+    let annotation_content = read_annotation_file(path)?;
+    let has_annotation = annotation_content
+        .as_deref()
+        .map(str::trim)
+        .is_some_and(|content| !content.is_empty());
+
+    if let (Some(content), Some(profile_id)) = (annotation_content, import_profile_id) {
+        db.save_imported_annotation_if_empty(image_id, profile_id, &content)?;
+    }
+
+    Ok(ImportImageResult {
+        inserted,
+        has_annotation,
     })
 }
 
@@ -116,9 +143,26 @@ fn is_supported_image(path: &Path) -> bool {
 }
 
 fn has_annotation_file(path: &Path) -> bool {
+    annotation_candidates(path)
+        .iter()
+        .any(|candidate| candidate.is_file())
+}
+
+fn read_annotation_file(path: &Path) -> AppResult<Option<String>> {
+    for candidate in annotation_candidates(path) {
+        if candidate.is_file() {
+            return Ok(Some(fs::read_to_string(candidate)?));
+        }
+    }
+
+    Ok(None)
+}
+
+fn annotation_candidates(path: &Path) -> Vec<PathBuf> {
     ["txt", "caption", "json", "jsonl"]
         .iter()
-        .any(|extension| path.with_extension(extension).is_file())
+        .map(|extension| path.with_extension(extension))
+        .collect()
 }
 
 pub fn default_thumbnail_dir(root: &Path) -> PathBuf {

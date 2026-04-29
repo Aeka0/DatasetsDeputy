@@ -1,7 +1,9 @@
 import { useEffect } from "react";
 
+import { ImagePreviewView } from "./components/content/ImagePreviewView";
 import { ImportPreviewView } from "./components/content/ImportPreviewView";
 import { ImportProgressView } from "./components/content/ImportProgressView";
+import { ImportReportView } from "./components/content/ImportReportView";
 import { WelcomeView } from "./components/content/WelcomeView";
 import { DatasetGrid } from "./components/grid/DatasetGrid";
 import { ProjectTree } from "./components/sidebar/ProjectTree";
@@ -13,8 +15,10 @@ export default function App() {
   const load = useDatasetStore((state) => state.load);
   const initImportEvents = useDatasetStore((state) => state.initImportEvents);
   const selectedProjectId = useDatasetStore((state) => state.selectedProjectId);
+  const selectedImageId = useDatasetStore((state) => state.selectedImageId);
   const importPreview = useDatasetStore((state) => state.importPreview);
   const importProgress = useDatasetStore((state) => state.importProgress);
+  const importReport = useDatasetStore((state) => state.importReport);
 
   useEffect(() => {
     void initImportEvents();
@@ -57,8 +61,12 @@ export default function App() {
           <div className="h-full min-h-0 rounded-md border border-slate-200/70 bg-white/[0.86] p-3">
             {importProgress && !importProgress.done ? (
               <ImportProgressView />
+            ) : importReport ? (
+              <ImportReportView />
             ) : importPreview ? (
               <ImportPreviewView />
+            ) : selectedImageId ? (
+              <ImagePreviewView />
             ) : selectedProjectId ? (
               <DatasetGrid />
             ) : (

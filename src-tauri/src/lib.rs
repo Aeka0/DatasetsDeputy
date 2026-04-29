@@ -48,6 +48,9 @@ pub fn run() {
             commands::prepare_import_folder,
             commands::start_import_folder,
             commands::save_manual_annotations,
+            commands::save_annotation,
+            commands::create_annotation_profile,
+            commands::clear_annotation,
             commands::remove_dataset_folder,
             commands::export_dataset
         ])

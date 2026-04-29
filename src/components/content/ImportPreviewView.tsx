@@ -9,6 +9,8 @@ const copy = {
   imageFolderCount: "\u4e2a\u542b\u6709\u56fe\u7247\u7684\u5b50\u6587\u4ef6\u5939",
   annotatedImageCount: "\u5f20\u5e26\u6709\u6807\u6ce8",
   annotationTypeQuestion: "\u8bf7\u95ee\u8fd9\u4e9b\u6807\u6ce8\u7684\u7c7b\u578b\uff1f",
+  annotationTypeRequired:
+    "\u8bf7\u5148\u786e\u8ba4\u6807\u6ce8\u7c7b\u578b\u540d\u79f0",
   annotationTypePlaceholder:
     "\u4f8b\u5982\uff1adanbooru tags\u3001\u81ea\u7136\u8bed\u8a00\u63cf\u8ff0\u3001\u89d2\u8272\u6807\u7b7e",
   startImport: "\u5f00\u59cb\u5bfc\u5165"
@@ -24,6 +26,12 @@ export function ImportPreviewView() {
   if (!preview) {
     return null;
   }
+
+  const needsAnnotationType = preview.annotatedImageCount > 0;
+  const canStartImport =
+    !isLoading &&
+    preview.imageCount > 0 &&
+    (!needsAnnotationType || annotationType.trim().length > 0);
 
   return (
     <div className="flex h-full min-h-0 flex-col px-6 py-5">
@@ -73,6 +81,9 @@ export function ImportPreviewView() {
                 className="mt-2 h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-slate-400 focus:ring-3 focus:ring-slate-100"
                 placeholder={copy.annotationTypePlaceholder}
               />
+              {!annotationType.trim() ? (
+                <div className="mt-1 text-xs text-slate-500">{copy.annotationTypeRequired}</div>
+              ) : null}
             </section>
           ) : null}
         </div>
@@ -82,7 +93,7 @@ export function ImportPreviewView() {
         <button
           className="no-drag inline-flex h-10 items-center gap-2 rounded-md bg-slate-900 px-4 text-sm font-medium text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
           onClick={() => void startPreparedImport()}
-          disabled={isLoading || preview.imageCount === 0}
+          disabled={!canStartImport}
         >
           <Play size={16} />
           {copy.startImport}

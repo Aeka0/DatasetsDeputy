@@ -11,6 +11,7 @@ import type {
   ExportPreset,
   ImportPreview,
   ImportProgress,
+  ImportReport,
   ImportSummary
 } from "../types";
 
@@ -194,6 +195,10 @@ function createProjectTree(images: DatasetImage[], rootName?: string, rootPath?:
   return [pruneEmptyChildren(root)];
 }
 
+function flattenProjects(projects: DatasetProject[]): DatasetProject[] {
+  return projects.flatMap((project) => [project, ...flattenProjects(project.children ?? [])]);
+}
+
 interface DatasetState {
   images: DatasetImage[];
   projects: DatasetProject[];
@@ -207,11 +212,13 @@ interface DatasetState {
   lastImport?: ImportSummary;
   importPreview?: ImportPreview;
   importProgress?: ImportProgress;
+  importReport?: ImportReport;
   annotationType: string;
   initImportEvents: () => Promise<void>;
   load: () => Promise<void>;
   importFolder: () => Promise<void>;
   startPreparedImport: () => Promise<void>;
+  browseImportedDataset: () => Promise<void>;
   setAnnotationType: (annotationType: string) => void;
   clearImportPreview: () => void;
   removeDataset: (project: DatasetProject) => Promise<void>;
@@ -220,6 +227,9 @@ interface DatasetState {
   selectImage: (id?: number) => void;
   setSearch: (search: string) => void;
   setActiveProfile: (id?: number) => void;
+  saveAnnotation: (imageId: number, profileId: number, content: string) => Promise<void>;
+  createAnnotationProfile: (name: string) => Promise<number | undefined>;
+  clearAnnotation: (annotationId: number) => Promise<void>;
   updateManualAnnotations: (imageId: number, tags: string[], caption: string) => Promise<void>;
 }
 
@@ -249,6 +259,7 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
   annotationType: "",
   importPreview: undefined,
   importProgress: undefined,
+  importReport: undefined,
   initImportEvents: async () => {
     if (!hasTauriRuntime() || unlistenImportProgress) {
       return;
@@ -268,12 +279,11 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
           : get().lastImport
       });
 
-      if (progress.done && progress.phase === "done") {
-        const images = await invokeCommand<DatasetImage[]>("list_images");
+      if (progress.done && progress.report) {
         set({
-          images,
-          projects: createProjectTree(images, progress.rootName, progress.rootPath),
-          selectedProjectId: images.length > 0 ? "dataset-root" : undefined,
+          importReport: progress.report,
+          importProgress: undefined,
+          selectedProjectId: undefined,
           selectedImageId: undefined
         });
       }
@@ -307,7 +317,12 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
       return;
     }
 
-    set({ isLoading: true, importPreview: undefined, importProgress: undefined });
+    set({
+      isLoading: true,
+      importPreview: undefined,
+      importProgress: undefined,
+      importReport: undefined
+    });
     try {
       const preview = await invokeCommand<ImportPreview>("prepare_import_folder");
       set({
@@ -335,6 +350,7 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
     set({
       isLoading: true,
       importPreview: undefined,
+      importReport: undefined,
       importProgress: {
         phase: "scanning",
         processed: 0,
@@ -355,6 +371,30 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
       throw error;
     }
   },
+  browseImportedDataset: async () => {
+    const report = get().importReport;
+    if (!hasTauriRuntime() || !report) {
+      return;
+    }
+
+    set({ isLoading: true });
+    try {
+      const [images, profiles] = await Promise.all([
+        invokeCommand<DatasetImage[]>("list_images"),
+        invokeCommand<AnnotationProfile[]>("list_annotation_profiles")
+      ]);
+      set({
+        images,
+        profiles,
+        projects: createProjectTree(images, report.rootName, report.rootPath),
+        selectedProjectId: images.length > 0 ? "dataset-root" : undefined,
+        selectedImageId: undefined,
+        importReport: undefined
+      });
+    } finally {
+      set({ isLoading: false });
+    }
+  },
   setAnnotationType: (annotationType) => set({ annotationType }),
   clearImportPreview: () => set({ importPreview: undefined, annotationType: "" }),
   removeDataset: async (project) => {
@@ -369,7 +409,8 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
         selectedProjectId: undefined,
         selectedImageId: undefined,
         importPreview: undefined,
-        importProgress: undefined
+        importProgress: undefined,
+        importReport: undefined
       });
       return;
     }
@@ -417,6 +458,142 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
   selectImage: (id) => set({ selectedImageId: id }),
   setSearch: (search) => set({ search }),
   setActiveProfile: (id) => set({ activeProfileId: id }),
+  saveAnnotation: async (imageId, profileId, content) => {
+    if (hasTauriRuntime()) {
+      await invokeCommand("save_annotation", {
+        imageId,
+        profileId,
+        content
+      });
+      const images = await invokeCommand<DatasetImage[]>("list_images");
+      set((state) => ({
+        images,
+        projects: createProjectTree(images),
+        selectedImageId: imageId,
+        selectedProjectId: state.selectedProjectId
+      }));
+      return;
+    }
+
+    const updatedAt = new Date().toISOString();
+    set((state) => ({
+      images: state.images.map((image) => {
+        if (image.id !== imageId) return image;
+
+        const existing = image.annotations.find((annotation) => annotation.profileId === profileId);
+        const annotations = existing
+          ? image.annotations.map((annotation) =>
+              annotation.profileId === profileId
+                ? { ...annotation, content, updatedAt }
+                : annotation
+            )
+          : [
+              ...image.annotations,
+              {
+                id: Date.now(),
+                imageId,
+                profileId,
+                content,
+                createdAt: updatedAt,
+                updatedAt
+              }
+            ];
+
+        return {
+          ...image,
+          annotations,
+          updatedAt
+        };
+      })
+    }));
+  },
+  createAnnotationProfile: async (name) => {
+    const trimmedName = name.trim();
+    if (!trimmedName) {
+      return undefined;
+    }
+
+    const state = get();
+    const rootProject = state.projects[0];
+    const imageIds = rootProject?.imageIds.length
+      ? rootProject.imageIds
+      : state.images.map((image) => image.id);
+
+    if (hasTauriRuntime()) {
+      const profileId = await invokeCommand<number>("create_annotation_profile", {
+        name: trimmedName,
+        imageIds
+      });
+      const [images, profiles] = await Promise.all([
+        invokeCommand<DatasetImage[]>("list_images"),
+        invokeCommand<AnnotationProfile[]>("list_annotation_profiles")
+      ]);
+      set((current) => ({
+        images,
+        profiles,
+        projects: createProjectTree(images),
+        selectedImageId: current.selectedImageId,
+        selectedProjectId: current.selectedProjectId
+      }));
+      return profileId;
+    }
+
+    const now = new Date().toISOString();
+    const profileId = Date.now();
+    const profile: AnnotationProfile = {
+      id: profileId,
+      name: trimmedName,
+      formatType: "tags",
+      sourceType: "manual",
+      description: "Dataset-wide annotation"
+    };
+    const idSet = new Set(imageIds);
+    set((current) => ({
+      profiles: [...current.profiles, profile],
+      images: current.images.map((image) =>
+        idSet.has(image.id)
+          ? {
+              ...image,
+              annotations: [
+                ...image.annotations,
+                {
+                  id: Date.now() + image.id,
+                  imageId: image.id,
+                  profileId,
+                  content: "",
+                  createdAt: now,
+                  updatedAt: now
+                }
+              ]
+            }
+          : image
+      )
+    }));
+    return profileId;
+  },
+  clearAnnotation: async (annotationId) => {
+    const selectedImageId = get().selectedImageId;
+    if (hasTauriRuntime()) {
+      await invokeCommand("clear_annotation", { annotationId });
+      const images = await invokeCommand<DatasetImage[]>("list_images");
+      set((state) => ({
+        images,
+        projects: createProjectTree(images),
+        selectedImageId,
+        selectedProjectId: state.selectedProjectId
+      }));
+      return;
+    }
+
+    set((state) => ({
+      images: state.images.map((image) => ({
+        ...image,
+        annotations: image.annotations.map((annotation) =>
+          annotation.id === annotationId ? { ...annotation, content: "" } : annotation
+        )
+      }))
+    }));
+  },
   updateManualAnnotations: async (imageId, tags, caption) => {
     const updatedAt = new Date().toISOString();
 

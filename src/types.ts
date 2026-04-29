@@ -59,6 +59,20 @@ export interface ImportPreview {
   annotatedImageCount: number;
 }
 
+export interface ImportFailure {
+  filePath: string;
+  reason: string;
+}
+
+export interface ImportReport {
+  rootName?: string;
+  rootPath?: string;
+  successWithoutAnnotations: number;
+  successWithAnnotations: number;
+  failed: number;
+  failures: ImportFailure[];
+}
+
 export interface ImportProgress extends ImportSummary {
   phase: "scanning" | "importing" | "done" | "failed";
   processed: number;
@@ -67,6 +81,7 @@ export interface ImportProgress extends ImportSummary {
   rootName?: string;
   rootPath?: string;
   done: boolean;
+  report?: ImportReport;
 }
 
 export interface ExportPreset {

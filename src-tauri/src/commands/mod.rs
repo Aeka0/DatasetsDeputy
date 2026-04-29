@@ -13,6 +13,24 @@ use crate::{
 
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct ImportFailure {
+    pub file_path: String,
+    pub reason: String,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImportReport {
+    pub root_name: Option<String>,
+    pub root_path: Option<String>,
+    pub success_without_annotations: usize,
+    pub success_with_annotations: usize,
+    pub failed: usize,
+    pub failures: Vec<ImportFailure>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ImportProgress {
     pub phase: String,
     pub processed: usize,
@@ -24,6 +42,7 @@ pub struct ImportProgress {
     pub root_name: Option<String>,
     pub root_path: Option<String>,
     pub done: bool,
+    pub report: Option<ImportReport>,
 }
 
 #[tauri::command]
@@ -45,15 +64,26 @@ pub fn list_annotation_profiles(state: State<'_, AppState>) -> AppResult<Vec<Ann
 }
 
 #[tauri::command]
-pub fn prepare_import_folder(app: AppHandle) -> AppResult<ImportPreview> {
-    let Some(folder) = app.dialog().file().blocking_pick_folder() else {
+pub async fn prepare_import_folder(app: AppHandle) -> AppResult<ImportPreview> {
+    let (sender, receiver) = std::sync::mpsc::channel();
+    app.dialog().file().pick_folder(move |folder| {
+        let _ = sender.send(folder);
+    });
+
+    let Some(folder) = tauri::async_runtime::spawn_blocking(move || receiver.recv())
+        .await
+        .map_err(|error| AppError::InvalidInput(format!("Folder picker task failed: {error}")))?
+        .map_err(|error| AppError::InvalidInput(format!("Folder picker failed: {error}")))?
+    else {
         return Err(AppError::DialogCancelled);
     };
     let folder = folder
         .into_path()
         .map_err(|_| AppError::InvalidInput("Selected folder is not a local path".to_owned()))?;
 
-    Ok(files::scan_import_preview(&folder))
+    tauri::async_runtime::spawn_blocking(move || files::scan_import_preview(&folder))
+        .await
+        .map_err(|error| AppError::InvalidInput(format!("Import preview task failed: {error}")))
 }
 
 #[tauri::command]
@@ -101,9 +131,10 @@ pub fn start_import_folder(
             root_name: Some(root_name.clone()),
             root_path: Some(root_path.clone()),
             done: false,
+            report: None,
         });
 
-        let db = match crate::db::Database::open(&database_path).and_then(|db| {
+        let mut db = match crate::db::Database::open(&database_path).and_then(|db| {
             db.migrate()?;
             db.ensure_default_profiles()?;
             Ok(db)
@@ -122,8 +153,36 @@ pub fn start_import_folder(
                     root_name: Some(root_name.clone()),
                     root_path: Some(root_path.clone()),
                     done: true,
+                    report: Some(ImportReport {
+                        root_name: Some(root_name.clone()),
+                        root_path: Some(root_path.clone()),
+                        success_without_annotations: 0,
+                        success_with_annotations: 0,
+                        failed: 1,
+                        failures: vec![ImportFailure {
+                            file_path: database_path.to_string_lossy().to_string(),
+                            reason: error.to_string(),
+                        }],
+                    }),
                 });
                 return;
+            }
+        };
+        let annotation_type = annotation_type
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(ToOwned::to_owned);
+        let import_profile_name = annotation_type.as_deref().unwrap_or("Imported tags");
+        let import_profile_id = match db.ensure_import_profile(import_profile_name) {
+            Ok(profile_id) => Some(profile_id),
+            Err(error) => {
+                tracing::warn!(
+                    "Failed to create import annotation profile {:?}: {}",
+                    import_profile_name,
+                    error
+                );
+                None
             }
         };
 
@@ -134,6 +193,9 @@ pub fn start_import_folder(
             skipped: 0,
             failed: 0,
         };
+        let mut success_without_annotations = 0;
+        let mut success_with_annotations = 0;
+        let mut failures = Vec::new();
 
         emit_progress(ImportProgress {
             phase: "importing".to_owned(),
@@ -146,15 +208,31 @@ pub fn start_import_folder(
             root_name: Some(root_name.clone()),
             root_path: Some(root_path.clone()),
             done: false,
+            report: None,
         });
 
         for (index, path) in paths.iter().enumerate() {
-            match files::import_image(&db, path, &thumbnail_dir) {
-                Ok(true) => summary.imported += 1,
-                Ok(false) => summary.skipped += 1,
+            match files::import_image(&mut db, path, &thumbnail_dir, import_profile_id) {
+                Ok(result) => {
+                    if result.inserted {
+                        summary.imported += 1;
+                    } else {
+                        summary.skipped += 1;
+                    }
+
+                    if result.has_annotation {
+                        success_with_annotations += 1;
+                    } else {
+                        success_without_annotations += 1;
+                    }
+                }
                 Err(error) => {
                     summary.failed += 1;
                     tracing::warn!("Image import failed for {:?}: {}", path, error);
+                    failures.push(ImportFailure {
+                        file_path: path.to_string_lossy().to_string(),
+                        reason: error.to_string(),
+                    });
                 }
             }
 
@@ -172,6 +250,7 @@ pub fn start_import_folder(
                 root_name: Some(root_name.clone()),
                 root_path: Some(root_path.clone()),
                 done: false,
+                report: None,
             });
         }
 
@@ -190,9 +269,17 @@ pub fn start_import_folder(
             skipped: summary.skipped,
             failed: summary.failed,
             current_path: None,
-            root_name: Some(root_name),
-            root_path: Some(root_path),
+            root_name: Some(root_name.clone()),
+            root_path: Some(root_path.clone()),
             done: true,
+            report: Some(ImportReport {
+                root_name: Some(root_name),
+                root_path: Some(root_path),
+                success_without_annotations,
+                success_with_annotations,
+                failed: summary.failed,
+                failures,
+            }),
         });
     });
 
@@ -213,6 +300,56 @@ pub fn save_manual_annotations(
 
     tracing::info!("Saving manual annotations for image_id={}", image_id);
     db.save_manual_annotations(image_id, tags, caption)
+}
+
+#[tauri::command]
+pub fn save_annotation(
+    state: State<'_, AppState>,
+    image_id: i64,
+    profile_id: i64,
+    content: String,
+) -> AppResult<()> {
+    let mut db = state
+        .db
+        .lock()
+        .map_err(|_| AppError::InvalidInput("Database lock is poisoned".to_owned()))?;
+
+    tracing::info!(
+        "Saving annotation for image_id={}, profile_id={}",
+        image_id,
+        profile_id
+    );
+    db.upsert_annotation(image_id, profile_id, content)
+}
+
+#[tauri::command]
+pub fn create_annotation_profile(
+    state: State<'_, AppState>,
+    name: String,
+    image_ids: Vec<i64>,
+) -> AppResult<i64> {
+    let mut db = state
+        .db
+        .lock()
+        .map_err(|_| AppError::InvalidInput("Database lock is poisoned".to_owned()))?;
+
+    tracing::info!(
+        "Creating annotation profile {:?} for {} images",
+        name,
+        image_ids.len()
+    );
+    db.create_dataset_annotation_profile(name, image_ids)
+}
+
+#[tauri::command]
+pub fn clear_annotation(state: State<'_, AppState>, annotation_id: i64) -> AppResult<()> {
+    let mut db = state
+        .db
+        .lock()
+        .map_err(|_| AppError::InvalidInput("Database lock is poisoned".to_owned()))?;
+
+    tracing::info!("Clearing annotation_id={}", annotation_id);
+    db.clear_annotation(annotation_id)
 }
 
 #[tauri::command]

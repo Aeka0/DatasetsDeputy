@@ -1,4 +1,4 @@
-import { ImageIcon, Search, Tag } from "lucide-react";
+import { Files, ImageIcon, Search } from "lucide-react";
 import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -6,14 +6,30 @@ import { resolveAssetSrc } from "../../lib/tauri";
 import { useDatasetStore } from "../../stores/datasetStore";
 import type { DatasetProject } from "../../types";
 
+const copy = {
+  annotationCount: "\u4efd\u6807\u6ce8"
+};
+
 function flattenProjects(projects: DatasetProject[]): DatasetProject[] {
   return projects.flatMap((project) => [project, ...flattenProjects(project.children ?? [])]);
 }
 
 export function DatasetGrid() {
   const { t } = useTranslation();
-  const { images, projects, selectedProjectId, search, setSearch, selectImage } = useDatasetStore();
-  const selectedProject = flattenProjects(projects).find((project) => project.id === selectedProjectId);
+  const { images, projects, selectedProjectId, search, setSearch, selectImage } =
+    useDatasetStore();
+  const selectedProject = flattenProjects(projects).find(
+    (project) => project.id === selectedProjectId
+  );
+  const datasetAnnotationTypeCount = useMemo(
+    () =>
+      new Set(
+        images.flatMap((image) =>
+          image.annotations.map((annotation) => annotation.profileId)
+        )
+      ).size,
+    [images]
+  );
 
   const visibleImages = useMemo(() => {
     const projectIds = selectedProject?.imageIds ?? [];
@@ -24,7 +40,7 @@ export function DatasetGrid() {
       if (!inProject) return false;
       if (!query) return true;
 
-      return [image.fileName, image.caption, ...image.tags]
+      return [image.fileName, ...image.annotations.map((annotation) => annotation.content)]
         .join(" ")
         .toLowerCase()
         .includes(query);
@@ -79,8 +95,11 @@ export function DatasetGrid() {
               <div className="px-1.5 pb-1.5 pt-2">
                 <div className="truncate text-sm text-slate-800">{image.fileName}</div>
                 <div className="mt-1 flex items-center gap-1.5 text-xs text-slate-500">
-                  <Tag size={12} />
-                  <span className="truncate">{image.tags.slice(0, 3).join(", ") || "-"}</span>
+                  <Files size={12} />
+                  <span className="truncate">
+                    {image.annotations.filter((annotation) => annotation.content.trim()).length}/
+                    {datasetAnnotationTypeCount} {copy.annotationCount}
+                  </span>
                 </div>
               </div>
             </button>

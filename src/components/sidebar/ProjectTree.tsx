@@ -11,7 +11,7 @@ const copy = {
   removeDataset: "\u79fb\u9664\u6570\u636e\u96c6"
 };
 
-const sidebarLabelClass = "text-[0.75rem] leading-4 tracking-[0.08em]";
+const sidebarLabelClass = "text-[0.75rem] leading-4 tracking-[0.02em]";
 
 function ProjectNode({
   project,

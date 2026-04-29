@@ -108,13 +108,6 @@ impl Database {
               UNIQUE(image_id, profile_id)
             );
 
-            CREATE TABLE IF NOT EXISTS image_tags (
-              image_id INTEGER NOT NULL REFERENCES images(id) ON DELETE CASCADE,
-              tag TEXT NOT NULL,
-              source_profile TEXT NOT NULL,
-              PRIMARY KEY(image_id, tag, source_profile)
-            );
-
             CREATE TABLE IF NOT EXISTS export_presets (
               id INTEGER PRIMARY KEY AUTOINCREMENT,
               name TEXT NOT NULL,
@@ -123,7 +116,6 @@ impl Database {
               filter_rules TEXT
             );
 
-            CREATE INDEX IF NOT EXISTS idx_image_tags_tag ON image_tags(tag);
             CREATE INDEX IF NOT EXISTS idx_annotations_image ON annotations(image_id);
             CREATE INDEX IF NOT EXISTS idx_annotations_profile ON annotations(profile_id);
             "#,
@@ -170,11 +162,75 @@ impl Database {
         rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
     }
 
+    pub fn ensure_import_profile(&self, name: &str) -> AppResult<i64> {
+        let name = name.trim();
+        let name = if name.is_empty() {
+            "Imported tags"
+        } else {
+            name
+        };
+
+        let existing: Option<i64> = self
+            .conn
+            .query_row(
+                "SELECT id FROM annotation_profiles
+                 WHERE name = ?1 AND format_type = 'tags' AND source_type = 'imported'",
+                params![name],
+                |row| row.get(0),
+            )
+            .optional()?;
+
+        if let Some(id) = existing {
+            return Ok(id);
+        }
+
+        self.conn.execute(
+            "INSERT INTO annotation_profiles (name, format_type, source_type, description)
+             VALUES (?1, 'tags', 'imported', 'Imported dataset annotation')",
+            params![name],
+        )?;
+
+        Ok(self.conn.last_insert_rowid())
+    }
+
+    pub fn create_dataset_annotation_profile(
+        &mut self,
+        name: String,
+        image_ids: Vec<i64>,
+    ) -> AppResult<i64> {
+        let name = name.trim().to_owned();
+        if name.is_empty() {
+            return Err(crate::errors::AppError::InvalidInput(
+                "Annotation profile name cannot be empty".to_owned(),
+            ));
+        }
+
+        let tx = self.conn.transaction()?;
+        let now = Utc::now().to_rfc3339();
+        tx.execute(
+            "INSERT INTO annotation_profiles (name, format_type, source_type, description)
+             VALUES (?1, 'tags', 'manual', 'Dataset-wide annotation')",
+            params![name],
+        )?;
+        let profile_id = tx.last_insert_rowid();
+
+        for image_id in image_ids {
+            tx.execute(
+                "INSERT OR IGNORE INTO annotations (image_id, profile_id, content, created_at, updated_at)
+                 VALUES (?1, ?2, '', ?3, ?4)",
+                params![image_id, profile_id, now, now],
+            )?;
+        }
+
+        tx.commit()?;
+        Ok(profile_id)
+    }
+
     pub fn list_images(&self) -> AppResult<Vec<DatasetImage>> {
         let mut stmt = self.conn.prepare(
             "SELECT id, path, file_name, thumbnail_path, width, height, file_size, file_hash, imported_at, updated_at
              FROM images
-             ORDER BY imported_at DESC, id DESC",
+             ORDER BY replace(path, '\', '/') COLLATE NOCASE ASC, id ASC",
         )?;
 
         let image_rows = stmt.query_map([], |row| {
@@ -207,25 +263,6 @@ impl Database {
                 updated_at,
             ) = image?;
             let annotations = self.list_annotations_for_image(id)?;
-            let tags = annotations
-                .iter()
-                .find(|annotation| annotation.profile_id == 1)
-                .map(|annotation| {
-                    annotation
-                        .content
-                        .split(',')
-                        .map(str::trim)
-                        .filter(|tag| !tag.is_empty())
-                        .map(ToOwned::to_owned)
-                        .collect::<Vec<_>>()
-                })
-                .unwrap_or_default();
-            let caption = annotations
-                .iter()
-                .find(|annotation| annotation.profile_id == 2)
-                .map(|annotation| annotation.content.clone())
-                .unwrap_or_default();
-
             images.push(DatasetImage {
                 id,
                 path,
@@ -237,8 +274,8 @@ impl Database {
                 file_hash,
                 imported_at,
                 updated_at,
-                tags,
-                caption,
+                tags: Vec::new(),
+                caption: String::new(),
                 annotations,
             });
         }
@@ -246,7 +283,7 @@ impl Database {
         Ok(images)
     }
 
-    pub fn insert_image_if_missing(&self, image: &NewImage) -> AppResult<bool> {
+    pub fn insert_image_if_missing(&self, image: &NewImage) -> AppResult<(i64, bool)> {
         let exists: Option<i64> = self
             .conn
             .query_row(
@@ -256,8 +293,8 @@ impl Database {
             )
             .optional()?;
 
-        if exists.is_some() {
-            return Ok(false);
+        if let Some(id) = exists {
+            return Ok((id, false));
         }
 
         let now = Utc::now().to_rfc3339();
@@ -287,7 +324,7 @@ impl Database {
             ],
         )?;
 
-        Ok(true)
+        Ok((self.conn.last_insert_rowid(), true))
     }
 
     pub fn delete_images_under_path(&self, folder_path: &str) -> AppResult<usize> {
@@ -324,21 +361,110 @@ impl Database {
         }
 
         tx.execute(
-            "DELETE FROM image_tags WHERE image_id = ?1",
-            params![image_id],
+            "UPDATE images SET updated_at = ?1 WHERE id = ?2",
+            params![now, image_id],
         )?;
-        for tag in tags {
-            tx.execute(
-                "INSERT OR IGNORE INTO image_tags (image_id, tag, source_profile) VALUES (?1, ?2, 'manual')",
-                params![image_id, tag],
-            )?;
-        }
+        tx.commit()?;
+        Ok(())
+    }
+
+    pub fn upsert_annotation(
+        &mut self,
+        image_id: i64,
+        profile_id: i64,
+        content: String,
+    ) -> AppResult<()> {
+        let tx = self.conn.transaction()?;
+        let now = Utc::now().to_rfc3339();
+        tx.execute(
+            "INSERT INTO annotations (image_id, profile_id, content, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5)
+             ON CONFLICT(image_id, profile_id)
+             DO UPDATE SET content = excluded.content, updated_at = excluded.updated_at",
+            params![image_id, profile_id, content, now, now],
+        )?;
+
         tx.execute(
             "UPDATE images SET updated_at = ?1 WHERE id = ?2",
             params![now, image_id],
         )?;
         tx.commit()?;
         Ok(())
+    }
+
+    pub fn clear_annotation(&mut self, annotation_id: i64) -> AppResult<()> {
+        let annotation: Option<(i64, i64)> = self
+            .conn
+            .query_row(
+                "SELECT image_id, profile_id FROM annotations WHERE id = ?1",
+                params![annotation_id],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .optional()?;
+
+        let Some((image_id, _profile_id)) = annotation else {
+            return Ok(());
+        };
+
+        let tx = self.conn.transaction()?;
+        let now = Utc::now().to_rfc3339();
+        tx.execute(
+            "UPDATE annotations SET content = '', updated_at = ?1 WHERE id = ?2",
+            params![now, annotation_id],
+        )?;
+
+        tx.execute(
+            "UPDATE images SET updated_at = ?1 WHERE id = ?2",
+            params![now, image_id],
+        )?;
+        tx.commit()?;
+        Ok(())
+    }
+
+    pub fn save_imported_annotation_if_empty(
+        &mut self,
+        image_id: i64,
+        profile_id: i64,
+        content: &str,
+    ) -> AppResult<bool> {
+        let content = content.trim();
+        if content.is_empty() {
+            return Ok(false);
+        }
+
+        let existing: Option<String> = self
+            .conn
+            .query_row(
+                "SELECT content FROM annotations WHERE image_id = ?1 AND profile_id = ?2",
+                params![image_id, profile_id],
+                |row| row.get(0),
+            )
+            .optional()?;
+
+        if existing
+            .as_deref()
+            .map(str::trim)
+            .is_some_and(|value| !value.is_empty())
+        {
+            return Ok(false);
+        }
+
+        let tx = self.conn.transaction()?;
+        let now = Utc::now().to_rfc3339();
+        tx.execute(
+            "INSERT INTO annotations (image_id, profile_id, content, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5)
+             ON CONFLICT(image_id, profile_id)
+             DO UPDATE SET content = excluded.content, updated_at = excluded.updated_at",
+            params![image_id, profile_id, content, now, now],
+        )?;
+
+        tx.execute(
+            "UPDATE images SET updated_at = ?1 WHERE id = ?2",
+            params![now, image_id],
+        )?;
+        tx.commit()?;
+        Ok(true)
     }
 
     fn list_annotations_for_image(&self, image_id: i64) -> AppResult<Vec<Annotation>> {
