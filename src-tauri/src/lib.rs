@@ -45,8 +45,10 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::list_images,
             commands::list_annotation_profiles,
+            commands::prepare_import_folder,
             commands::start_import_folder,
             commands::save_manual_annotations,
+            commands::remove_dataset_folder,
             commands::export_dataset
         ])
         .run(tauri::generate_context!())

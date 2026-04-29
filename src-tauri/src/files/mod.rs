@@ -1,4 +1,5 @@
 use std::{
+    collections::HashSet,
     fs::File,
     io::Read,
     path::{Path, PathBuf},
@@ -22,6 +23,16 @@ pub struct ImportSummary {
     pub failed: usize,
 }
 
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImportPreview {
+    pub folder_path: String,
+    pub root_name: String,
+    pub image_count: usize,
+    pub image_folder_count: usize,
+    pub annotated_image_count: usize,
+}
+
 pub fn collect_image_paths(folder: &Path) -> Vec<PathBuf> {
     WalkDir::new(folder)
         .into_iter()
@@ -29,6 +40,37 @@ pub fn collect_image_paths(folder: &Path) -> Vec<PathBuf> {
         .map(|entry| entry.into_path())
         .filter(|path| path.is_file() && is_supported_image(path))
         .collect()
+}
+
+pub fn scan_import_preview(folder: &Path) -> ImportPreview {
+    let paths = collect_image_paths(folder);
+    let root_name = folder
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("Dataset")
+        .to_owned();
+    let mut image_folders = HashSet::new();
+    let mut annotated_image_count = 0;
+
+    for path in &paths {
+        if let Some(parent) = path.parent() {
+            if parent != folder {
+                image_folders.insert(parent.to_path_buf());
+            }
+        }
+
+        if has_annotation_file(path) {
+            annotated_image_count += 1;
+        }
+    }
+
+    ImportPreview {
+        folder_path: folder.to_string_lossy().to_string(),
+        root_name,
+        image_count: paths.len(),
+        image_folder_count: image_folders.len(),
+        annotated_image_count,
+    }
 }
 
 pub fn import_image(db: &Database, path: &Path, thumbnail_dir: &Path) -> AppResult<bool> {
@@ -71,6 +113,12 @@ fn is_supported_image(path: &Path) -> bool {
         extension.to_ascii_lowercase().as_str(),
         "jpg" | "jpeg" | "png" | "webp" | "bmp" | "gif"
     )
+}
+
+fn has_annotation_file(path: &Path) -> bool {
+    ["txt", "caption", "json", "jsonl"]
+        .iter()
+        .any(|extension| path.with_extension(extension).is_file())
 }
 
 pub fn default_thumbnail_dir(root: &Path) -> PathBuf {

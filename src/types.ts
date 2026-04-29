@@ -51,6 +51,14 @@ export interface ImportSummary {
   failed: number;
 }
 
+export interface ImportPreview {
+  folderPath: string;
+  rootName: string;
+  imageCount: number;
+  imageFolderCount: number;
+  annotatedImageCount: number;
+}
+
 export interface ImportProgress extends ImportSummary {
   phase: "scanning" | "importing" | "done" | "failed";
   processed: number;

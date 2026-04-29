@@ -290,6 +290,19 @@ impl Database {
         Ok(true)
     }
 
+    pub fn delete_images_under_path(&self, folder_path: &str) -> AppResult<usize> {
+        let normalized_path = normalize_dataset_path(folder_path);
+        let child_pattern = format!("{normalized_path}/%");
+        let deleted = self.conn.execute(
+            r#"DELETE FROM images
+               WHERE replace(path, '\', '/') = ?1
+                  OR replace(path, '\', '/') LIKE ?2"#,
+            params![normalized_path, child_pattern],
+        )?;
+
+        Ok(deleted)
+    }
+
     pub fn save_manual_annotations(
         &mut self,
         image_id: i64,
@@ -349,4 +362,8 @@ impl Database {
 
         rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
     }
+}
+
+fn normalize_dataset_path(path: &str) -> String {
+    path.replace('\\', "/").trim_end_matches('/').to_owned()
 }

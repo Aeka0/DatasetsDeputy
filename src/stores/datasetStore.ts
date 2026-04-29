@@ -9,6 +9,7 @@ import type {
   DatasetImage,
   DatasetProject,
   ExportPreset,
+  ImportPreview,
   ImportProgress,
   ImportSummary
 } from "../types";
@@ -204,10 +205,16 @@ interface DatasetState {
   activeProfileId?: number;
   isLoading: boolean;
   lastImport?: ImportSummary;
+  importPreview?: ImportPreview;
   importProgress?: ImportProgress;
+  annotationType: string;
   initImportEvents: () => Promise<void>;
   load: () => Promise<void>;
   importFolder: () => Promise<void>;
+  startPreparedImport: () => Promise<void>;
+  setAnnotationType: (annotationType: string) => void;
+  clearImportPreview: () => void;
+  removeDataset: (project: DatasetProject) => Promise<void>;
   exportDataset: (format: "txt_per_image" | "jsonl") => Promise<void>;
   selectProject: (id?: string) => void;
   selectImage: (id?: number) => void;
@@ -239,6 +246,8 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
   search: "",
   activeProfileId: 1,
   isLoading: false,
+  annotationType: "",
+  importPreview: undefined,
   importProgress: undefined,
   initImportEvents: async () => {
     if (!hasTauriRuntime() || unlistenImportProgress) {
@@ -298,9 +307,34 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
       return;
     }
 
+    set({ isLoading: true, importPreview: undefined, importProgress: undefined });
+    try {
+      const preview = await invokeCommand<ImportPreview>("prepare_import_folder");
+      set({
+        importPreview: preview,
+        annotationType: preview.annotatedImageCount > 0 ? get().annotationType : "",
+        selectedProjectId: undefined,
+        selectedImageId: undefined
+      });
+    } catch (error) {
+      const payload = error as { code?: string };
+      if (payload.code !== "dialog_cancelled") {
+        throw error;
+      }
+    } finally {
+      set({ isLoading: false });
+    }
+  },
+  startPreparedImport: async () => {
+    const preview = get().importPreview;
+    if (!hasTauriRuntime() || !preview) {
+      return;
+    }
+
     await get().initImportEvents();
     set({
       isLoading: true,
+      importPreview: undefined,
       importProgress: {
         phase: "scanning",
         processed: 0,
@@ -312,11 +346,48 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
       }
     });
     try {
-      await invokeCommand<void>("start_import_folder");
+      await invokeCommand<void>("start_import_folder", {
+        folderPath: preview.folderPath,
+        annotationType: get().annotationType.trim() || undefined
+      });
     } catch (error) {
       set({ isLoading: false, importProgress: undefined });
       throw error;
     }
+  },
+  setAnnotationType: (annotationType) => set({ annotationType }),
+  clearImportPreview: () => set({ importPreview: undefined, annotationType: "" }),
+  removeDataset: async (project) => {
+    if (hasTauriRuntime()) {
+      await invokeCommand<number>("remove_dataset_folder", {
+        folderPath: project.path
+      });
+      const images = await invokeCommand<DatasetImage[]>("list_images");
+      set({
+        images,
+        projects: createProjectTree(images),
+        selectedProjectId: undefined,
+        selectedImageId: undefined,
+        importPreview: undefined,
+        importProgress: undefined
+      });
+      return;
+    }
+
+    const ids = new Set(project.imageIds);
+    set((state) => {
+      const images = state.images.filter((image) => !ids.has(image.id));
+      return {
+        images,
+        projects: createProjectTree(images),
+        selectedProjectId:
+          state.selectedProjectId === project.id ? undefined : state.selectedProjectId,
+        selectedImageId:
+          state.selectedImageId && ids.has(state.selectedImageId)
+            ? undefined
+            : state.selectedImageId
+      };
+    });
   },
   exportDataset: async (format) => {
     if (!hasTauriRuntime()) {

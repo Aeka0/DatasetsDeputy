@@ -7,7 +7,7 @@ use crate::{
     db::{AnnotationProfile, DatasetImage},
     errors::{AppError, AppResult},
     export::{self, ExportRequest},
-    files::{self, ImportSummary},
+    files::{self, ImportPreview, ImportSummary},
     AppState,
 };
 
@@ -45,13 +45,29 @@ pub fn list_annotation_profiles(state: State<'_, AppState>) -> AppResult<Vec<Ann
 }
 
 #[tauri::command]
-pub fn start_import_folder(app: AppHandle) -> AppResult<()> {
+pub fn prepare_import_folder(app: AppHandle) -> AppResult<ImportPreview> {
     let Some(folder) = app.dialog().file().blocking_pick_folder() else {
         return Err(AppError::DialogCancelled);
     };
     let folder = folder
         .into_path()
         .map_err(|_| AppError::InvalidInput("Selected folder is not a local path".to_owned()))?;
+
+    Ok(files::scan_import_preview(&folder))
+}
+
+#[tauri::command]
+pub fn start_import_folder(
+    app: AppHandle,
+    folder_path: String,
+    annotation_type: Option<String>,
+) -> AppResult<()> {
+    let folder = std::path::PathBuf::from(&folder_path);
+    if !folder.is_dir() {
+        return Err(AppError::InvalidInput(format!(
+            "Import folder does not exist: {folder_path}"
+        )));
+    }
 
     let dirs = app_dirs::ensure_release_dirs(&app)?;
     let thumbnail_dir = files::default_thumbnail_dir(&dirs.root);
@@ -64,7 +80,11 @@ pub fn start_import_folder(app: AppHandle) -> AppResult<()> {
         .to_owned();
     let root_path = folder.to_string_lossy().to_string();
 
-    tracing::info!("Starting background folder import: {:?}", folder);
+    tracing::info!(
+        "Starting background folder import: {:?}, annotation_type={:?}",
+        folder,
+        annotation_type
+    );
     std::thread::spawn(move || {
         let emit_progress = |progress: ImportProgress| {
             let _ = app_for_thread.emit("import-progress", progress);
@@ -193,6 +213,17 @@ pub fn save_manual_annotations(
 
     tracing::info!("Saving manual annotations for image_id={}", image_id);
     db.save_manual_annotations(image_id, tags, caption)
+}
+
+#[tauri::command]
+pub fn remove_dataset_folder(state: State<'_, AppState>, folder_path: String) -> AppResult<usize> {
+    let db = state
+        .db
+        .lock()
+        .map_err(|_| AppError::InvalidInput("Database lock is poisoned".to_owned()))?;
+
+    tracing::info!("Removing dataset folder records for path={}", folder_path);
+    db.delete_images_under_path(&folder_path)
 }
 
 #[tauri::command]
