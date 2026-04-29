@@ -34,51 +34,49 @@ export function ImportPreviewView() {
     (!needsAnnotationType || annotationType.trim().length > 0);
 
   return (
-    <div className="flex h-full min-h-0 flex-col px-6 py-5">
+    <div className="flex h-full min-h-0 flex-col px-2 py-1">
       <div className="min-h-0 flex-1 overflow-auto">
-        <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-slate-900 text-white">
-            <FolderOpen size={20} />
-          </div>
-          <h2 className="m-0 text-3xl font-semibold text-slate-950">{copy.title}</h2>
+        <div className="flex h-10 items-center gap-2 border-b border-slate-100 pb-3">
+          <FolderOpen size={17} className="text-slate-600" />
+          <h2 className="m-0 text-[14px] font-semibold text-slate-950">{copy.title}</h2>
         </div>
 
-        <div className="mt-8 space-y-7">
+        <div className="mt-4 space-y-5">
           <section>
-            <div className="text-sm font-medium text-slate-700">{copy.folderPath}</div>
-            <div className="mt-2 rounded-md border border-slate-200 bg-white/70 px-3 py-2 text-sm text-slate-700">
+            <div className="text-[12px] font-medium text-slate-600">{copy.folderPath}</div>
+            <div className="mt-2 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-[13px] text-slate-700">
               {preview.folderPath}
             </div>
           </section>
 
-          <section className="grid gap-3 text-base text-slate-800 sm:grid-cols-3">
-            <div className="rounded-md border border-slate-200 bg-white/60 p-4">
-              <div className="text-2xl font-semibold text-slate-950">{preview.imageCount}</div>
-              <div className="mt-1 text-sm text-slate-500">{copy.imageCount}</div>
+          <section className="grid gap-3 text-slate-800 sm:grid-cols-3">
+            <div className="rounded-md border border-slate-200 bg-white p-3">
+              <div className="text-[18px] font-semibold text-slate-950">{preview.imageCount}</div>
+              <div className="mt-1 text-[12px] text-slate-500">{copy.imageCount}</div>
             </div>
-            <div className="rounded-md border border-slate-200 bg-white/60 p-4">
-              <div className="text-2xl font-semibold text-slate-950">
+            <div className="rounded-md border border-slate-200 bg-white p-3">
+              <div className="text-[18px] font-semibold text-slate-950">
                 {preview.imageFolderCount}
               </div>
-              <div className="mt-1 text-sm text-slate-500">{copy.imageFolderCount}</div>
+              <div className="mt-1 text-[12px] text-slate-500">{copy.imageFolderCount}</div>
             </div>
-            <div className="rounded-md border border-slate-200 bg-white/60 p-4">
-              <div className="text-2xl font-semibold text-slate-950">
+            <div className="rounded-md border border-slate-200 bg-white p-3">
+              <div className="text-[18px] font-semibold text-slate-950">
                 {preview.annotatedImageCount}
               </div>
-              <div className="mt-1 text-sm text-slate-500">{copy.annotatedImageCount}</div>
+              <div className="mt-1 text-[12px] text-slate-500">{copy.annotatedImageCount}</div>
             </div>
           </section>
 
           {preview.annotatedImageCount > 0 ? (
             <section className="max-w-xl">
-              <label className="block text-sm font-medium text-slate-700">
+              <label className="block text-[12px] font-medium text-slate-600">
                 {copy.annotationTypeQuestion}
               </label>
               <input
                 value={annotationType}
                 onChange={(event) => setAnnotationType(event.target.value)}
-                className="mt-2 h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-slate-400 focus:ring-3 focus:ring-slate-100"
+                className="glass-input mt-2 h-8 w-full px-3 text-[13px] placeholder:text-slate-400"
                 placeholder={copy.annotationTypePlaceholder}
               />
               {!annotationType.trim() ? (
@@ -89,9 +87,9 @@ export function ImportPreviewView() {
         </div>
       </div>
 
-      <div className="flex shrink-0 justify-end border-t border-slate-200 pt-4">
+      <div className="flex shrink-0 justify-end border-t border-slate-200 pt-3">
         <button
-          className="no-drag inline-flex h-10 items-center gap-2 rounded-md bg-slate-900 px-4 text-sm font-medium text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+          className="no-drag inline-flex h-8 items-center gap-2 rounded-md border border-slate-900 bg-slate-900 px-3 text-[13px] font-medium text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
           onClick={() => void startPreparedImport()}
           disabled={!canStartImport}
         >

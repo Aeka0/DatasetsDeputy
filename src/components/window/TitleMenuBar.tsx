@@ -159,8 +159,8 @@ export function TitleMenuBar() {
               type="button"
               className={`title-menu-button h-5 rounded-[3px] px-2 text-[0.6875rem] leading-5 transition ${
                 openMenu === menu.key
-                  ? "bg-slate-900/8 text-slate-900"
-                  : "text-slate-600 hover:bg-slate-900/6 hover:text-slate-900"
+                  ? "bg-slate-900/8 text-black"
+                  : "text-black hover:bg-slate-900/6"
               }`}
               onClick={() =>
                 setOpenMenu((current) => (current === menu.key ? undefined : menu.key))
@@ -170,7 +170,7 @@ export function TitleMenuBar() {
             </button>
 
             {openMenu === menu.key ? (
-              <div className="absolute left-0 top-6 z-50 min-w-32 rounded-[4px] border border-slate-200/90 bg-white/98 py-0.5 shadow-[0_4px_14px_rgba(15,23,42,0.10)]">
+              <div className="absolute left-0 top-6 z-50 min-w-32 rounded-[4px] border border-slate-200/90 bg-white/98 py-0.5">
                 {menus[menu.key].map((action) => (
                   <button
                     key={action.label}
@@ -190,7 +190,7 @@ export function TitleMenuBar() {
 
       {dialog ? (
         <div className="no-drag fixed inset-0 z-50 flex items-center justify-center bg-slate-950/16">
-          <div className="w-[360px] rounded-md border border-slate-200 bg-white p-5 shadow-xl">
+          <div className="w-[360px] rounded-md border border-slate-200 bg-white p-5">
             <h2 className="m-0 text-base font-semibold text-slate-900">
               {dialog === "settings" ? copy.settingsTitle : copy.aboutTitle}
             </h2>

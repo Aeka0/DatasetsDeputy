@@ -10,8 +10,8 @@ export function GlassPanel({ className, subtle = false, ...props }: GlassPanelPr
   return (
     <div
       className={cn(
-        "glass-panel rounded-3xl",
-        subtle && "bg-white/[0.045] shadow-none",
+        "glass-panel rounded-lg",
+        subtle && "bg-slate-50",
         className
       )}
       {...props}

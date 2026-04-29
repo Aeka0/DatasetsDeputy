@@ -1,4 +1,4 @@
-import { Files, ImageIcon, Search } from "lucide-react";
+import { Files, FolderOpen, ImageIcon, Search } from "lucide-react";
 import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -49,12 +49,13 @@ export function DatasetGrid() {
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="mb-3 flex items-center gap-4">
+      <div className="mb-3 flex h-11 items-center gap-3 border-b border-slate-100 px-1.5 pb-3 pt-0.5">
         <div className="min-w-0 flex-1">
-          <h2 className="m-0 truncate text-sm font-medium text-slate-900">
+          <h2 className="m-0 flex items-center gap-2 truncate text-[14px] font-semibold text-slate-900">
+            <FolderOpen size={16} className="shrink-0 text-slate-500" />
             {selectedProject?.name}
           </h2>
-          <p className="m-0 mt-0.5 text-xs text-slate-500">
+          <p className="m-0 mt-0.5 text-[12px] text-slate-500">
             {t("toolbar.datasetCount", { count: visibleImages.length })}
           </p>
         </div>
@@ -66,21 +67,21 @@ export function DatasetGrid() {
           <input
             value={search}
             onChange={(event) => setSearch(event.target.value)}
-            className="h-9 w-full rounded-lg border border-slate-200 bg-white/72 pl-10 pr-3 text-sm text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-slate-300 focus:ring-3 focus:ring-slate-100"
+            className="glass-input h-8 w-full pl-9 pr-3 text-[13px] placeholder:text-slate-400"
             placeholder={t("toolbar.searchPlaceholder")}
           />
         </div>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-auto pr-1">
-        <div className="grid grid-cols-[repeat(auto-fill,minmax(148px,1fr))] gap-3 pb-4">
+      <div className="min-h-0 flex-1 overflow-auto px-1.5">
+        <div className="grid grid-cols-[repeat(auto-fill,minmax(150px,1fr))] gap-3 pb-4">
           {visibleImages.map((image) => (
             <button
               key={image.id}
-              className="no-drag group overflow-hidden rounded-xl border border-slate-200/80 bg-white/68 p-1.5 text-left transition hover:bg-white"
+              className="no-drag group overflow-hidden rounded-lg border border-slate-200 bg-white p-1.5 text-left transition hover:border-slate-300 hover:bg-slate-50"
               onClick={() => selectImage(image.id)}
             >
-              <div className="flex aspect-square items-center justify-center overflow-hidden rounded-lg bg-slate-100">
+              <div className="flex aspect-square items-center justify-center overflow-hidden rounded-md bg-slate-100">
                 {image.thumbnailPath ? (
                   <img
                     src={resolveAssetSrc(image.thumbnailPath)}
@@ -93,8 +94,8 @@ export function DatasetGrid() {
                 )}
               </div>
               <div className="px-1.5 pb-1.5 pt-2">
-                <div className="truncate text-sm text-slate-800">{image.fileName}</div>
-                <div className="mt-1 flex items-center gap-1.5 text-xs text-slate-500">
+                <div className="truncate text-[13px] text-slate-800">{image.fileName}</div>
+                <div className="mt-1 flex items-center gap-1.5 text-[12px] text-slate-500">
                   <Files size={12} />
                   <span className="truncate">
                     {image.annotations.filter((annotation) => annotation.content.trim()).length}/

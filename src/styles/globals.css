@@ -1,11 +1,30 @@
 @import "tailwindcss";
 
 :root {
-  color: #1c2433;
+  color: #1f2328;
   background: transparent;
+  --app-bg: #f3f4f6;
+  --app-bg-elevated: #ffffff;
+  --app-bg-muted: #f8f8f9;
+  --app-bg-subtle: #fbfbfc;
+  --app-border: rgba(31, 35, 40, 0.12);
+  --app-border-strong: rgba(31, 35, 40, 0.18);
+  --app-text: #1f2328;
+  --app-text-muted: #636973;
+  --app-text-subtle: #858b94;
+  --app-accent: #111827;
+  --app-accent-hover: #2a303b;
+  --app-selection: #e9eef8;
+  --app-hover: rgba(31, 35, 40, 0.06);
+  --app-radius-sm: 4px;
+  --app-radius-md: 6px;
+  --app-radius-lg: 8px;
+  --app-chrome-bg: rgba(255, 255, 255, 0.45);
+  --app-chrome-border: rgba(255, 255, 255, 0.6);
   font-family:
-    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+    "Segoe UI", Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
     sans-serif;
+  font-size: 13px;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
@@ -50,6 +69,17 @@ button {
   cursor: pointer;
 }
 
+button,
+input,
+select,
+textarea {
+  border-radius: var(--app-radius-md);
+}
+
+::selection {
+  background: #dbeafe;
+}
+
 ::-webkit-scrollbar {
   width: 10px;
   height: 10px;
@@ -83,38 +113,40 @@ button {
 }
 
 .glass-panel {
-  border: 1px solid rgba(255, 255, 255, 0.54);
-  background:
-    linear-gradient(145deg, rgba(255, 255, 255, 0.54), rgba(255, 255, 255, 0.24)),
-    rgba(255, 255, 255, 0.32);
-  box-shadow:
-    0 12px 34px rgba(90, 115, 170, 0.08),
-    inset 0 1px 0 rgba(255, 255, 255, 0.48);
+  border: 1px solid var(--app-border);
+  background: var(--app-bg-elevated);
 }
 
 .glass-input {
-  border: 1px solid rgba(54, 80, 132, 0.12);
-  background: rgba(255, 255, 255, 0.62);
-  color: #1c2433;
+  border: 1px solid var(--app-border);
+  background: var(--app-bg-elevated);
+  color: var(--app-text);
   outline: none;
 }
 
 .glass-input:focus {
-  border-color: rgba(86, 102, 132, 0.42);
-  box-shadow: 0 0 0 3px rgba(86, 102, 132, 0.1);
+  border-color: rgba(17, 24, 39, 0.32);
+  outline: 2px solid rgba(17, 24, 39, 0.08);
+  outline-offset: 0;
 }
 
 .fluent-shell {
-  border: 1px solid rgba(26, 36, 54, 0.12);
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.45), rgba(246, 248, 252, 0.35)),
-    rgba(246, 248, 252, 0.3);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.34);
+  border: 1px solid rgba(31, 35, 40, 0.16);
+  background: transparent;
+}
+
+.fluent-chrome {
+  background: var(--app-chrome-bg);
+  backdrop-filter: blur(48px) saturate(1.28);
+}
+
+.fluent-titlebar {
+  background: var(--app-chrome-bg);
+  backdrop-filter: blur(48px) saturate(1.28);
 }
 
 .fluent-sidebar {
-  background: rgba(255, 255, 255, 0.01);
-  border-right: 1px solid rgba(32, 42, 60, 0.04);
+  background: transparent;
 }
 
 .fluent-control-button {
@@ -124,7 +156,7 @@ button {
 }
 
 .fluent-control-button:hover {
-  background: rgba(28, 38, 58, 0.08);
+  background: var(--app-hover);
 }
 
 .fluent-control-button.close:hover {

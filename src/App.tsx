@@ -44,9 +44,9 @@ export default function App() {
 
   return (
     <main className="fluent-shell relative flex h-screen w-screen flex-col overflow-hidden text-slate-950">
-      <div className="app-drag-region relative z-10 flex h-10 w-full shrink-0 items-center justify-between pl-4">
-        <div className="flex items-center gap-4">
-          <div className="text-sm font-medium text-slate-700">Dataset Deputy</div>
+      <div className="app-drag-region fluent-titlebar relative z-10 flex h-10 w-full shrink-0 items-center justify-between pl-3">
+        <div className="flex items-center gap-3">
+          <div className="text-[13px] font-semibold text-black">Dataset Deputy</div>
           <TitleMenuBar />
         </div>
         <div className="z-20">
@@ -54,11 +54,11 @@ export default function App() {
         </div>
       </div>
 
-      <div className="relative flex min-h-0 flex-1">
+      <div className="fluent-chrome relative flex min-h-0 flex-1">
         <ProjectTree />
 
-        <section className="min-w-0 flex-1 px-2 pb-2 pt-2">
-          <div className="h-full min-h-0 rounded-md border border-slate-200/70 bg-white/[0.86] p-3">
+        <section className="min-w-0 flex-1 p-3">
+          <div className="h-full min-h-0 rounded-lg border border-slate-200 bg-white p-4">
             {importProgress && !importProgress.done ? (
               <ImportProgressView />
             ) : importReport ? (

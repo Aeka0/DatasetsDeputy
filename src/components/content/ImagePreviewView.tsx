@@ -130,27 +130,27 @@ export function ImagePreviewView() {
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="mb-3 flex items-center gap-3">
+      <div className="mb-3 flex h-10 items-center gap-3 border-b border-slate-100 pb-3">
         <button
-          className="no-drag inline-flex h-9 items-center gap-2 rounded-md border border-slate-200 bg-white/70 px-3 text-sm text-slate-700 transition hover:bg-white"
+          className="no-drag inline-flex h-8 items-center gap-2 rounded-md border border-slate-200 bg-white px-3 text-[13px] text-slate-700 transition hover:bg-slate-50"
           onClick={() => selectImage(undefined)}
         >
           <ArrowLeft size={16} />
           {copy.back}
         </button>
         <div className="min-w-0">
-          <h2 className="m-0 truncate text-sm font-medium text-slate-900">
+          <h2 className="m-0 truncate text-[14px] font-semibold text-slate-900">
             {selectedImage.fileName}
           </h2>
-          <div className="mt-0.5 text-xs text-slate-500">
+          <div className="mt-0.5 text-[12px] text-slate-500">
             {selectedImage.annotations.length}
             {copy.annotations}
           </div>
         </div>
       </div>
 
-      <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_360px] gap-3">
-        <section className="flex min-h-0 flex-col rounded-md border border-slate-200 bg-slate-50/80">
+      <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_352px] gap-3">
+        <section className="flex min-h-0 flex-col rounded-lg border border-slate-200 bg-slate-50">
           <div className="flex min-h-0 flex-1 items-center justify-center overflow-hidden p-3">
             {previewSrc ? (
               <img
@@ -162,9 +162,9 @@ export function ImagePreviewView() {
               <div className="text-sm text-slate-400">{selectedImage.fileName}</div>
             )}
           </div>
-          <div className="border-t border-slate-200 bg-white/70 p-3">
-            <div className="mb-2 text-xs font-medium text-slate-700">{copy.metadata}</div>
-            <dl className="grid gap-2 text-xs text-slate-500 sm:grid-cols-3">
+          <div className="border-t border-slate-200 bg-white p-3">
+            <div className="mb-2 text-[12px] font-medium text-slate-700">{copy.metadata}</div>
+            <dl className="grid gap-2 text-[12px] text-slate-500 sm:grid-cols-3">
               <div>
                 <dt className="text-slate-400">{copy.size}</dt>
                 <dd className="m-0">
@@ -187,14 +187,14 @@ export function ImagePreviewView() {
           </div>
         </section>
 
-        <aside className="flex min-h-0 flex-col rounded-md border border-slate-200 bg-white/72">
-          <div className="flex items-center justify-between border-b border-slate-200 p-3">
-            <div className="flex items-center gap-2 text-sm font-medium text-slate-800">
+        <aside className="flex min-h-0 flex-col rounded-lg border border-slate-200 bg-white">
+          <div className="flex h-10 items-center justify-between border-b border-slate-200 px-3">
+            <div className="flex items-center gap-2 text-[13px] font-semibold text-slate-800">
               <FileText size={16} />
               {copy.annotations}
             </div>
             <button
-              className="no-drag inline-flex h-8 w-8 items-center justify-center rounded-md text-slate-600 transition hover:bg-slate-100"
+              className="no-drag inline-flex h-7 w-7 items-center justify-center rounded-md text-slate-600 transition hover:bg-slate-100"
               onClick={startNewAnnotationType}
               title={copy.newAnnotation}
             >
@@ -205,25 +205,25 @@ export function ImagePreviewView() {
           <div className="min-h-0 flex-1 overflow-auto p-2">
             {isCreatingProfile ? (
               <div className="mb-2 rounded-md border border-slate-200 bg-slate-50 p-2">
-                <label className="mb-1 block text-xs font-medium text-slate-600">
+                <label className="mb-1 block text-[12px] font-medium text-slate-600">
                   {copy.newTypeName}
                 </label>
                 <input
                   value={newProfileName}
                   onChange={(event) => setNewProfileName(event.target.value)}
-                  className="h-8 w-full rounded-md border border-slate-200 bg-white px-2 text-sm text-slate-800 outline-none focus:border-slate-400 focus:ring-3 focus:ring-slate-100"
+                  className="glass-input h-8 w-full px-2 text-[13px]"
                   autoFocus
                 />
                 <div className="mt-2 flex gap-2">
                   <button
-                    className="no-drag inline-flex h-8 flex-1 items-center justify-center rounded-md bg-slate-900 px-2 text-xs font-medium text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+                    className="no-drag inline-flex h-8 flex-1 items-center justify-center rounded-md border border-slate-900 bg-slate-900 px-2 text-[12px] font-medium text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
                     onClick={() => void createProfile()}
                     disabled={!newProfileName.trim()}
                   >
                     {copy.createType}
                   </button>
                   <button
-                    className="no-drag inline-flex h-8 items-center justify-center rounded-md border border-slate-200 px-2 text-xs text-slate-600 transition hover:bg-white"
+                    className="no-drag inline-flex h-8 items-center justify-center rounded-md border border-slate-200 bg-white px-2 text-[12px] text-slate-600 transition hover:bg-slate-50"
                     onClick={() => setIsCreatingProfile(false)}
                   >
                     {copy.cancel}
@@ -239,22 +239,22 @@ export function ImagePreviewView() {
                     key={annotation.id}
                     className={`no-drag w-full rounded-md px-2 py-2 text-left transition ${
                       selectedAnnotationId === annotation.id
-                        ? "bg-slate-900 text-white"
+                        ? "bg-slate-900/[0.07] text-slate-950"
                         : "text-slate-700 hover:bg-slate-100"
                     }`}
                     onClick={() => selectAnnotation(annotation)}
                   >
-                    <div className="truncate text-xs font-medium">
+                    <div className="truncate text-[12px] font-medium">
                       {profileById.get(annotation.profileId)?.name ?? `#${annotation.profileId}`}
                     </div>
-                    <div className="mt-1 line-clamp-2 text-xs opacity-70">
+                    <div className="mt-1 line-clamp-2 text-[12px] text-slate-500">
                       {annotation.content || "-"}
                     </div>
                   </button>
                 ))}
               </div>
             ) : (
-              <div className="rounded-md bg-slate-50 px-3 py-2 text-sm text-slate-500">
+              <div className="rounded-md bg-slate-50 px-3 py-2 text-[13px] text-slate-500">
                 {copy.noAnnotations}
               </div>
             )}
@@ -263,12 +263,12 @@ export function ImagePreviewView() {
           <div className="border-t border-slate-200 p-3">
             {selectedAnnotation ? (
               <>
-            <label className="mb-1 block text-xs font-medium text-slate-600">{copy.profile}</label>
+            <label className="mb-1 block text-[12px] font-medium text-slate-600">{copy.profile}</label>
             <select
               value={profileId}
               onChange={(event) => setProfileId(Number(event.target.value))}
               disabled={Boolean(selectedAnnotation)}
-              className="mb-3 h-9 w-full rounded-md border border-slate-200 bg-white px-2 text-sm text-slate-800 outline-none focus:border-slate-400 focus:ring-3 focus:ring-slate-100"
+              className="glass-input mb-3 h-8 w-full px-2 text-[13px]"
             >
               {profiles.map((profile) => (
                 <option key={profile.id} value={profile.id}>
@@ -277,16 +277,16 @@ export function ImagePreviewView() {
               ))}
             </select>
 
-            <label className="mb-1 block text-xs font-medium text-slate-600">{copy.content}</label>
+            <label className="mb-1 block text-[12px] font-medium text-slate-600">{copy.content}</label>
             <textarea
               value={content}
               onChange={(event) => setContent(event.target.value)}
-              className="h-40 w-full resize-none rounded-md border border-slate-200 bg-white p-2 text-sm text-slate-800 outline-none focus:border-slate-400 focus:ring-3 focus:ring-slate-100"
+              className="glass-input h-40 w-full resize-none p-2 text-[13px]"
             />
 
             <div className="mt-3 flex gap-2">
               <button
-                className="no-drag inline-flex h-9 flex-1 items-center justify-center gap-2 rounded-md bg-slate-900 px-3 text-sm font-medium text-white transition hover:bg-slate-800"
+                className="no-drag inline-flex h-8 flex-1 items-center justify-center gap-2 rounded-md border border-slate-900 bg-slate-900 px-3 text-[13px] font-medium text-white transition hover:bg-slate-800"
                 onClick={() => void saveAnnotation(selectedImage.id, profileId, content)}
               >
                 <Save size={15} />
@@ -294,7 +294,7 @@ export function ImagePreviewView() {
               </button>
               {selectedAnnotation ? (
                 <button
-                  className="no-drag inline-flex h-9 w-9 items-center justify-center rounded-md border border-rose-200 text-rose-700 transition hover:bg-rose-50"
+                  className="no-drag inline-flex h-8 w-8 items-center justify-center rounded-md border border-rose-200 bg-white text-rose-700 transition hover:bg-rose-50"
                   onClick={() => void clearAnnotation(selectedAnnotation.id)}
                   title={copy.delete}
                 >
@@ -304,7 +304,7 @@ export function ImagePreviewView() {
             </div>
               </>
             ) : (
-              <div className="rounded-md bg-slate-50 px-3 py-2 text-sm text-slate-500">
+              <div className="rounded-md bg-slate-50 px-3 py-2 text-[13px] text-slate-500">
                 {copy.selectAnnotationHint}
               </div>
             )}
