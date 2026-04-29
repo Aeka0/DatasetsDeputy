@@ -1,11 +1,11 @@
 import { useEffect } from "react";
 
 import { ImagePreviewView } from "./components/content/ImagePreviewView";
+import { DatasetWorkspace } from "./components/content/DatasetWorkspace";
 import { ImportPreviewView } from "./components/content/ImportPreviewView";
 import { ImportProgressView } from "./components/content/ImportProgressView";
 import { ImportReportView } from "./components/content/ImportReportView";
 import { WelcomeView } from "./components/content/WelcomeView";
-import { DatasetGrid } from "./components/grid/DatasetGrid";
 import { ProjectTree } from "./components/sidebar/ProjectTree";
 import { TitleMenuBar } from "./components/window/TitleMenuBar";
 import { WindowControls } from "./components/window/WindowControls";
@@ -68,7 +68,7 @@ export default function App() {
             ) : selectedImageId ? (
               <ImagePreviewView />
             ) : selectedProjectId ? (
-              <DatasetGrid />
+              <DatasetWorkspace />
             ) : (
               <WelcomeView />
             )}

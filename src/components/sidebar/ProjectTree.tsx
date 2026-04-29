@@ -8,7 +8,12 @@ import { useDatasetStore } from "../../stores/datasetStore";
 import type { DatasetProject } from "../../types";
 
 const copy = {
-  removeDataset: "\u79fb\u9664\u6570\u636e\u96c6"
+  removeDataset: "\u79fb\u9664\u6570\u636e\u96c6",
+  confirmTitle: "\u79fb\u9664\u6570\u636e\u96c6\uff1f",
+  confirmDescription:
+    "\u5c06\u4ece\u7a0b\u5e8f\u6570\u636e\u5e93\u79fb\u9664\u8be5\u6570\u636e\u96c6\u7684\u56fe\u7247\u7d22\u5f15\u3001\u6807\u6ce8\u548c\u4e0d\u518d\u88ab\u4f7f\u7528\u7684\u6807\u6ce8\u7c7b\u578b\u3002\u672c\u5730\u6587\u4ef6\u4e0d\u4f1a\u88ab\u5220\u9664\u3002",
+  cancel: "\u53d6\u6d88",
+  confirm: "\u786e\u8ba4\u79fb\u9664"
 };
 
 const sidebarLabelClass = "text-[12px] leading-4";
@@ -100,6 +105,7 @@ export function ProjectTree() {
     y: number;
     project: DatasetProject;
   }>();
+  const [pendingRemoval, setPendingRemoval] = useState<DatasetProject>();
 
   useEffect(() => {
     if (!contextMenu) return;
@@ -201,11 +207,51 @@ export function ProjectTree() {
             onClick={() => {
               const project = contextMenu.project;
               setContextMenu(undefined);
-              void removeDataset(project);
+              setPendingRemoval(project);
             }}
           >
             {copy.removeDataset}
           </button>
+        </div>
+      ) : null}
+      {pendingRemoval ? (
+        <div
+          className="no-drag fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/24 px-4"
+          onClick={() => setPendingRemoval(undefined)}
+        >
+          <div
+            className="w-full max-w-[420px] rounded-lg border border-slate-200 bg-white p-5 shadow-xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <h2 className="m-0 text-[15px] font-semibold leading-6 text-slate-950">
+              {copy.confirmTitle}
+            </h2>
+            <p className="mt-2 text-[13px] leading-5 text-slate-600">
+              {copy.confirmDescription}
+            </p>
+            <div className="mt-3 rounded-md bg-slate-50 px-3 py-2 text-[12px] leading-5 text-slate-600">
+              <div className="truncate font-medium text-slate-900">{pendingRemoval.name}</div>
+              <div className="truncate">{pendingRemoval.path}</div>
+            </div>
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                className="h-8 rounded-md border border-slate-200 bg-white px-3 text-[13px] text-slate-700 transition hover:bg-slate-50"
+                onClick={() => setPendingRemoval(undefined)}
+              >
+                {copy.cancel}
+              </button>
+              <button
+                className="h-8 rounded-md bg-slate-950 px-3 text-[13px] font-medium text-white transition hover:bg-slate-800"
+                onClick={() => {
+                  const project = pendingRemoval;
+                  setPendingRemoval(undefined);
+                  void removeDataset(project);
+                }}
+              >
+                {copy.confirm}
+              </button>
+            </div>
+          </div>
         </div>
       ) : null}
     </aside>

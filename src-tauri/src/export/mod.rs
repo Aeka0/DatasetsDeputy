@@ -36,12 +36,13 @@ fn export_txt_per_image(images: &[DatasetImage], output_dir: &Path) -> AppResult
         let stem = Path::new(&image.file_name)
             .file_stem()
             .and_then(|value| value.to_str())
-            .unwrap_or("caption");
-        let content = if image.caption.trim().is_empty() {
-            image.tags.join(", ")
-        } else {
-            image.caption.clone()
-        };
+            .unwrap_or("annotation");
+        let content = image
+            .annotations
+            .iter()
+            .find(|annotation| !annotation.content.trim().is_empty())
+            .map(|annotation| annotation.content.clone())
+            .unwrap_or_default();
         fs::write(output_dir.join(format!("{stem}.txt")), content)?;
     }
 
@@ -69,8 +70,6 @@ fn export_jsonl(
             serde_json::json!({
                 "path": image.path,
                 "fileName": image.file_name,
-                "tags": image.tags,
-                "caption": image.caption,
                 "annotations": annotations
             })
             .to_string(),

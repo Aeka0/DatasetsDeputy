@@ -1,6 +1,6 @@
 export type AnnotationFormat = "tags" | "caption" | "structured";
 
-export type AnnotationSource = "manual" | "local_model" | "remote_api";
+export type AnnotationSource = "manual" | "imported" | "local_model" | "remote_api";
 
 export interface AnnotationProfile {
   id: number;
@@ -16,6 +16,7 @@ export interface Annotation {
   imageId: number;
   profileId: number;
   content: string;
+  instruction: string;
   confidence?: number;
   createdAt: string;
   updatedAt: string;
@@ -32,8 +33,6 @@ export interface DatasetImage {
   fileHash?: string;
   importedAt: string;
   updatedAt: string;
-  tags: string[];
-  caption: string;
   annotations: Annotation[];
 }
 

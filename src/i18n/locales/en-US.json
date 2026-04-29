@@ -25,7 +25,7 @@
     "refresh": "Refresh"
   },
   "toolbar": {
-    "searchPlaceholder": "Search filename, tag, or caption",
+    "searchPlaceholder": "Search filename or annotation",
     "profileFilter": "Profile",
     "allProfiles": "All profiles",
     "selectedCount": "{{count}} selected",
@@ -50,8 +50,6 @@
     "filename": "Filename",
     "dimensions": "Dimensions",
     "size": "Size",
-    "tags": "Tags",
-    "caption": "Caption",
     "updated": "Updated",
     "emptyTitle": "No images imported yet",
     "emptyDescription": "Import a folder to start browsing and annotating a dataset."
@@ -59,22 +57,11 @@
   "detail": {
     "title": "Image details",
     "noSelection": "Select an image to edit annotations.",
-    "tagsLabel": "Tags",
-    "captionLabel": "Caption",
     "notesLabel": "Notes",
     "profileLabel": "Profile",
-    "tagsPlaceholder": "tag one, tag two",
-    "captionPlaceholder": "A training caption for this image.",
     "metadata": "Metadata",
     "path": "Path",
     "hash": "Hash"
-  },
-  "profiles": {
-    "manualTags": "Manual tags",
-    "manualCaption": "Manual caption",
-    "formatTags": "Tags",
-    "formatCaption": "Caption",
-    "sourceManual": "Manual"
   },
   "export": {
     "txtPerImage": "Text file per image",

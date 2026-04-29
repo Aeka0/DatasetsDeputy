@@ -17,20 +17,13 @@ import type {
 
 const now = new Date().toISOString();
 
-const defaultProfiles: AnnotationProfile[] = [
+const sampleProfiles: AnnotationProfile[] = [
   {
     id: 1,
-    name: "Manual tags",
-    formatType: "tags",
-    sourceType: "manual",
-    description: "Human curated keyword tags"
-  },
-  {
-    id: 2,
-    name: "Manual caption",
-    formatType: "caption",
-    sourceType: "manual",
-    description: "Human written training caption"
+    name: "Sample imported annotation",
+    formatType: "structured",
+    sourceType: "imported",
+    description: "Sample annotation type created during import"
   }
 ];
 
@@ -45,9 +38,17 @@ const sampleImages: DatasetImage[] = [
     fileHash: "demo-a1",
     importedAt: now,
     updatedAt: now,
-    tags: ["landscape", "night", "aurora"],
-    caption: "A wide cinematic field under green aurora lights.",
-    annotations: []
+    annotations: [
+      {
+        id: 101,
+        imageId: 1,
+        profileId: 1,
+        content: "A wide cinematic field under green aurora lights.",
+        instruction: "",
+        createdAt: now,
+        updatedAt: now
+      }
+    ]
   },
   {
     id: 2,
@@ -59,9 +60,17 @@ const sampleImages: DatasetImage[] = [
     fileHash: "demo-b2",
     importedAt: now,
     updatedAt: now,
-    tags: ["portrait", "studio", "soft light"],
-    caption: "A clean studio portrait with soft rim lighting.",
-    annotations: []
+    annotations: [
+      {
+        id: 102,
+        imageId: 2,
+        profileId: 1,
+        content: "A clean studio portrait with soft rim lighting.",
+        instruction: "",
+        createdAt: now,
+        updatedAt: now
+      }
+    ]
   },
   {
     id: 3,
@@ -73,9 +82,17 @@ const sampleImages: DatasetImage[] = [
     fileHash: "demo-c3",
     importedAt: now,
     updatedAt: now,
-    tags: ["product", "glass", "minimal"],
-    caption: "A minimal glass product render on a dark reflective surface.",
-    annotations: []
+    annotations: [
+      {
+        id: 103,
+        imageId: 3,
+        profileId: 1,
+        content: "A minimal glass product render on a dark reflective surface.",
+        instruction: "",
+        createdAt: now,
+        updatedAt: now
+      }
+    ]
   }
 ];
 
@@ -137,62 +154,91 @@ function getCommonDirectory(images: DatasetImage[]) {
   return common.join("/");
 }
 
-function createProjectTree(images: DatasetImage[], rootName?: string, rootPath?: string): DatasetProject[] {
+function getDatasetGroupKey(image: DatasetImage) {
+  return Math.floor(image.id / 1_000_000);
+}
+
+function createProjectTree(
+  images: DatasetImage[],
+  rootName?: string,
+  rootPath?: string
+): DatasetProject[] {
   if (images.length === 0) return [];
 
-  const normalizedRoot = normalizePath(rootPath || getCommonDirectory(images));
-  const root: DatasetProject = {
-    id: "dataset-root",
-    name: rootName || getPathName(normalizedRoot, "Dataset"),
-    path: normalizedRoot,
-    imageIds: images.map((image) => image.id),
-    children: []
-  };
-
-  const ensureChild = (parent: DatasetProject, name: string, path: string) => {
-    parent.children ??= [];
-    let child = parent.children.find((item) => item.path === path);
-    if (!child) {
-      child = {
-        id: `folder:${path}`,
-        name,
-        path,
-        imageIds: [],
-        children: []
-      };
-      parent.children.push(child);
-    }
-    return child;
-  };
-
+  const groups = new Map<number, DatasetImage[]>();
   for (const image of images) {
-    const directory = getDirectory(image.path);
-    const relative = normalizedRoot && directory.startsWith(normalizedRoot)
-      ? directory.slice(normalizedRoot.length).replace(/^\/+/, "")
-      : "";
-
-    if (!relative) continue;
-
-    let current = root;
-    let currentPath = normalizedRoot;
-
-    for (const part of relative.split("/").filter(Boolean)) {
-      currentPath = currentPath ? `${currentPath}/${part}` : part;
-      current = ensureChild(current, part, currentPath);
-      if (!current.imageIds.includes(image.id)) {
-        current.imageIds.push(image.id);
-      }
+    const key = getDatasetGroupKey(image);
+    const current = groups.get(key);
+    if (current) {
+      current.push(image);
+    } else {
+      groups.set(key, [image]);
     }
   }
 
-  const pruneEmptyChildren = (project: DatasetProject): DatasetProject => ({
-    ...project,
-    children: project.children?.length
-      ? project.children.map(pruneEmptyChildren)
-      : undefined
-  });
+  const normalizedImportRoot = rootPath ? normalizePath(rootPath) : undefined;
 
-  return [pruneEmptyChildren(root)];
+  return Array.from(groups.entries()).map(([groupKey, groupImages]) => {
+    const groupMatchesImportRoot =
+      normalizedImportRoot &&
+      groupImages.every((image) => normalizePath(image.path).startsWith(normalizedImportRoot));
+    const normalizedRoot = groupMatchesImportRoot
+      ? normalizedImportRoot
+      : normalizePath(getCommonDirectory(groupImages));
+
+    const root: DatasetProject = {
+      id: `dataset-root:${groupKey}`,
+      name: groupMatchesImportRoot && rootName ? rootName : getPathName(normalizedRoot, "Dataset"),
+      path: normalizedRoot,
+      imageIds: groupImages.map((image) => image.id),
+      children: []
+    };
+
+    const ensureChild = (parent: DatasetProject, name: string, path: string) => {
+      parent.children ??= [];
+      let child = parent.children.find((item) => item.path === path);
+      if (!child) {
+        child = {
+          id: `folder:${path}`,
+          name,
+          path,
+          imageIds: [],
+          children: []
+        };
+        parent.children.push(child);
+      }
+      return child;
+    };
+
+    for (const image of groupImages) {
+      const directory = getDirectory(image.path);
+      const relative = normalizedRoot && directory.startsWith(normalizedRoot)
+        ? directory.slice(normalizedRoot.length).replace(/^\/+/, "")
+        : "";
+
+      if (!relative) continue;
+
+      let current = root;
+      let currentPath = normalizedRoot;
+
+      for (const part of relative.split("/").filter(Boolean)) {
+        currentPath = currentPath ? `${currentPath}/${part}` : part;
+        current = ensureChild(current, part, currentPath);
+        if (!current.imageIds.includes(image.id)) {
+          current.imageIds.push(image.id);
+        }
+      }
+    }
+
+    const pruneEmptyChildren = (project: DatasetProject): DatasetProject => ({
+      ...project,
+      children: project.children?.length
+        ? project.children.map(pruneEmptyChildren)
+        : undefined
+    });
+
+    return pruneEmptyChildren(root);
+  });
 }
 
 function flattenProjects(projects: DatasetProject[]): DatasetProject[] {
@@ -228,33 +274,33 @@ interface DatasetState {
   setSearch: (search: string) => void;
   setActiveProfile: (id?: number) => void;
   saveAnnotation: (imageId: number, profileId: number, content: string) => Promise<void>;
+  saveInstruction: (imageId: number, profileId: number, instruction: string) => Promise<void>;
   createAnnotationProfile: (name: string) => Promise<number | undefined>;
   clearAnnotation: (annotationId: number) => Promise<void>;
-  updateManualAnnotations: (imageId: number, tags: string[], caption: string) => Promise<void>;
 }
 
 export const useDatasetStore = create<DatasetState>((set, get) => ({
   images: sampleImages,
   projects: sampleProjects,
-  profiles: defaultProfiles,
+  profiles: sampleProfiles,
   presets: [
     {
       id: 1,
       name: "export.presetSd",
-      profileIds: [1, 2],
+      profileIds: [],
       format: "txt_per_image"
     },
     {
       id: 2,
       name: "export.presetJsonl",
-      profileIds: [1, 2],
+      profileIds: [],
       format: "jsonl"
     }
   ],
   selectedProjectId: undefined,
   selectedImageId: undefined,
   search: "",
-  activeProfileId: 1,
+  activeProfileId: sampleProfiles[0]?.id,
   isLoading: false,
   annotationType: "",
   importPreview: undefined,
@@ -383,12 +429,23 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
         invokeCommand<DatasetImage[]>("list_images"),
         invokeCommand<AnnotationProfile[]>("list_annotation_profiles")
       ]);
+      const projects = createProjectTree(images, report.rootName, report.rootPath);
+      const selectedProject = projects.find(
+        (project) => report.rootPath && normalizePath(project.path) === normalizePath(report.rootPath)
+      );
+      const selectedDatasetKey = selectedProject?.imageIds[0]
+        ? Math.floor(selectedProject.imageIds[0] / 1_000_000)
+        : undefined;
+      const activeProfileId =
+        profiles.find((profile) => Math.floor(profile.id / 1_000_000) === selectedDatasetKey)?.id ??
+        profiles[0]?.id;
       set({
         images,
         profiles,
-        projects: createProjectTree(images, report.rootName, report.rootPath),
-        selectedProjectId: images.length > 0 ? "dataset-root" : undefined,
+        projects,
+        selectedProjectId: selectedProject?.id,
         selectedImageId: undefined,
+        activeProfileId,
         importReport: undefined
       });
     } finally {
@@ -402,12 +459,17 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
       await invokeCommand<number>("remove_dataset_folder", {
         folderPath: project.path
       });
-      const images = await invokeCommand<DatasetImage[]>("list_images");
+      const [images, profiles] = await Promise.all([
+        invokeCommand<DatasetImage[]>("list_images"),
+        invokeCommand<AnnotationProfile[]>("list_annotation_profiles")
+      ]);
       set({
         images,
+        profiles,
         projects: createProjectTree(images),
         selectedProjectId: undefined,
         selectedImageId: undefined,
+        activeProfileId: profiles[0]?.id,
         importPreview: undefined,
         importProgress: undefined,
         importReport: undefined
@@ -418,9 +480,18 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
     const ids = new Set(project.imageIds);
     set((state) => {
       const images = state.images.filter((image) => !ids.has(image.id));
+      const usedProfileIds = new Set(
+        images.flatMap((image) => image.annotations.map((annotation) => annotation.profileId))
+      );
+      const profiles = state.profiles.filter((profile) => usedProfileIds.has(profile.id));
+      const activeProfileId = profiles.some((profile) => profile.id === state.activeProfileId)
+        ? state.activeProfileId
+        : profiles[0]?.id;
       return {
         images,
+        profiles,
         projects: createProjectTree(images),
+        activeProfileId,
         selectedProjectId:
           state.selectedProjectId === project.id ? undefined : state.selectedProjectId,
         selectedImageId:
@@ -494,6 +565,57 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
                 imageId,
                 profileId,
                 content,
+                instruction: "",
+                createdAt: updatedAt,
+                updatedAt
+              }
+            ];
+
+        return {
+          ...image,
+          annotations,
+          updatedAt
+        };
+      })
+    }));
+  },
+  saveInstruction: async (imageId, profileId, instruction) => {
+    if (hasTauriRuntime()) {
+      await invokeCommand("save_instruction", {
+        imageId,
+        profileId,
+        instruction
+      });
+      const images = await invokeCommand<DatasetImage[]>("list_images");
+      set((state) => ({
+        images,
+        projects: createProjectTree(images),
+        selectedImageId: imageId,
+        selectedProjectId: state.selectedProjectId
+      }));
+      return;
+    }
+
+    const updatedAt = new Date().toISOString();
+    set((state) => ({
+      images: state.images.map((image) => {
+        if (image.id !== imageId) return image;
+
+        const existing = image.annotations.find((annotation) => annotation.profileId === profileId);
+        const annotations = existing
+          ? image.annotations.map((annotation) =>
+              annotation.profileId === profileId
+                ? { ...annotation, instruction, updatedAt }
+                : annotation
+            )
+          : [
+              ...image.annotations,
+              {
+                id: Date.now(),
+                imageId,
+                profileId,
+                content: "",
+                instruction,
                 createdAt: updatedAt,
                 updatedAt
               }
@@ -514,10 +636,18 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
     }
 
     const state = get();
-    const rootProject = state.projects[0];
-    const imageIds = rootProject?.imageIds.length
-      ? rootProject.imageIds
-      : state.images.map((image) => image.id);
+    const selectedProject = flattenProjects(state.projects).find(
+      (project) => project.id === state.selectedProjectId
+    );
+    const selectedImage = state.images.find((image) => image.id === state.selectedImageId);
+    const selectedDatasetKey = selectedImage ? getDatasetGroupKey(selectedImage) : undefined;
+    const imageIds = selectedProject?.imageIds.length
+      ? selectedProject.imageIds
+      : selectedDatasetKey !== undefined
+        ? state.images
+            .filter((image) => getDatasetGroupKey(image) === selectedDatasetKey)
+            .map((image) => image.id)
+        : state.projects[0]?.imageIds ?? state.images.map((image) => image.id);
 
     if (hasTauriRuntime()) {
       const profileId = await invokeCommand<number>("create_annotation_profile", {
@@ -543,7 +673,7 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
     const profile: AnnotationProfile = {
       id: profileId,
       name: trimmedName,
-      formatType: "tags",
+      formatType: "structured",
       sourceType: "manual",
       description: "Dataset-wide annotation"
     };
@@ -561,6 +691,7 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
                   imageId: image.id,
                   profileId,
                   content: "",
+                  instruction: "",
                   createdAt: now,
                   updatedAt: now
                 }
@@ -593,30 +724,5 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
         )
       }))
     }));
-  },
-  updateManualAnnotations: async (imageId, tags, caption) => {
-    const updatedAt = new Date().toISOString();
-
-    set((state) => ({
-      images: state.images.map((image) =>
-        image.id === imageId
-          ? {
-              ...image,
-              tags,
-              caption,
-              updatedAt
-            }
-          : image
-      )
-    }));
-
-    if (hasTauriRuntime()) {
-      await invokeCommand("save_manual_annotations", {
-        imageId,
-        tags,
-        caption
-      });
-      await get().load();
-    }
   }
 }));

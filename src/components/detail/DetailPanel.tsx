@@ -4,31 +4,36 @@ import { useTranslation } from "react-i18next";
 
 import { resolveAssetSrc } from "../../lib/tauri";
 import { useDatasetStore } from "../../stores/datasetStore";
-import { Badge } from "../ui/Badge";
 import { Button } from "../ui/Button";
 import { GlassPanel } from "../ui/GlassPanel";
 
-function normalizeTags(input: string) {
-  return input
-    .split(",")
-    .map((tag) => tag.trim())
-    .filter(Boolean);
-}
-
 export function DetailPanel() {
   const { t } = useTranslation();
-  const { images, selectedImageId, selectImage, updateManualAnnotations } = useDatasetStore();
+  const {
+    images,
+    profiles,
+    activeProfileId,
+    selectedImageId,
+    selectImage,
+    setActiveProfile,
+    saveAnnotation,
+    saveInstruction
+  } = useDatasetStore();
   const selectedImage = useMemo(
     () => images.find((image) => image.id === selectedImageId),
     [images, selectedImageId]
   );
-  const [tagText, setTagText] = useState("");
-  const [caption, setCaption] = useState("");
+  const selectedProfileId = activeProfileId ?? profiles[0]?.id;
+  const selectedAnnotation = selectedImage?.annotations.find(
+    (annotation) => annotation.profileId === selectedProfileId
+  );
+  const [content, setContent] = useState("");
+  const [instruction, setInstruction] = useState("");
 
   useEffect(() => {
-    setTagText(selectedImage?.tags.join(", ") ?? "");
-    setCaption(selectedImage?.caption ?? "");
-  }, [selectedImage]);
+    setContent(selectedAnnotation?.content ?? "");
+    setInstruction(selectedAnnotation?.instruction ?? "");
+  }, [selectedAnnotation]);
 
   if (!selectedImage) {
     return (
@@ -37,8 +42,6 @@ export function DetailPanel() {
       </GlassPanel>
     );
   }
-
-  const tags = normalizeTags(tagText);
 
   return (
     <GlassPanel className="flex h-full w-[420px] shrink-0 flex-col overflow-hidden">
@@ -67,30 +70,40 @@ export function DetailPanel() {
 
         <section className="space-y-2">
           <label className="text-xs uppercase tracking-[0.16em] text-white/42">
-            {t("detail.tagsLabel")}
+            {t("detail.profileLabel")}
           </label>
-          <textarea
-            value={tagText}
-            onChange={(event) => setTagText(event.target.value)}
-            className="glass-input min-h-24 w-full resize-none rounded-2xl p-3 text-sm"
-            placeholder={t("detail.tagsPlaceholder")}
-          />
-          <div className="flex flex-wrap gap-1.5">
-            {tags.map((tag) => (
-              <Badge key={tag}>{tag}</Badge>
+          <select
+            value={selectedProfileId ?? ""}
+            onChange={(event) => setActiveProfile(Number(event.target.value))}
+            className="glass-input h-9 w-full px-3 text-sm"
+          >
+            {profiles.map((profile) => (
+              <option key={profile.id} value={profile.id}>
+                {profile.name}
+              </option>
             ))}
-          </div>
+          </select>
         </section>
 
         <section className="space-y-2">
           <label className="text-xs uppercase tracking-[0.16em] text-white/42">
-            {t("detail.captionLabel")}
+            Annotation Data
           </label>
           <textarea
-            value={caption}
-            onChange={(event) => setCaption(event.target.value)}
+            value={content}
+            onChange={(event) => setContent(event.target.value)}
             className="glass-input min-h-32 w-full resize-none rounded-2xl p-3 text-sm"
-            placeholder={t("detail.captionPlaceholder")}
+          />
+        </section>
+
+        <section className="space-y-2">
+          <label className="text-xs uppercase tracking-[0.16em] text-white/42">
+            Instruction
+          </label>
+          <textarea
+            value={instruction}
+            onChange={(event) => setInstruction(event.target.value)}
+            className="glass-input min-h-28 w-full resize-none rounded-2xl p-3 text-sm"
           />
         </section>
 
@@ -122,7 +135,12 @@ export function DetailPanel() {
       <div className="border-t border-white/10 p-5">
         <Button
           className="w-full"
-          onClick={() => void updateManualAnnotations(selectedImage.id, tags, caption)}
+          disabled={!selectedProfileId}
+          onClick={() => {
+            if (!selectedProfileId) return;
+            void saveAnnotation(selectedImage.id, selectedProfileId, content);
+            void saveInstruction(selectedImage.id, selectedProfileId, instruction);
+          }}
         >
           <Save size={16} />
           {t("actions.save")}

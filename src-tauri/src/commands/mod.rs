@@ -1,15 +1,22 @@
+use std::{
+    fs,
+    path::{Path, PathBuf},
+};
+
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, State};
 use tauri_plugin_dialog::DialogExt;
 
 use crate::{
     app_dirs,
-    db::{AnnotationProfile, DatasetImage},
+    db::{AnnotationProfile, Database, DatasetImage},
     errors::{AppError, AppResult},
     export::{self, ExportRequest},
     files::{self, ImportPreview, ImportSummary},
     AppState,
 };
+
+const ID_NAMESPACE_SIZE: i64 = 1_000_000;
 
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -45,22 +52,119 @@ pub struct ImportProgress {
     pub report: Option<ImportReport>,
 }
 
+struct DatasetDatabaseRef {
+    prefix: i64,
+    path: PathBuf,
+}
+
+fn dataset_database_refs(dirs: &app_dirs::AppDirs) -> AppResult<Vec<DatasetDatabaseRef>> {
+    let mut paths = fs::read_dir(&dirs.dataset_databases)?
+        .filter_map(Result::ok)
+        .map(|entry| entry.path())
+        .filter(|path| path.extension().and_then(|value| value.to_str()) == Some("sqlite"))
+        .collect::<Vec<_>>();
+    paths.sort_by_key(|path| path.to_string_lossy().to_ascii_lowercase());
+
+    Ok(paths
+        .into_iter()
+        .enumerate()
+        .map(|(index, path)| DatasetDatabaseRef {
+            prefix: index as i64 + 1,
+            path,
+        })
+        .collect())
+}
+
+fn to_public_id(prefix: i64, local_id: i64) -> i64 {
+    prefix * ID_NAMESPACE_SIZE + local_id
+}
+
+fn split_public_id(public_id: i64) -> AppResult<(i64, i64)> {
+    let prefix = public_id / ID_NAMESPACE_SIZE;
+    let local_id = public_id % ID_NAMESPACE_SIZE;
+    if prefix <= 0 || local_id <= 0 {
+        return Err(AppError::InvalidInput(format!(
+            "Invalid dataset-scoped id: {public_id}"
+        )));
+    }
+    Ok((prefix, local_id))
+}
+
+fn open_database(path: &Path) -> AppResult<Database> {
+    let db = Database::open(path)?;
+    db.migrate()?;
+    Ok(db)
+}
+
+fn open_database_by_prefix(
+    dirs: &app_dirs::AppDirs,
+    prefix: i64,
+) -> AppResult<(Database, PathBuf)> {
+    let db_ref = dataset_database_refs(dirs)?
+        .into_iter()
+        .find(|db_ref| db_ref.prefix == prefix)
+        .ok_or_else(|| AppError::InvalidInput(format!("Dataset database not found: {prefix}")))?;
+    Ok((open_database(&db_ref.path)?, db_ref.path))
+}
+
+fn namespace_profile(mut profile: AnnotationProfile, prefix: i64) -> AnnotationProfile {
+    profile.id = to_public_id(prefix, profile.id);
+    profile
+}
+
+fn namespace_image(mut image: DatasetImage, prefix: i64) -> DatasetImage {
+    image.id = to_public_id(prefix, image.id);
+    for annotation in &mut image.annotations {
+        annotation.id = to_public_id(prefix, annotation.id);
+        annotation.image_id = to_public_id(prefix, annotation.image_id);
+        annotation.profile_id = to_public_id(prefix, annotation.profile_id);
+    }
+    image
+}
+
+fn normalize_path(value: &str) -> String {
+    value.replace('\\', "/").trim_end_matches('/').to_owned()
+}
+
+fn sqlite_sidecar_paths(path: &Path) -> [PathBuf; 3] {
+    [
+        path.to_path_buf(),
+        PathBuf::from(format!("{}-wal", path.to_string_lossy())),
+        PathBuf::from(format!("{}-shm", path.to_string_lossy())),
+    ]
+}
+
+fn remove_sqlite_files(path: &Path) -> AppResult<()> {
+    for file in sqlite_sidecar_paths(path) {
+        if file.exists() {
+            fs::remove_file(file)?;
+        }
+    }
+    Ok(())
+}
+
 #[tauri::command]
 pub fn list_images(state: State<'_, AppState>) -> AppResult<Vec<DatasetImage>> {
-    let db = state
-        .db
-        .lock()
-        .map_err(|_| AppError::InvalidInput("Database lock is poisoned".to_owned()))?;
-    db.list_images()
+    let mut images = Vec::new();
+    for db_ref in dataset_database_refs(&state.dirs)? {
+        let db = open_database(&db_ref.path)?;
+        for image in db.list_images()? {
+            images.push(namespace_image(image, db_ref.prefix));
+        }
+    }
+    Ok(images)
 }
 
 #[tauri::command]
 pub fn list_annotation_profiles(state: State<'_, AppState>) -> AppResult<Vec<AnnotationProfile>> {
-    let db = state
-        .db
-        .lock()
-        .map_err(|_| AppError::InvalidInput("Database lock is poisoned".to_owned()))?;
-    db.list_annotation_profiles()
+    let mut profiles = Vec::new();
+    for db_ref in dataset_database_refs(&state.dirs)? {
+        let db = open_database(&db_ref.path)?;
+        for profile in db.list_annotation_profiles()? {
+            profiles.push(namespace_profile(profile, db_ref.prefix));
+        }
+    }
+    Ok(profiles)
 }
 
 #[tauri::command]
@@ -101,7 +205,7 @@ pub fn start_import_folder(
 
     let dirs = app_dirs::ensure_release_dirs(&app)?;
     let thumbnail_dir = files::default_thumbnail_dir(&dirs.root);
-    let database_path = dirs.database_path.clone();
+    let database_path = app_dirs::dataset_database_path(&dirs, &folder);
     let app_for_thread = app.clone();
     let root_name = folder
         .file_name()
@@ -134,9 +238,8 @@ pub fn start_import_folder(
             report: None,
         });
 
-        let mut db = match crate::db::Database::open(&database_path).and_then(|db| {
-            db.migrate()?;
-            db.ensure_default_profiles()?;
+        let mut db = match open_database(&database_path).and_then(|mut db| {
+            db.set_dataset_metadata(&root_name, &root_path)?;
             Ok(db)
         }) {
             Ok(db) => db,
@@ -173,17 +276,19 @@ pub fn start_import_folder(
             .map(str::trim)
             .filter(|value| !value.is_empty())
             .map(ToOwned::to_owned);
-        let import_profile_name = annotation_type.as_deref().unwrap_or("Imported tags");
-        let import_profile_id = match db.ensure_import_profile(import_profile_name) {
-            Ok(profile_id) => Some(profile_id),
-            Err(error) => {
-                tracing::warn!(
-                    "Failed to create import annotation profile {:?}: {}",
-                    import_profile_name,
-                    error
-                );
-                None
-            }
+        let import_profile_id = match annotation_type.as_deref() {
+            Some(import_profile_name) => match db.ensure_import_profile(import_profile_name) {
+                Ok(profile_id) => Some(profile_id),
+                Err(error) => {
+                    tracing::warn!(
+                        "Failed to create import annotation profile {:?}: {}",
+                        import_profile_name,
+                        error
+                    );
+                    None
+                }
+            },
+            None => None,
         };
 
         let paths = files::collect_image_paths(&folder);
@@ -287,39 +392,51 @@ pub fn start_import_folder(
 }
 
 #[tauri::command]
-pub fn save_manual_annotations(
-    state: State<'_, AppState>,
-    image_id: i64,
-    tags: Vec<String>,
-    caption: String,
-) -> AppResult<()> {
-    let mut db = state
-        .db
-        .lock()
-        .map_err(|_| AppError::InvalidInput("Database lock is poisoned".to_owned()))?;
-
-    tracing::info!("Saving manual annotations for image_id={}", image_id);
-    db.save_manual_annotations(image_id, tags, caption)
-}
-
-#[tauri::command]
 pub fn save_annotation(
     state: State<'_, AppState>,
     image_id: i64,
     profile_id: i64,
     content: String,
 ) -> AppResult<()> {
-    let mut db = state
-        .db
-        .lock()
-        .map_err(|_| AppError::InvalidInput("Database lock is poisoned".to_owned()))?;
+    let (image_prefix, local_image_id) = split_public_id(image_id)?;
+    let (profile_prefix, local_profile_id) = split_public_id(profile_id)?;
+    if image_prefix != profile_prefix {
+        return Err(AppError::InvalidInput(
+            "Image and annotation profile belong to different dataset databases".to_owned(),
+        ));
+    }
+    let (mut db, _) = open_database_by_prefix(&state.dirs, image_prefix)?;
 
     tracing::info!(
         "Saving annotation for image_id={}, profile_id={}",
         image_id,
         profile_id
     );
-    db.upsert_annotation(image_id, profile_id, content)
+    db.upsert_annotation(local_image_id, local_profile_id, content)
+}
+
+#[tauri::command]
+pub fn save_instruction(
+    state: State<'_, AppState>,
+    image_id: i64,
+    profile_id: i64,
+    instruction: String,
+) -> AppResult<()> {
+    let (image_prefix, local_image_id) = split_public_id(image_id)?;
+    let (profile_prefix, local_profile_id) = split_public_id(profile_id)?;
+    if image_prefix != profile_prefix {
+        return Err(AppError::InvalidInput(
+            "Image and annotation profile belong to different dataset databases".to_owned(),
+        ));
+    }
+    let (mut db, _) = open_database_by_prefix(&state.dirs, image_prefix)?;
+
+    tracing::info!(
+        "Saving instruction for image_id={}, profile_id={}",
+        image_id,
+        profile_id
+    );
+    db.upsert_instruction(local_image_id, local_profile_id, instruction)
 }
 
 #[tauri::command]
@@ -328,47 +445,79 @@ pub fn create_annotation_profile(
     name: String,
     image_ids: Vec<i64>,
 ) -> AppResult<i64> {
-    let mut db = state
-        .db
-        .lock()
-        .map_err(|_| AppError::InvalidInput("Database lock is poisoned".to_owned()))?;
+    let Some(first_image_id) = image_ids.first().copied() else {
+        return Err(AppError::InvalidInput(
+            "Cannot create an annotation type without dataset images".to_owned(),
+        ));
+    };
+    let (prefix, _) = split_public_id(first_image_id)?;
+    let mut local_image_ids = Vec::with_capacity(image_ids.len());
+    for image_id in image_ids {
+        let (image_prefix, local_image_id) = split_public_id(image_id)?;
+        if image_prefix != prefix {
+            return Err(AppError::InvalidInput(
+                "Annotation type creation cannot span multiple dataset databases".to_owned(),
+            ));
+        }
+        local_image_ids.push(local_image_id);
+    }
+    let (mut db, _) = open_database_by_prefix(&state.dirs, prefix)?;
 
     tracing::info!(
         "Creating annotation profile {:?} for {} images",
         name,
-        image_ids.len()
+        local_image_ids.len()
     );
-    db.create_dataset_annotation_profile(name, image_ids)
+    db.create_dataset_annotation_profile(name, local_image_ids)
+        .map(|profile_id| to_public_id(prefix, profile_id))
 }
 
 #[tauri::command]
 pub fn clear_annotation(state: State<'_, AppState>, annotation_id: i64) -> AppResult<()> {
-    let mut db = state
-        .db
-        .lock()
-        .map_err(|_| AppError::InvalidInput("Database lock is poisoned".to_owned()))?;
+    let (prefix, local_annotation_id) = split_public_id(annotation_id)?;
+    let (mut db, _) = open_database_by_prefix(&state.dirs, prefix)?;
 
     tracing::info!("Clearing annotation_id={}", annotation_id);
-    db.clear_annotation(annotation_id)
+    db.clear_annotation(local_annotation_id)
 }
 
 #[tauri::command]
 pub fn remove_dataset_folder(state: State<'_, AppState>, folder_path: String) -> AppResult<usize> {
-    let db = state
-        .db
-        .lock()
-        .map_err(|_| AppError::InvalidInput("Database lock is poisoned".to_owned()))?;
-
     tracing::info!("Removing dataset folder records for path={}", folder_path);
-    db.delete_images_under_path(&folder_path)
+    let normalized_folder = normalize_path(&folder_path);
+    let mut removed = 0;
+
+    for db_ref in dataset_database_refs(&state.dirs)? {
+        let mut db = open_database(&db_ref.path)?;
+        let root_path = db.dataset_root_path()?.map(|value| normalize_path(&value));
+        let image_count = db.list_images()?.len();
+
+        if root_path.as_deref() == Some(normalized_folder.as_str()) {
+            drop(db);
+            remove_sqlite_files(&db_ref.path)?;
+            removed += image_count;
+            continue;
+        }
+
+        let deleted = db.delete_images_under_path(&folder_path)?;
+        removed += deleted;
+        if deleted > 0 && db.list_images()?.is_empty() {
+            drop(db);
+            remove_sqlite_files(&db_ref.path)?;
+        }
+    }
+
+    Ok(removed)
 }
 
 #[tauri::command]
 pub fn export_dataset(state: State<'_, AppState>, request: ExportRequest) -> AppResult<usize> {
-    let db = state
-        .db
-        .lock()
-        .map_err(|_| AppError::InvalidInput("Database lock is poisoned".to_owned()))?;
-    let images = db.list_images()?;
+    let mut images = Vec::new();
+    for db_ref in dataset_database_refs(&state.dirs)? {
+        let db = open_database(&db_ref.path)?;
+        for image in db.list_images()? {
+            images.push(namespace_image(image, db_ref.prefix));
+        }
+    }
     export::export_dataset(&images, request)
 }

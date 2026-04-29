@@ -4,6 +4,7 @@ use std::{
     sync::OnceLock,
 };
 
+use sha2::{Digest, Sha256};
 use tauri::Manager;
 use tracing_appender::non_blocking::WorkerGuard;
 use tracing_subscriber::{fmt, EnvFilter};
@@ -22,7 +23,7 @@ pub struct AppDirs {
     pub app: PathBuf,
     pub log: PathBuf,
     pub temp: PathBuf,
-    pub database_path: PathBuf,
+    pub dataset_databases: PathBuf,
 }
 
 pub fn ensure_release_dirs<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> AppResult<AppDirs> {
@@ -43,7 +44,7 @@ pub fn ensure_release_dirs<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> AppR
         app: root.join("app"),
         log: root.join("log"),
         temp: root.join("temp"),
-        database_path: root.join("runtime").join("datasets_deputy.sqlite"),
+        dataset_databases: root.join("runtime").join("datasets"),
         root,
     };
 
@@ -55,6 +56,7 @@ pub fn ensure_release_dirs<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> AppR
         &dirs.app,
         &dirs.log,
         &dirs.temp,
+        &dirs.dataset_databases,
     ] {
         fs::create_dir_all(dir)?;
     }
@@ -62,6 +64,39 @@ pub fn ensure_release_dirs<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> AppR
     fs::create_dir_all(dirs.temp.join("thumbnails"))?;
 
     Ok(dirs)
+}
+
+pub fn dataset_database_path(dirs: &AppDirs, dataset_path: &Path) -> PathBuf {
+    let normalized = dataset_path
+        .to_string_lossy()
+        .replace('\\', "/")
+        .trim_end_matches('/')
+        .to_ascii_lowercase();
+    let mut hasher = Sha256::new();
+    hasher.update(normalized.as_bytes());
+    let hash = format!("{:x}", hasher.finalize());
+    let stem = dataset_path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .map(sanitize_file_stem)
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| "dataset".to_owned());
+
+    dirs.dataset_databases
+        .join(format!("{stem}-{}.sqlite", &hash[..16]))
+}
+
+fn sanitize_file_stem(value: &str) -> String {
+    value
+        .chars()
+        .map(|character| {
+            if character.is_ascii_alphanumeric() || matches!(character, '-' | '_') {
+                character
+            } else {
+                '_'
+            }
+        })
+        .collect()
 }
 
 #[allow(dead_code)]

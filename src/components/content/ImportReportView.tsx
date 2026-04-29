@@ -22,39 +22,41 @@ export function ImportReportView() {
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col px-2 py-1">
-      <div className="min-h-0 flex-1 overflow-auto">
-        <div className="flex h-10 items-center gap-2 border-b border-slate-100 pb-3">
-          <CheckCircle2 size={17} className="text-emerald-700" />
+    <div className="flex h-full min-h-0 flex-col px-3 py-2 text-[13px]">
+      <div className="min-h-0 flex-1 overflow-auto pr-1">
+        <div className="flex items-start gap-2 border-b border-slate-100 pb-3">
+          <CheckCircle2 size={18} className="mt-0.5 shrink-0 text-emerald-700" />
           <div className="min-w-0">
-            <h2 className="m-0 text-[14px] font-semibold text-slate-950">{copy.title}</h2>
+            <h2 className="m-0 text-[15px] font-semibold leading-6 text-slate-950">
+              {copy.title}
+            </h2>
             {report.rootPath ? (
-              <div className="mt-0.5 truncate text-[12px] text-slate-500">{report.rootPath}</div>
+              <div className="mt-0.5 truncate leading-5 text-slate-500">{report.rootPath}</div>
             ) : null}
           </div>
         </div>
 
         <section className="mt-4 grid gap-3 sm:grid-cols-3">
-          <div className="rounded-md border border-slate-200 bg-white p-3">
-            <div className="text-[18px] font-semibold text-slate-950">
+          <div className="rounded-md border border-slate-200 bg-white p-4">
+            <div className="text-[22px] font-semibold leading-7 text-slate-950">
               {report.successWithoutAnnotations}
             </div>
-            <div className="mt-1 text-[12px] text-slate-500">{copy.successWithoutAnnotations}</div>
+            <div className="mt-1 leading-5 text-slate-500">{copy.successWithoutAnnotations}</div>
           </div>
-          <div className="rounded-md border border-slate-200 bg-white p-3">
-            <div className="text-[18px] font-semibold text-slate-950">
+          <div className="rounded-md border border-slate-200 bg-white p-4">
+            <div className="text-[22px] font-semibold leading-7 text-slate-950">
               {report.successWithAnnotations}
             </div>
-            <div className="mt-1 text-[12px] text-slate-500">{copy.successWithAnnotations}</div>
+            <div className="mt-1 leading-5 text-slate-500">{copy.successWithAnnotations}</div>
           </div>
-          <div className="rounded-md border border-slate-200 bg-white p-3">
-            <div className="text-[18px] font-semibold text-slate-950">{report.failed}</div>
-            <div className="mt-1 text-[12px] text-slate-500">{copy.failed}</div>
+          <div className="rounded-md border border-slate-200 bg-white p-4">
+            <div className="text-[22px] font-semibold leading-7 text-slate-950">{report.failed}</div>
+            <div className="mt-1 leading-5 text-slate-500">{copy.failed}</div>
           </div>
         </section>
 
         <section className="mt-5">
-          <div className="mb-2 flex items-center gap-2 text-[13px] font-medium text-slate-700">
+          <div className="mb-2 flex items-center gap-2 font-medium leading-5 text-slate-700">
             <FileWarning size={16} />
             {copy.failedFiles}
           </div>
@@ -65,13 +67,13 @@ export function ImportReportView() {
                   key={`${failure.filePath}:${failure.reason}`}
                   className="border-b border-slate-100 px-3 py-2 last:border-b-0"
                 >
-                  <div className="truncate text-[13px] text-slate-800">{failure.filePath}</div>
-                  <div className="mt-1 text-xs text-rose-700">{failure.reason}</div>
+                  <div className="truncate leading-5 text-slate-800">{failure.filePath}</div>
+                  <div className="mt-1 leading-5 text-rose-700">{failure.reason}</div>
                 </div>
               ))}
             </div>
           ) : (
-            <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-[13px] text-slate-500">
+            <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 leading-5 text-slate-500">
               {copy.noFailures}
             </div>
           )}
@@ -80,7 +82,7 @@ export function ImportReportView() {
 
       <div className="flex shrink-0 justify-end border-t border-slate-200 pt-3">
         <button
-          className="no-drag inline-flex h-8 items-center gap-2 rounded-md border border-slate-900 bg-slate-900 px-3 text-[13px] font-medium text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+          className="no-drag inline-flex h-9 items-center gap-2 rounded-md border border-slate-900 bg-slate-900 px-3 text-[13px] font-medium text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
           onClick={() => void browseImportedDataset()}
           disabled={isLoading}
         >

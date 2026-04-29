@@ -16,12 +16,14 @@ export function ImportProgressView() {
 
   return (
     <div className="flex h-full items-center justify-center">
-      <div className="w-full max-w-md rounded-lg border border-slate-200 bg-white p-4">
+      <div className="w-full max-w-md rounded-lg border border-slate-200 bg-white p-5 text-[13px]">
         <div className="flex items-center gap-3">
           <Loader2 size={18} className="animate-spin text-slate-500" />
           <div>
-            <div className="text-[14px] font-semibold text-slate-900">{t("import.title")}</div>
-            <div className="mt-0.5 text-xs text-slate-500">
+            <div className="text-[15px] font-semibold leading-6 text-slate-900">
+              {t("import.title")}
+            </div>
+            <div className="mt-0.5 leading-5 text-slate-500">
               {progress.phase === "scanning"
                 ? t("import.scanning")
                 : t("import.progress", {
@@ -39,7 +41,7 @@ export function ImportProgressView() {
           />
         </div>
 
-        <div className="mt-3 flex justify-between text-xs text-slate-500">
+        <div className="mt-3 flex justify-between leading-5 text-slate-500">
           <span>
             {t("import.summary", {
               imported: progress.imported,
@@ -51,7 +53,7 @@ export function ImportProgressView() {
         </div>
 
         {progress.currentPath ? (
-          <div className="mt-2 truncate text-xs text-slate-400">{progress.currentPath}</div>
+          <div className="mt-2 truncate leading-5 text-slate-400">{progress.currentPath}</div>
         ) : null}
       </div>
     </div>

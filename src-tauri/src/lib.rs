@@ -8,13 +8,10 @@ mod thumbnail;
 #[cfg(target_os = "windows")]
 mod window_region;
 
-use std::sync::Mutex;
-
-use db::Database;
 use tauri::Manager;
 
 pub struct AppState {
-    pub db: Mutex<Database>,
+    pub dirs: app_dirs::AppDirs,
 }
 
 pub fn run() {
@@ -26,13 +23,7 @@ pub fn run() {
             app_dirs::init_logging(&dirs)?;
             tracing::info!("Application directories initialized");
 
-            let database = Database::open(&dirs.database_path)?;
-            database.migrate()?;
-            database.ensure_default_profiles()?;
-
-            app.manage(AppState {
-                db: Mutex::new(database),
-            });
+            app.manage(AppState { dirs });
 
             #[cfg(target_os = "windows")]
             if let Some(window) = app.get_webview_window("main") {
@@ -47,8 +38,8 @@ pub fn run() {
             commands::list_annotation_profiles,
             commands::prepare_import_folder,
             commands::start_import_folder,
-            commands::save_manual_annotations,
             commands::save_annotation,
+            commands::save_instruction,
             commands::create_annotation_profile,
             commands::clear_annotation,
             commands::remove_dataset_folder,
