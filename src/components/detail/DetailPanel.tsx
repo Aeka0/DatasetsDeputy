@@ -97,7 +97,7 @@ export function DetailPanel() {
 
         <section className="space-y-2">
           <label className="text-xs uppercase tracking-[0.16em] text-white/42">
-            Annotation Data
+            {t("detail.annotationData")}
           </label>
           <textarea
             value={content}
@@ -108,7 +108,7 @@ export function DetailPanel() {
 
         <section className="space-y-2">
           <label className="text-xs uppercase tracking-[0.16em] text-white/42">
-            Instruction
+            {t("detail.instruction")}
           </label>
           <textarea
             value={instruction}

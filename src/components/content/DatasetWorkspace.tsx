@@ -1,10 +1,4 @@
-import {
-  FolderOpen,
-  Grid3X3,
-  Info,
-  Search,
-  Table2
-} from "lucide-react";
+import { FolderOpen, Grid3X3, Info, Search, Table2 } from "lucide-react";
 import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -16,10 +10,10 @@ import { DatasetTable } from "../table/DatasetTable";
 
 type WorkspaceTab = "overview" | "grid" | "table";
 
-const tabs: Array<{ id: WorkspaceTab; label: string; icon: typeof Info }> = [
-  { id: "overview", label: "\u4fe1\u606f\u6982\u89c8", icon: Info },
-  { id: "grid", label: "\u7f51\u683c\u89c6\u56fe", icon: Grid3X3 },
-  { id: "table", label: "\u8868\u683c\u89c6\u56fe", icon: Table2 }
+const tabs: Array<{ id: WorkspaceTab; labelKey: string; icon: typeof Info }> = [
+  { id: "overview", labelKey: "workspace.overview", icon: Info },
+  { id: "grid", labelKey: "workspace.grid", icon: Grid3X3 },
+  { id: "table", labelKey: "workspace.table", icon: Table2 }
 ];
 
 function flattenProjects(projects: DatasetProject[]): DatasetProject[] {
@@ -35,14 +29,10 @@ function findProjectTrail(
 
   for (const project of projects) {
     const trail = [...parents, project];
-    if (project.id === projectId) {
-      return trail;
-    }
+    if (project.id === projectId) return trail;
 
     const childTrail = findProjectTrail(project.children ?? [], projectId, trail);
-    if (childTrail.length) {
-      return childTrail;
-    }
+    if (childTrail.length) return childTrail;
   }
 
   return [];
@@ -73,10 +63,7 @@ function getVisibleImages(
     if (!inProject) return false;
     if (!query) return true;
 
-    return [
-      image.fileName,
-      ...image.annotations.map((annotation) => annotation.content)
-    ]
+    return [image.fileName, ...image.annotations.map((annotation) => annotation.content)]
       .join(" ")
       .toLowerCase()
       .includes(query);
@@ -119,9 +106,10 @@ function DatasetOverview({
   selectedProject: DatasetProject | undefined;
   profiles: AnnotationProfile[];
 }) {
+  const { t } = useTranslation();
   const totalSize = images.reduce((sum, image) => sum + (image.fileSize ?? 0), 0);
-  const annotatedImages = images.filter(
-    (image) => image.annotations.some((annotation) => annotation.content.trim())
+  const annotatedImages = images.filter((image) =>
+    image.annotations.some((annotation) => annotation.content.trim())
   ).length;
   const profileById = new Map(profiles.map((profile) => [profile.id, profile.name]));
   const annotationTypeNames = Array.from(
@@ -142,27 +130,24 @@ function DatasetOverview({
   return (
     <div className="min-h-0 flex-1 overflow-auto px-1.5 pb-4">
       <div className="max-w-[540px]">
-        <SectionHeader>数据集</SectionHeader>
+        <SectionHeader>{t("workspace.dataset")}</SectionHeader>
         <dl className="space-y-0.5">
-          <PropertyRow label="名称" value={selectedProject?.name ?? "-"} />
-          <PropertyRow label="路径" value={selectedProject?.path ?? "-"} mono />
+          <PropertyRow label={t("workspace.name")} value={selectedProject?.name ?? "-"} />
+          <PropertyRow label={t("workspace.path")} value={selectedProject?.path ?? "-"} mono />
           <PropertyRow
-            label="最近更新"
+            label={t("workspace.latestUpdate")}
             value={latestUpdate ? new Date(latestUpdate).toLocaleString() : "-"}
           />
         </dl>
 
         <div className="my-3 h-px bg-slate-200/70" />
 
-        <SectionHeader>统计</SectionHeader>
+        <SectionHeader>{t("workspace.statistics")}</SectionHeader>
         <dl className="space-y-0.5">
-          <PropertyRow label="图片数量" value={images.length.toLocaleString()} />
-          <PropertyRow
-            label="已标注"
-            value={`${annotatedImages} / ${images.length}`}
-          />
-          <PropertyRow label="标注类型" value={annotationTypeNames || "-"} />
-          <PropertyRow label="文件体积" value={formatBytes(totalSize)} />
+          <PropertyRow label={t("workspace.imageCount")} value={images.length.toLocaleString()} />
+          <PropertyRow label={t("workspace.annotated")} value={`${annotatedImages} / ${images.length}`} />
+          <PropertyRow label={t("workspace.annotationTypes")} value={annotationTypeNames || "-"} />
+          <PropertyRow label={t("workspace.fileSize")} value={formatBytes(totalSize)} />
         </dl>
       </div>
     </div>
@@ -248,18 +233,14 @@ export function DatasetWorkspace() {
               onClick={() => setWorkspaceTab(tab.id)}
             >
               <Icon size={15} />
-              <span>{tab.label}</span>
+              <span>{t(tab.labelKey)}</span>
             </button>
           );
         })}
       </div>
 
       {activeTab === "overview" ? (
-        <DatasetOverview
-          images={visibleImages}
-          selectedProject={selectedProject}
-          profiles={profiles}
-        />
+        <DatasetOverview images={visibleImages} selectedProject={selectedProject} profiles={profiles} />
       ) : activeTab === "grid" ? (
         <DatasetGrid images={visibleImages} />
       ) : (

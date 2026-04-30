@@ -1,28 +1,10 @@
 import { ArrowLeft, FileText, Plus, Save, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 
 import { resolveAssetSrc } from "../../lib/tauri";
 import { useDatasetStore } from "../../stores/datasetStore";
 import type { Annotation } from "../../types";
-
-const copy = {
-  back: "\u8fd4\u56de",
-  annotations: "\u6807\u6ce8",
-  noAnnotations: "\u8fd9\u5f20\u56fe\u7247\u8fd8\u6ca1\u6709\u6807\u6ce8",
-  profile: "\u6807\u6ce8\u7c7b\u578b",
-  content: "\u6807\u6ce8\u5185\u5bb9",
-  newAnnotation: "\u65b0\u589e\u6807\u6ce8\u7c7b\u578b",
-  newTypeName: "\u65b0\u6807\u6ce8\u7c7b\u578b\u540d\u79f0",
-  createType: "\u521b\u5efa\u7c7b\u578b",
-  cancel: "\u53d6\u6d88",
-  selectAnnotationHint: "\u9009\u62e9\u4e00\u4efd\u6807\u6ce8\u540e\u7f16\u8f91\uff0c\u6216\u521b\u5efa\u65b0\u6807\u6ce8\u7c7b\u578b",
-  save: "\u4fdd\u5b58\u6807\u6ce8",
-  delete: "\u6e05\u7a7a\u6807\u6ce8",
-  metadata: "\u5143\u6570\u636e",
-  path: "\u8def\u5f84",
-  size: "\u5c3a\u5bf8",
-  fileSize: "\u6587\u4ef6\u5927\u5c0f"
-};
 
 function formatBytes(bytes?: number) {
   if (!bytes) return "-";
@@ -32,6 +14,7 @@ function formatBytes(bytes?: number) {
 }
 
 export function ImagePreviewView() {
+  const { t } = useTranslation();
   const {
     images,
     profiles,
@@ -145,14 +128,14 @@ export function ImagePreviewView() {
           onClick={() => selectImage(undefined)}
         >
           <ArrowLeft size={16} />
-          {copy.back}
+          {t("actions.back")}
         </button>
         <div className="min-w-0">
           <h2 className="m-0 flex min-w-0 items-center gap-2 text-[14px] font-semibold text-slate-900">
             <span className="min-w-0 truncate">{selectedImage.fileName}</span>
             <span className="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-normal text-slate-500">
               {annotationCountLabel}
-              {copy.annotations}
+              {t("image.annotations")}
             </span>
           </h2>
         </div>
@@ -172,10 +155,10 @@ export function ImagePreviewView() {
             )}
           </div>
           <div className="border-t border-slate-200 bg-white p-3">
-            <div className="mb-2 text-[12px] font-medium text-slate-700">{copy.metadata}</div>
+            <div className="mb-2 text-[12px] font-medium text-slate-700">{t("image.metadata")}</div>
             <dl className="grid gap-2 text-[12px] text-slate-500 sm:grid-cols-3">
               <div>
-                <dt className="text-slate-400">{copy.size}</dt>
+                <dt className="text-slate-400">{t("image.dimensions")}</dt>
                 <dd className="m-0">
                   {selectedImage.width && selectedImage.height
                     ? `${selectedImage.width} x ${selectedImage.height}`
@@ -183,11 +166,11 @@ export function ImagePreviewView() {
                 </dd>
               </div>
               <div>
-                <dt className="text-slate-400">{copy.fileSize}</dt>
+                <dt className="text-slate-400">{t("image.fileSize")}</dt>
                 <dd className="m-0">{formatBytes(selectedImage.fileSize)}</dd>
               </div>
               <div className="min-w-0">
-                <dt className="text-slate-400">{copy.path}</dt>
+                <dt className="text-slate-400">{t("image.path")}</dt>
                 <dd className="m-0 truncate" title={selectedImage.path}>
                   {selectedImage.path}
                 </dd>
@@ -200,12 +183,12 @@ export function ImagePreviewView() {
           <div className="flex h-10 items-center justify-between border-b border-slate-200 px-3">
             <div className="flex items-center gap-2 text-[13px] font-semibold text-slate-800">
               <FileText size={16} />
-              {copy.annotations}
+              {t("image.annotations")}
             </div>
             <button
               className="no-drag inline-flex h-7 w-7 items-center justify-center rounded-md text-slate-600 transition hover:bg-slate-100"
               onClick={startNewAnnotationType}
-              title={copy.newAnnotation}
+              title={t("image.newAnnotation")}
               disabled={isFolderImage}
             >
               <Plus size={16} />
@@ -216,7 +199,7 @@ export function ImagePreviewView() {
             {isCreatingProfile ? (
               <div className="mb-2 rounded-md border border-slate-200 bg-slate-50 p-2">
                 <label className="mb-1 block text-[12px] font-medium text-slate-600">
-                  {copy.newTypeName}
+                  {t("image.newTypeName")}
                 </label>
                 <input
                   value={newProfileName}
@@ -230,13 +213,13 @@ export function ImagePreviewView() {
                     onClick={() => void createProfile()}
                     disabled={!newProfileName.trim()}
                   >
-                    {copy.createType}
+                    {t("image.createType")}
                   </button>
                   <button
                     className="no-drag inline-flex h-8 items-center justify-center rounded-md border border-slate-200 bg-white px-2 text-[12px] text-slate-600 transition hover:bg-slate-50"
                     onClick={() => setIsCreatingProfile(false)}
                   >
-                    {copy.cancel}
+                    {t("actions.cancel")}
                   </button>
                 </div>
               </div>
@@ -265,7 +248,7 @@ export function ImagePreviewView() {
               </div>
             ) : (
               <div className="rounded-md bg-slate-50 px-3 py-2 text-[13px] text-slate-500">
-                {copy.noAnnotations}
+                {t("image.noAnnotations")}
               </div>
             )}
           </div>
@@ -273,7 +256,7 @@ export function ImagePreviewView() {
           <div className="border-t border-slate-200 p-3">
             {selectedAnnotation ? (
               <>
-            <label className="mb-1 block text-[12px] font-medium text-slate-600">{copy.profile}</label>
+            <label className="mb-1 block text-[12px] font-medium text-slate-600">{t("image.profile")}</label>
             <select
               value={profileId}
               onChange={(event) => setProfileId(Number(event.target.value))}
@@ -287,7 +270,7 @@ export function ImagePreviewView() {
               ))}
             </select>
 
-            <label className="mb-1 block text-[12px] font-medium text-slate-600">{copy.content}</label>
+            <label className="mb-1 block text-[12px] font-medium text-slate-600">{t("image.content")}</label>
             <textarea
               value={content}
               onChange={(event) => setContent(event.target.value)}
@@ -300,13 +283,13 @@ export function ImagePreviewView() {
                 onClick={() => void saveAnnotation(selectedImage.id, profileId, content)}
               >
                 <Save size={15} />
-                {copy.save}
+                {t("image.save")}
               </button>
               {selectedAnnotation ? (
                 <button
                   className="no-drag inline-flex h-8 w-8 items-center justify-center rounded-md border border-rose-200 bg-white text-rose-700 transition hover:bg-rose-50"
                   onClick={() => void clearAnnotation(selectedAnnotation.id)}
-                  title={copy.delete}
+                  title={t("image.delete")}
                 >
                   <Trash2 size={15} />
                 </button>
@@ -315,7 +298,7 @@ export function ImagePreviewView() {
               </>
             ) : (
               <div className="rounded-md bg-slate-50 px-3 py-2 text-[13px] text-slate-500">
-                {copy.selectAnnotationHint}
+                {t("image.selectAnnotationHint")}
               </div>
             )}
           </div>

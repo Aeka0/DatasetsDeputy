@@ -51,7 +51,7 @@ export function TopToolbar() {
 
       <Button variant="ghost" onClick={openImportWizard} disabled={isLoading}>
         <FolderOpen size={16} />
-        导入数据集...
+        {t("actions.importDataset")}
       </Button>
       <Button variant="ghost">
         <Plus size={16} />

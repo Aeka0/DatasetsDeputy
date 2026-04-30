@@ -13,16 +13,33 @@
     "settings": "Settings"
   },
   "actions": {
+    "back": "Back",
+    "cancel": "Cancel",
+    "clear": "Clear",
+    "create": "Create",
+    "export": "Export",
+    "importDataset": "Import dataset...",
     "importFolder": "Import folder",
     "newProfile": "New profile",
-    "export": "Export",
-    "save": "Save",
-    "cancel": "Cancel",
-    "addTag": "Add tag",
+    "refresh": "Refresh",
     "remove": "Remove",
-    "select": "Select",
-    "clear": "Clear",
-    "refresh": "Refresh"
+    "save": "Save",
+    "select": "Select"
+  },
+  "menu": {
+    "file": "File",
+    "edit": "Edit",
+    "settings": "Settings",
+    "about": "About",
+    "importDataset": "Import dataset",
+    "exportTxt": "Export TXT annotations",
+    "refresh": "Refresh data",
+    "exit": "Exit",
+    "backToGrid": "Back to dataset",
+    "clearSearch": "Clear search",
+    "aboutBody": "Dataset image preview, annotation dimension management, and export tools.",
+    "version": "Development build",
+    "close": "Close"
   },
   "toolbar": {
     "searchPlaceholder": "Search filename or annotation",
@@ -33,7 +50,65 @@
   },
   "tree": {
     "projects": "Databases",
-    "hint": "Select a dataset folder to show its image grid on the right."
+    "workspaceFolders": "Workspace folders",
+    "hint": "Select a dataset folder to show its image grid on the right.",
+    "renameDataset": "Rename dataset",
+    "renameFolder": "Rename folder",
+    "renameTitle": "Rename",
+    "renameNameLabel": "Name",
+    "removeDataset": "Remove dataset",
+    "removeFolder": "Remove folder",
+    "confirmTitle": "Remove dataset?",
+    "confirmFolderTitle": "Remove folder?",
+    "confirmDescription": "This removes the image index, annotations, and unused annotation types for this dataset from the app database. Local files will not be deleted.",
+    "confirmFolderDescription": "This only removes the folder path from the tree. Local images and TXT annotation files will not be deleted.",
+    "confirmRemove": "Remove"
+  },
+  "workspace": {
+    "overview": "Overview",
+    "grid": "Grid view",
+    "table": "Table view",
+    "dataset": "Dataset",
+    "statistics": "Statistics",
+    "name": "Name",
+    "path": "Path",
+    "latestUpdate": "Latest update",
+    "imageCount": "Images",
+    "annotated": "Annotated",
+    "annotationTypes": "Annotation types",
+    "fileSize": "File size"
+  },
+  "grid": {
+    "annotationCount": "annotations"
+  },
+  "settings": {
+    "title": "Settings",
+    "categoryLabel": "Settings categories",
+    "close": "Close settings",
+    "general": "General",
+    "language": "Language",
+    "network": "Network",
+    "localFiles": "Local files",
+    "appearance": "Appearance",
+    "languageNative": "Language",
+    "simplifiedChinese": "Simplified Chinese",
+    "english": "English"
+  },
+  "image": {
+    "annotations": "annotations",
+    "noAnnotations": "This image has no annotations yet",
+    "profile": "Annotation type",
+    "content": "Annotation content",
+    "newAnnotation": "Add annotation type",
+    "newTypeName": "New annotation type name",
+    "createType": "Create type",
+    "selectAnnotationHint": "Select an annotation to edit, or create a new annotation type",
+    "save": "Save annotation",
+    "delete": "Clear annotation",
+    "metadata": "Metadata",
+    "path": "Path",
+    "dimensions": "Dimensions",
+    "fileSize": "File size"
   },
   "welcome": {
     "title": "Let's start",
@@ -48,9 +123,9 @@
   "table": {
     "preview": "Preview",
     "filename": "Filename",
-    "annotationData": "Annotation Data",
+    "annotationData": "Annotation data",
     "instruction": "Instruction",
-    "instructionMode": "Instruction Mode",
+    "instructionMode": "Instruction mode",
     "ready": "Ready",
     "unsavedCells": "{{count}} unsaved cells",
     "saveChanges": "Save changes",
@@ -59,16 +134,28 @@
     "size": "Size",
     "updated": "Updated",
     "emptyTitle": "No images imported yet",
-    "emptyDescription": "Import a folder to start browsing and annotating a dataset."
+    "emptyDescription": "Import a folder to start browsing and annotating a dataset.",
+    "noAnnotationType": "No annotation type",
+    "noAnnotationTypeDescription": "No annotation type exists yet.",
+    "noPreview": "No preview"
   },
   "detail": {
     "title": "Image details",
     "noSelection": "Select an image to edit annotations.",
+    "annotationData": "Annotation data",
+    "instruction": "Instruction",
     "notesLabel": "Notes",
     "profileLabel": "Profile",
     "metadata": "Metadata",
     "path": "Path",
     "hash": "Hash"
+  },
+  "profiles": {
+    "manualTags": "Manual tags",
+    "manualCaption": "Manual caption",
+    "formatTags": "Tags",
+    "formatCaption": "Caption",
+    "sourceManual": "Manual"
   },
   "export": {
     "txtPerImage": "Text file per image",

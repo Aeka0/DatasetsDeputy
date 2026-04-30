@@ -213,12 +213,12 @@ export function DatasetTable({ images }: { images: DatasetImage[] }) {
       <div className="flex flex-1 flex-col items-center justify-center rounded-lg border border-slate-200 bg-slate-50 p-12 text-center">
         <ImageIcon size={44} className="mb-4 text-slate-300" />
         <h2 className="m-0 text-xl font-semibold text-slate-900">
-          {images.length === 0 ? t("table.emptyTitle") : "No annotation type"}
+          {images.length === 0 ? t("table.emptyTitle") : t("table.noAnnotationType")}
         </h2>
         <p className="mt-2 max-w-md text-sm text-slate-500">
           {images.length === 0
             ? t("table.emptyDescription")
-            : "No annotation type exists yet."}
+            : t("table.noAnnotationTypeDescription")}
         </p>
       </div>
     );
@@ -350,7 +350,7 @@ export function DatasetTable({ images }: { images: DatasetImage[] }) {
                     ) : (
                       <div className="flex h-full w-full flex-col items-center justify-center gap-1 text-[13px] text-slate-400">
                         <ImageIcon size={22} />
-                        <span>No Preview</span>
+                        <span>{t("table.noPreview")}</span>
                       </div>
                     )}
                   </div>

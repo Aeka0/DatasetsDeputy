@@ -1,20 +1,18 @@
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { Files, ImageIcon } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 
 import { resolveAssetSrc } from "../../lib/tauri";
 import { useDatasetStore } from "../../stores/datasetStore";
 import type { DatasetImage } from "../../types";
-
-const copy = {
-  annotationCount: "\u4efd\u6807\u6ce8"
-};
 
 const minCardWidth = 150;
 const gridGap = 12;
 const cardTextHeight = 52;
 
 export function DatasetGrid({ images }: { images: DatasetImage[] }) {
+  const { t } = useTranslation();
   const selectImage = useDatasetStore((state) => state.selectImage);
   const parentRef = useRef<HTMLDivElement>(null);
   const [containerWidth, setContainerWidth] = useState(0);
@@ -107,7 +105,7 @@ export function DatasetGrid({ images }: { images: DatasetImage[] }) {
                       <Files size={12} />
                       <span className="truncate">
                         {image.annotations.filter((annotation) => annotation.content.trim()).length}/
-                        {datasetAnnotationTypeCount} {copy.annotationCount}
+                        {datasetAnnotationTypeCount} {t("grid.annotationCount")}
                       </span>
                     </div>
                   </div>

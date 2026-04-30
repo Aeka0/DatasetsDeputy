@@ -12,9 +12,7 @@ export function WelcomeView() {
       <div className="mb-4 flex h-10 w-10 items-center justify-center rounded-lg border border-slate-200 bg-slate-50 text-slate-700">
         <Sparkles size={23} strokeWidth={1.8} />
       </div>
-      <h2 className="m-0 text-[15px] font-semibold text-slate-900">
-        {t("welcome.title")}
-      </h2>
+      <h2 className="m-0 text-[15px] font-semibold text-slate-900">{t("welcome.title")}</h2>
       <p className="mt-2 max-w-lg text-[13px] leading-5 text-slate-500">
         {t("welcome.description")}
       </p>
@@ -23,7 +21,7 @@ export function WelcomeView() {
         onClick={openImportWizard}
       >
         <FolderOpen size={15} />
-        导入数据集
+        {t("actions.importDataset")}
       </button>
     </div>
   );

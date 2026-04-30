@@ -66,7 +66,7 @@ export default function App() {
         onMouseDown={startTitlebarDrag}
       >
         <div className="flex items-center gap-3">
-          <div className="text-[13px] font-semibold text-black">Dataset Deputy</div>
+          <div className="text-[13px] font-semibold text-black">Datasets Deputy</div>
           <TitleMenuBar />
         </div>
         <div className="z-20">

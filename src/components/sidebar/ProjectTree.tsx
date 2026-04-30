@@ -8,26 +8,6 @@ import { cn } from "../../lib/cn";
 import { useDatasetStore } from "../../stores/datasetStore";
 import type { DatasetProject } from "../../types";
 
-const copy = {
-  importDataset: "\u5bfc\u5165\u6570\u636e\u96c6...",
-  workspaceFolders: "\u5de5\u4f5c\u6587\u4ef6\u5939",
-  renameDataset: "\u91cd\u547d\u540d\u6570\u636e\u96c6",
-  renameFolder: "\u91cd\u547d\u540d\u6587\u4ef6\u5939",
-  renameTitle: "\u91cd\u547d\u540d",
-  renameNameLabel: "\u540d\u79f0",
-  removeDataset: "\u79fb\u9664\u6570\u636e\u96c6",
-  removeFolder: "\u79fb\u9664\u6587\u4ef6\u5939",
-  confirmTitle: "\u79fb\u9664\u6570\u636e\u96c6\uff1f",
-  confirmFolderTitle: "\u79fb\u9664\u6587\u4ef6\u5939\uff1f",
-  confirmDescription:
-    "\u5c06\u4ece\u7a0b\u5e8f\u6570\u636e\u5e93\u79fb\u9664\u8be5\u6570\u636e\u96c6\u7684\u56fe\u7247\u7d22\u5f15\u3001\u6807\u6ce8\u548c\u4e0d\u518d\u88ab\u4f7f\u7528\u7684\u6807\u6ce8\u7c7b\u578b\u3002\u672c\u5730\u6587\u4ef6\u4e0d\u4f1a\u88ab\u5220\u9664\u3002",
-  confirmFolderDescription:
-    "\u53ea\u4f1a\u4ece\u5de6\u4fa7\u6811\u72b6\u56fe\u79fb\u9664\u8be5\u6587\u4ef6\u5939\u8def\u5f84\uff0c\u4e0d\u4f1a\u5220\u9664\u672c\u5730\u56fe\u7247\u6216 TXT \u6807\u6ce8\u6587\u4ef6\u3002",
-  cancel: "\u53d6\u6d88",
-  save: "\u4fdd\u5b58",
-  confirm: "\u786e\u8ba4\u79fb\u9664"
-};
-
 const sidebarLabelClass = "text-[12px] leading-4";
 
 function ProjectNode({
@@ -247,7 +227,7 @@ export function ProjectTree() {
   };
   const workspaceFolderGroup: DatasetProject = {
     id: "workspace-folder-group",
-    name: copy.workspaceFolders,
+    name: t("tree.workspaceFolders"),
     path: "",
     imageIds: folderProjects.flatMap((project) => project.imageIds),
     children: folderProjects,
@@ -264,7 +244,7 @@ export function ProjectTree() {
           disabled={isLoading}
         >
           <Plus size={16} />
-          <span className="truncate">{copy.importDataset}</span>
+          <span className="truncate">{t("actions.importDataset")}</span>
         </button>
       </div>
 
@@ -299,8 +279,8 @@ export function ProjectTree() {
                     onClick={() => startRename(contextMenu.project)}
                   >
                     {contextMenu.project.id.startsWith("dataset-root:")
-                      ? copy.renameDataset
-                      : copy.renameFolder}
+                      ? t("tree.renameDataset")
+                      : t("tree.renameFolder")}
                   </button>
                   <div className="my-1 h-px bg-slate-200" />
                 </>
@@ -314,8 +294,8 @@ export function ProjectTree() {
                 }}
               >
                 {contextMenu.project.sourceKind === "folder"
-                  ? copy.removeFolder
-                  : copy.removeDataset}
+                  ? t("tree.removeFolder")
+                  : t("tree.removeDataset")}
               </button>
             </div>,
             document.body
@@ -335,10 +315,10 @@ export function ProjectTree() {
             }}
           >
             <h2 className="m-0 text-[15px] font-semibold leading-6 text-slate-950">
-              {copy.renameTitle}
+              {t("tree.renameTitle")}
             </h2>
             <label className="mt-4 block text-[12px] font-medium text-slate-600">
-              {copy.renameNameLabel}
+              {t("tree.renameNameLabel")}
             </label>
             <input
               autoFocus
@@ -352,14 +332,14 @@ export function ProjectTree() {
                 className="h-8 rounded-md border border-slate-200 bg-white px-3 text-[13px] text-slate-700 transition hover:bg-slate-50"
                 onClick={() => setPendingRename(undefined)}
               >
-                {copy.cancel}
+                {t("actions.cancel")}
               </button>
               <button
                 type="submit"
                 className="h-8 rounded-md bg-slate-950 px-3 text-[13px] font-medium text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
                 disabled={!renameValue.trim()}
               >
-                {copy.save}
+                {t("actions.save")}
               </button>
             </div>
           </form>
@@ -376,13 +356,13 @@ export function ProjectTree() {
           >
             <h2 className="m-0 text-[15px] font-semibold leading-6 text-slate-950">
               {pendingRemoval.sourceKind === "folder"
-                ? copy.confirmFolderTitle
-                : copy.confirmTitle}
+                ? t("tree.confirmFolderTitle")
+                : t("tree.confirmTitle")}
             </h2>
             <p className="mt-2 text-[13px] leading-5 text-slate-600">
               {pendingRemoval.sourceKind === "folder"
-                ? copy.confirmFolderDescription
-                : copy.confirmDescription}
+                ? t("tree.confirmFolderDescription")
+                : t("tree.confirmDescription")}
             </p>
             <div className="mt-3 rounded-md bg-slate-50 px-3 py-2 text-[12px] leading-5 text-slate-600">
               <div className="truncate font-medium text-slate-900">{pendingRemoval.name}</div>
@@ -393,7 +373,7 @@ export function ProjectTree() {
                 className="h-8 rounded-md border border-slate-200 bg-white px-3 text-[13px] text-slate-700 transition hover:bg-slate-50"
                 onClick={() => setPendingRemoval(undefined)}
               >
-                {copy.cancel}
+                {t("actions.cancel")}
               </button>
               <button
                 className="h-8 rounded-md bg-slate-950 px-3 text-[13px] font-medium text-white transition hover:bg-slate-800"
@@ -403,7 +383,7 @@ export function ProjectTree() {
                   void removeDataset(project);
                 }}
               >
-                {copy.confirm}
+                {t("tree.confirmRemove")}
               </button>
             </div>
           </div>
