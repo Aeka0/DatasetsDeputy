@@ -183,3 +183,160 @@ textarea {
   background: #c42b1c;
   color: white;
 }
+
+html[data-theme="dark"] {
+  color: #e8e8e8;
+  --app-bg: #141414;
+  --app-bg-elevated: #202020;
+  --app-bg-muted: #1a1a1a;
+  --app-bg-subtle: #181818;
+  --app-border: rgba(255, 255, 255, 0.13);
+  --app-border-strong: rgba(255, 255, 255, 0.2);
+  --app-text: #e8e8e8;
+  --app-text-muted: #b7b7b7;
+  --app-text-subtle: #8f8f8f;
+  --app-accent: #f2f2f2;
+  --app-accent-hover: #d9d9d9;
+  --app-selection: #4a4a4a;
+  --app-hover: rgba(255, 255, 255, 0.08);
+  --app-chrome-bg: rgba(20, 20, 20, 0.76);
+  --app-chrome-border: rgba(0, 0, 0, 0.86);
+}
+
+html[data-theme="dark"] ::selection {
+  background: #565656;
+  color: #f5f5f5;
+}
+
+html[data-theme="dark"] .fluent-shell {
+  border-color: #000000;
+}
+
+html[data-theme="dark"] .fluent-chrome,
+html[data-theme="dark"] .fluent-titlebar {
+  background: var(--app-chrome-bg);
+}
+
+html[data-theme="dark"] .bg-white,
+html[data-theme="dark"] .bg-slate-50,
+html[data-theme="dark"] .bg-slate-100 {
+  background-color: #202020;
+}
+
+html[data-theme="dark"] .bg-white\/54,
+html[data-theme="dark"] .bg-white\/62,
+html[data-theme="dark"] .bg-white\/72,
+html[data-theme="dark"] .bg-white\/90,
+html[data-theme="dark"] .bg-white\/98,
+html[data-theme="dark"] .bg-slate-50\/42,
+html[data-theme="dark"] .bg-slate-50\/90,
+html[data-theme="dark"] .bg-slate-900\/\[0\.07\] {
+  background-color: #242424;
+}
+
+html[data-theme="dark"] .bg-slate-900,
+html[data-theme="dark"] .bg-slate-950 {
+  background-color: #d9d9d9;
+  color: #101010;
+}
+
+html[data-theme="dark"] .border-slate-100,
+html[data-theme="dark"] .border-slate-200,
+html[data-theme="dark"] .border-slate-300,
+html[data-theme="dark"] .border-slate-900,
+html[data-theme="dark"] .border-white\/70 {
+  border-color: rgba(255, 255, 255, 0.14);
+}
+
+html[data-theme="dark"] .border-slate-900 {
+  border-color: #e8e8e8;
+}
+
+html[data-theme="dark"] .text-black,
+html[data-theme="dark"] .text-slate-950,
+html[data-theme="dark"] .text-slate-900,
+html[data-theme="dark"] .text-slate-800,
+html[data-theme="dark"] .text-slate-700 {
+  color: #e8e8e8;
+}
+
+html[data-theme="dark"] .text-slate-600,
+html[data-theme="dark"] .text-slate-500,
+html[data-theme="dark"] .text-slate-400 {
+  color: #b7b7b7;
+}
+
+html[data-theme="dark"] .glass-input {
+  border-color: rgba(255, 255, 255, 0.16);
+  background: #141414;
+  color: #e8e8e8;
+  caret-color: #e8e8e8;
+}
+
+html[data-theme="dark"] .glass-input::placeholder {
+  color: #8f8f8f;
+}
+
+html[data-theme="dark"] .glass-input:focus {
+  border-color: rgba(255, 255, 255, 0.34);
+  outline-color: rgba(255, 255, 255, 0.12);
+}
+
+html[data-theme="dark"] .shadow-lg,
+html[data-theme="dark"] .shadow-xl {
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.42);
+}
+
+html[data-theme="dark"] .fluent-sidebar [aria-expanded] svg {
+  color: #ffffff;
+}
+
+html[data-theme="dark"] .title-menu-button {
+  color: #ffffff;
+}
+
+html[data-theme="dark"] .title-menu-button:hover {
+  color: #ffffff;
+}
+
+html[data-theme="dark"] .title-menu-button + div {
+  border-color: #000000;
+}
+
+html[data-theme="dark"] .title-menu-button + div .bg-slate-200\/90 {
+  background-color: #000000;
+}
+
+html[data-theme="dark"] .hover\:bg-slate-50:hover,
+html[data-theme="dark"] .hover\:bg-slate-100:hover,
+html[data-theme="dark"] .hover\:bg-slate-200\/70:hover,
+html[data-theme="dark"] .hover\:bg-white\/72:hover,
+html[data-theme="dark"] .hover\:bg-slate-900\/\[0\.06\]:hover,
+html[data-theme="dark"] .hover\:bg-slate-900\/\[0\.045\]:hover,
+html[data-theme="dark"] .hover\:bg-slate-900\/6:hover {
+  background-color: #2a2a2a;
+}
+
+html[data-theme="dark"] [class*="hover:bg-slate-200/70"]:hover {
+  background-color: #2a2a2a;
+}
+
+html[data-theme="dark"] .hover\:text-slate-900:hover,
+html[data-theme="dark"] .hover\:text-slate-950:hover,
+html[data-theme="dark"] .hover\:text-black:hover,
+html[data-theme="dark"] [class*="hover:text-slate-900"]:hover {
+  color: #f0f0f0;
+}
+
+html[data-theme="dark"] ::-webkit-scrollbar-thumb {
+  background: rgba(190, 190, 190, 0.42);
+  border: 3px solid transparent;
+  border-radius: 999px;
+  background-clip: content-box;
+}
+
+html[data-theme="dark"] ::-webkit-scrollbar-thumb:hover {
+  background: rgba(220, 220, 220, 0.6);
+  border: 3px solid transparent;
+  background-clip: content-box;
+}

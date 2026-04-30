@@ -69,6 +69,7 @@ export function DatasetTable({ images }: { images: DatasetImage[] }) {
   const [instructionMode, setInstructionMode] = useState(false);
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const isFolderMode = images.length > 0 && images.every((image) => image.sourceKind === "folder");
   const availableProfileIds = useMemo(
     () => new Set(images.flatMap((image) => image.annotations.map((annotation) => annotation.profileId))),
     [images]
@@ -260,21 +261,25 @@ export function DatasetTable({ images }: { images: DatasetImage[] }) {
         <div className="px-2">{t("table.filename")}</div>
         <div className="px-2">{t("table.preview")}</div>
         <div className="relative px-2">
-          <button
-            className="no-drag flex max-w-full items-center gap-1.5 rounded px-1 text-left transition hover:bg-slate-200/70 hover:text-slate-900"
-            onClick={(event) => {
-              event.stopPropagation();
-              setProfileMenuOpen((open) => !open);
-            }}
-          >
-            <span>{t("table.annotationData")}</span>
-            <span className="truncate text-slate-400">
-              {selectedProfile ? `(${selectedProfile.name})` : ""}
-            </span>
-            <ChevronDown size={14} className="shrink-0 text-slate-400" />
-          </button>
+          {isFolderMode ? (
+            <div className="px-1">{t("table.annotationData")}</div>
+          ) : (
+            <button
+              className="no-drag flex max-w-full items-center gap-1.5 rounded px-1 text-left transition hover:bg-slate-200/70 hover:text-slate-900"
+              onClick={(event) => {
+                event.stopPropagation();
+                setProfileMenuOpen((open) => !open);
+              }}
+            >
+              <span>{t("table.annotationData")}</span>
+              <span className="truncate text-slate-400">
+                {selectedProfile ? `(${selectedProfile.name})` : ""}
+              </span>
+              <ChevronDown size={14} className="shrink-0 text-slate-400" />
+            </button>
+          )}
 
-          {profileMenuOpen ? (
+          {profileMenuOpen && !isFolderMode ? (
             <div
               className="no-drag absolute left-2 top-7 z-30 min-w-56 rounded-md border border-slate-200 bg-white p-1 shadow-lg"
               onClick={(event) => event.stopPropagation()}

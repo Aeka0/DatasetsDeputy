@@ -22,6 +22,7 @@ export function DatasetGrid({ images }: { images: DatasetImage[] }) {
         .size,
     [images]
   );
+  const isFolderMode = images.length > 0 && images.every((image) => image.sourceKind === "folder");
   const columnCount = useMemo(() => {
     if (containerWidth <= 0) return 1;
     return Math.max(1, Math.floor((containerWidth + gridGap) / (minCardWidth + gridGap)));
@@ -104,8 +105,10 @@ export function DatasetGrid({ images }: { images: DatasetImage[] }) {
                     <div className="mt-1 flex items-center gap-1.5 text-[12px] text-slate-500">
                       <Files size={12} />
                       <span className="truncate">
-                        {image.annotations.filter((annotation) => annotation.content.trim()).length}/
-                        {datasetAnnotationTypeCount} {t("grid.annotationCount")}
+                        {isFolderMode
+                          ? image.annotations.filter((annotation) => annotation.content.trim()).length
+                          : `${image.annotations.filter((annotation) => annotation.content.trim()).length}/${datasetAnnotationTypeCount}`}{" "}
+                        {t("grid.annotationCount")}
                       </span>
                     </div>
                   </div>

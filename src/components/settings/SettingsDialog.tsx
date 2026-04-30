@@ -1,9 +1,15 @@
 import { Folder, Globe2, Languages, MonitorCog, Settings2, Wifi, X } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 
 import i18next from "../../i18n";
+import {
+  getThemePreference,
+  setThemePreference,
+  watchThemePreference,
+  type ThemePreference
+} from "../../lib/theme";
 import { Button } from "../ui/Button";
 
 type SettingsSectionKey = "general" | "language" | "network" | "localFiles" | "appearance";
@@ -27,6 +33,12 @@ const languageOptions = [
   { value: "en-US", labelKey: "settings.english" }
 ];
 
+const themeOptions: Array<{ value: ThemePreference; labelKey: string }> = [
+  { value: "system", labelKey: "settings.themeSystem" },
+  { value: "light", labelKey: "settings.themeLight" },
+  { value: "dark", labelKey: "settings.themeDark" }
+];
+
 interface SettingsDialogProps {
   onClose: () => void;
 }
@@ -34,8 +46,17 @@ interface SettingsDialogProps {
 export function SettingsDialog({ onClose }: SettingsDialogProps) {
   const { i18n, t } = useTranslation();
   const [activeSection, setActiveSection] = useState<SettingsSectionKey>("general");
+  const [themePreference, setThemePreferenceState] =
+    useState<ThemePreference>(getThemePreference);
   const active = sections.find((section) => section.key === activeSection) ?? sections[0];
   const currentLanguage = i18n.language.startsWith("zh") ? "zh-CN" : "en-US";
+
+  useEffect(() => watchThemePreference(setThemePreferenceState), []);
+
+  const updateThemePreference = (preference: ThemePreference) => {
+    setThemePreferenceState(preference);
+    setThemePreference(preference);
+  };
 
   return createPortal(
     <div
@@ -117,6 +138,32 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
                     onChange={(event) => void i18next.changeLanguage(event.target.value)}
                   >
                     {languageOptions.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {t(option.labelKey)}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            ) : activeSection === "appearance" ? (
+              <div className="rounded-lg border border-slate-200 bg-white">
+                <div className="flex min-h-12 items-center justify-between gap-4 border-b border-slate-100 px-4 py-3 last:border-b-0">
+                  <div className="min-w-0">
+                    <div className="text-[13px] font-medium text-slate-900">
+                      {t("settings.theme")}
+                    </div>
+                    <div className="mt-0.5 text-[12px] text-slate-500">
+                      {t("settings.themeDescription")}
+                    </div>
+                  </div>
+                  <select
+                    className="glass-input h-8 min-w-[150px] px-2.5 text-[13px]"
+                    value={themePreference}
+                    onChange={(event) =>
+                      updateThemePreference(event.target.value as ThemePreference)
+                    }
+                  >
+                    {themeOptions.map((option) => (
                       <option key={option.value} value={option.value}>
                         {t(option.labelKey)}
                       </option>

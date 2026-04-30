@@ -97,7 +97,9 @@ export function ImagePreviewView() {
   const filledAnnotationCount = selectedImage.annotations.filter((annotation) =>
     annotation.content.trim()
   ).length;
-  const annotationCountLabel = `${filledAnnotationCount}/${selectedImageProfileIds.size}`;
+  const annotationCountLabel = isFolderImage
+    ? `${filledAnnotationCount} ${t("image.annotations")}`
+    : `${selectedImageProfileIds.size} ${t("image.annotationTypes")}`;
 
   const selectAnnotation = (annotation: Annotation) => {
     setSelectedAnnotationId(annotation.id);
@@ -135,7 +137,6 @@ export function ImagePreviewView() {
             <span className="min-w-0 truncate">{selectedImage.fileName}</span>
             <span className="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-normal text-slate-500">
               {annotationCountLabel}
-              {t("image.annotations")}
             </span>
           </h2>
         </div>
@@ -180,101 +181,110 @@ export function ImagePreviewView() {
         </section>
 
         <aside className="flex min-h-0 flex-col rounded-lg border border-slate-200 bg-white">
-          <div className="flex h-10 items-center justify-between border-b border-slate-200 px-3">
-            <div className="flex items-center gap-2 text-[13px] font-semibold text-slate-800">
-              <FileText size={16} />
-              {t("image.annotations")}
-            </div>
-            <button
-              className="no-drag inline-flex h-7 w-7 items-center justify-center rounded-md text-slate-600 transition hover:bg-slate-100"
-              onClick={startNewAnnotationType}
-              title={t("image.newAnnotation")}
-              disabled={isFolderImage}
-            >
-              <Plus size={16} />
-            </button>
-          </div>
-
-          <div className="min-h-0 flex-1 overflow-auto p-2">
-            {isCreatingProfile ? (
-              <div className="mb-2 rounded-md border border-slate-200 bg-slate-50 p-2">
-                <label className="mb-1 block text-[12px] font-medium text-slate-600">
-                  {t("image.newTypeName")}
-                </label>
-                <input
-                  value={newProfileName}
-                  onChange={(event) => setNewProfileName(event.target.value)}
-                  className="glass-input h-8 w-full px-2 text-[13px]"
-                  autoFocus
-                />
-                <div className="mt-2 flex gap-2">
-                  <button
-                    className="no-drag inline-flex h-8 flex-1 items-center justify-center rounded-md border border-slate-900 bg-slate-900 px-2 text-[12px] font-medium text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
-                    onClick={() => void createProfile()}
-                    disabled={!newProfileName.trim()}
-                  >
-                    {t("image.createType")}
-                  </button>
-                  <button
-                    className="no-drag inline-flex h-8 items-center justify-center rounded-md border border-slate-200 bg-white px-2 text-[12px] text-slate-600 transition hover:bg-slate-50"
-                    onClick={() => setIsCreatingProfile(false)}
-                  >
-                    {t("actions.cancel")}
-                  </button>
+          {isFolderImage ? null : (
+            <div className="flex max-h-[176px] min-h-[112px] shrink-0 flex-col border-b border-slate-200">
+              <div className="flex h-9 shrink-0 items-center justify-between px-3">
+                <div className="flex items-center gap-2 text-[13px] font-semibold text-slate-800">
+                  <FileText size={16} />
+                  {t("image.annotationTypes")}
                 </div>
+              <button
+                className="no-drag inline-flex h-7 w-7 items-center justify-center rounded-md text-slate-600 transition hover:bg-slate-100"
+                onClick={startNewAnnotationType}
+                title={t("image.newAnnotation")}
+              >
+                <Plus size={16} />
+              </button>
               </div>
-            ) : null}
 
-            {selectedImage.annotations.length > 0 ? (
-              <div className="space-y-1">
-                {selectedImage.annotations.map((annotation) => (
-                  <button
-                    key={annotation.id}
-                    className={`no-drag w-full rounded-md px-2 py-2 text-left transition ${
-                      selectedAnnotationId === annotation.id
-                        ? "bg-slate-900/[0.07] text-slate-950"
-                        : "text-slate-700 hover:bg-slate-100"
-                    }`}
-                    onClick={() => selectAnnotation(annotation)}
-                  >
-                    <div className="truncate text-[12px] font-medium">
-                      {profileById.get(annotation.profileId)?.name ?? `#${annotation.profileId}`}
+              <div className="min-h-0 flex-1 overflow-auto p-2 pt-0">
+                {isCreatingProfile ? (
+                  <div className="mb-2 rounded-md border border-slate-200 bg-slate-50 p-2">
+                    <label className="mb-1 block text-[12px] font-medium text-slate-600">
+                      {t("image.newTypeName")}
+                    </label>
+                    <input
+                      value={newProfileName}
+                      onChange={(event) => setNewProfileName(event.target.value)}
+                      className="glass-input h-8 w-full px-2 text-[13px]"
+                      autoFocus
+                    />
+                    <div className="mt-2 flex gap-2">
+                      <button
+                        className="no-drag inline-flex h-8 flex-1 items-center justify-center rounded-md border border-slate-900 bg-slate-900 px-2 text-[12px] font-medium text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+                        onClick={() => void createProfile()}
+                        disabled={!newProfileName.trim()}
+                      >
+                        {t("image.createType")}
+                      </button>
+                      <button
+                        className="no-drag inline-flex h-8 items-center justify-center rounded-md border border-slate-200 bg-white px-2 text-[12px] text-slate-600 transition hover:bg-slate-50"
+                        onClick={() => setIsCreatingProfile(false)}
+                      >
+                        {t("actions.cancel")}
+                      </button>
                     </div>
-                    <div className="mt-1 line-clamp-2 text-[12px] text-slate-500">
-                      {annotation.content || "-"}
-                    </div>
-                  </button>
-                ))}
-              </div>
-            ) : (
-              <div className="rounded-md bg-slate-50 px-3 py-2 text-[13px] text-slate-500">
-                {t("image.noAnnotations")}
-              </div>
-            )}
-          </div>
+                  </div>
+                ) : null}
 
-          <div className="border-t border-slate-200 p-3">
+                {selectedImage.annotations.length > 0 ? (
+                  <div className="space-y-1">
+                    {selectedImage.annotations.map((annotation) => (
+                      <button
+                        key={annotation.id}
+                        className={`no-drag w-full rounded-md px-2 py-1.5 text-left transition ${
+                          selectedAnnotationId === annotation.id
+                            ? "bg-slate-900/[0.07] text-slate-950"
+                            : "text-slate-700 hover:bg-slate-100"
+                        }`}
+                        onClick={() => selectAnnotation(annotation)}
+                      >
+                        <div className="truncate text-[12px] font-medium">
+                          {profileById.get(annotation.profileId)?.name ?? `#${annotation.profileId}`}
+                        </div>
+                        <div className="mt-0.5 line-clamp-1 text-[12px] text-slate-500">
+                          {annotation.content || "-"}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="rounded-md bg-slate-50 px-3 py-2 text-[13px] text-slate-500">
+                    {t("image.noAnnotations")}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          <div className="flex min-h-0 flex-1 flex-col p-3">
             {selectedAnnotation ? (
               <>
-            <label className="mb-1 block text-[12px] font-medium text-slate-600">{t("image.profile")}</label>
-            <select
-              value={profileId}
-              onChange={(event) => setProfileId(Number(event.target.value))}
-              disabled={Boolean(selectedAnnotation)}
-              className="glass-input mb-3 h-8 w-full px-2 text-[13px]"
-            >
-              {profiles.map((profile) => (
-                <option key={profile.id} value={profile.id}>
-                  {profile.name}
-                </option>
-              ))}
-            </select>
+            {isFolderImage ? null : (
+              <>
+                <label className="mb-1 block text-[12px] font-medium text-slate-600">
+                  {t("image.profile")}
+                </label>
+                <select
+                  value={profileId}
+                  onChange={(event) => setProfileId(Number(event.target.value))}
+                  disabled={Boolean(selectedAnnotation)}
+                  className="glass-input mb-3 h-8 w-full px-2 text-[13px]"
+                >
+                  {profiles.map((profile) => (
+                    <option key={profile.id} value={profile.id}>
+                      {profile.name}
+                    </option>
+                  ))}
+                </select>
+              </>
+            )}
 
             <label className="mb-1 block text-[12px] font-medium text-slate-600">{t("image.content")}</label>
             <textarea
               value={content}
               onChange={(event) => setContent(event.target.value)}
-              className="glass-input h-40 w-full resize-none p-2 text-[13px]"
+              className="glass-input min-h-0 flex-1 resize-none p-2 text-[13px]"
             />
 
             <div className="mt-3 flex gap-2">

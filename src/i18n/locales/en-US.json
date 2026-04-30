@@ -92,10 +92,16 @@
     "appearance": "Appearance",
     "languageNative": "Language",
     "simplifiedChinese": "Simplified Chinese",
-    "english": "English"
+    "english": "English",
+    "theme": "Theme",
+    "themeDescription": "Choose the app color mode",
+    "themeSystem": "Use system setting",
+    "themeLight": "Light mode",
+    "themeDark": "Dark mode"
   },
   "image": {
     "annotations": "annotations",
+    "annotationTypes": "annotation types",
     "noAnnotations": "This image has no annotations yet",
     "profile": "Annotation type",
     "content": "Annotation content",
