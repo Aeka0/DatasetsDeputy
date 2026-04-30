@@ -282,6 +282,14 @@ html[data-theme="dark"] .text-slate-400 {
   color: #b7b7b7;
 }
 
+html[data-theme="dark"] [class*="text-black/36"] {
+  color: #8a8a8a;
+}
+
+html[data-theme="dark"] [class*="text-black/40"] {
+  color: #9a9a9a;
+}
+
 html[data-theme="dark"] .glass-input {
   border-color: rgba(255, 255, 255, 0.16);
   background: #141414;
@@ -342,6 +350,11 @@ html[data-theme="dark"] .hover\:text-slate-950:hover,
 html[data-theme="dark"] .hover\:text-black:hover,
 html[data-theme="dark"] [class*="hover:text-slate-900"]:hover {
   color: #f0f0f0;
+}
+
+html[data-theme="dark"] .marker\:text-slate-400::marker,
+html[data-theme="dark"] [class*="marker:text-slate-400"]::marker {
+  color: #9a9a9a;
 }
 
 html[data-theme="dark"] ::-webkit-scrollbar-thumb {

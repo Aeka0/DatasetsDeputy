@@ -5,6 +5,7 @@ mod errors;
 mod export;
 mod files;
 mod folders;
+mod gemini;
 mod thumbnail;
 #[cfg(target_os = "windows")]
 mod window_region;
@@ -37,6 +38,10 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::list_images,
             commands::list_annotation_profiles,
+            commands::get_gemini_settings,
+            commands::save_gemini_settings,
+            commands::fetch_gemini_models,
+            commands::test_gemini_connection,
             commands::prepare_import_folder,
             commands::start_import_folder,
             commands::mount_folder_dataset,

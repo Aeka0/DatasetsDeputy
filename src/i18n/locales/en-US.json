@@ -62,7 +62,9 @@
     "confirmFolderTitle": "Remove folder?",
     "confirmDescription": "This removes the image index, annotations, and unused annotation types for this dataset from the app database. Local files will not be deleted.",
     "confirmFolderDescription": "This only removes the folder path from the tree. Local images and TXT annotation files will not be deleted.",
-    "confirmRemove": "Remove"
+    "confirmRemove": "Remove",
+    "importingDatabase": "Importing database",
+    "importingFolder": "Importing folder"
   },
   "workspace": {
     "overview": "Overview",
@@ -101,7 +103,42 @@
     "bottomUiOpacity": "Bottom UI opacity",
     "bottomUiOpacityDescription": "Controls the transparent window layer",
     "topUiOpacity": "Top UI opacity",
-    "topUiOpacityDescription": "Controls the main content surface"
+    "topUiOpacityDescription": "Controls the main content surface",
+    "geminiApi": "Gemini API",
+    "geminiApiDescription": "Configure Gemini communication, model, and proxy",
+    "geminiApiKey": "API key",
+    "geminiApiKeyPlaceholder": "Enter Gemini API key",
+    "geminiModel": "Model",
+    "geminiFetchModels": "Fetch models",
+    "geminiTestConnection": "Test connection",
+    "geminiRpmLimit": "RPM limit",
+    "geminiRpmLimitDescription": "0 means unlimited",
+    "networkProxy": "Network proxy",
+    "networkGemini": "Gemini settings",
+    "networkProxyShort": "Proxy settings",
+    "networkProxyDescription": "Used for Gemini communication and future network requests",
+    "networkImageTransfer": "Image transfer optimization",
+    "networkImageTransferDescription": "Control image resize and format conversion before sending images",
+    "geminiUseProxy": "Use proxy",
+    "geminiProxyPort": "Proxy port",
+    "geminiProxyPortDescription": "Connects to 127.0.0.1",
+    "geminiImageResize": "Image resize",
+    "geminiImageFormat": "Image format conversion",
+    "geminiResizeNone": "No compression",
+    "geminiResizeLoose": "Loose (2048px)",
+    "geminiResizeNormal": "Normal (1536px)",
+    "geminiResizeHigh": "High (1024px)",
+    "geminiResizeExtreme": "Extreme (768px)",
+    "geminiFormatNone": "No conversion",
+    "geminiFormatWebp": "Convert to WEBP",
+    "geminiFormatJpeg": "Convert to JPEG",
+    "geminiSave": "Save Gemini settings",
+    "geminiSaved": "Gemini settings saved",
+    "networkSave": "Save network settings",
+    "networkSaved": "Network settings saved",
+    "geminiModelsFetched": "Fetched {{count}} models",
+    "geminiConnectionOk": "Connection OK, found {{count}} models",
+    "geminiActionFailed": "Action failed: {{message}}"
   },
   "image": {
     "annotations": "annotations",
@@ -129,6 +166,31 @@
     "scanning": "Scanning image files...",
     "progress": "Processed {{processed}} / {{total}}",
     "summary": "Imported {{imported}}, skipped {{skipped}}, failed {{failed}}"
+  },
+  "importWizard": {
+    "title": "How would you like to handle your dataset?",
+    "database": "Database",
+    "databaseDescription": "High-performance dataset management using SQLite. Suited to training multiple models, when one image needs multiple annotation types, and when you need flexible export of training sets.",
+    "folder": "Folder",
+    "folderDescription": "Use this app to manage and annotate dataset folders like a native file explorer - all changes are edits to files under your working path.",
+    "databasePoints": [
+      "SQLite-based high-performance database management",
+      "Annotations and instructions stored in the database",
+      "Images can live at any path",
+      "One image can map to multiple annotation types",
+      "Flexible export before training as needed",
+      "Does not auto-update when folders change on disk",
+      "Removing deletes the dataset record in the app database"
+    ],
+    "folderPoints": [
+      "Path-based file management (Windows paths)",
+      "Annotations and instructions stored as TXT files beside images",
+      "The imported path is the only working path",
+      "One image maps to a single annotation",
+      "The folder is the source of truth - no separate export step",
+      "External file changes are reflected dynamically",
+      "Removing only drops the working path; files on disk are untouched"
+    ]
   },
   "table": {
     "preview": "Preview",

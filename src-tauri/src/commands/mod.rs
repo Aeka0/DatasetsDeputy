@@ -14,6 +14,7 @@ use crate::{
     export::{self, ExportRequest},
     files::{self, ImportPreview, ImportSummary},
     folders,
+    gemini::{self, GeminiSettings},
     AppState,
 };
 
@@ -211,6 +212,43 @@ pub async fn list_annotation_profiles(
         .map_err(|error| {
             AppError::InvalidInput(format!("Profile listing task failed: {error}"))
         })?
+}
+
+#[tauri::command]
+pub fn get_gemini_settings(state: State<'_, AppState>) -> AppResult<GeminiSettings> {
+    gemini::load_settings(&state.dirs)
+}
+
+#[tauri::command]
+pub fn save_gemini_settings(
+    state: State<'_, AppState>,
+    settings: GeminiSettings,
+) -> AppResult<GeminiSettings> {
+    gemini::save_settings(&state.dirs, settings)
+}
+
+#[tauri::command]
+pub async fn fetch_gemini_models(
+    state: State<'_, AppState>,
+    settings: Option<GeminiSettings>,
+) -> AppResult<Vec<String>> {
+    let settings = match settings {
+        Some(settings) => settings,
+        None => gemini::load_settings(&state.dirs)?,
+    };
+    gemini::fetch_models(&settings).await
+}
+
+#[tauri::command]
+pub async fn test_gemini_connection(
+    state: State<'_, AppState>,
+    settings: Option<GeminiSettings>,
+) -> AppResult<usize> {
+    let settings = match settings {
+        Some(settings) => settings,
+        None => gemini::load_settings(&state.dirs)?,
+    };
+    gemini::fetch_models(&settings).await.map(|models| models.len())
 }
 
 #[tauri::command]

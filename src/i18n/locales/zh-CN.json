@@ -62,7 +62,9 @@
     "confirmFolderTitle": "移除文件夹？",
     "confirmDescription": "将从程序数据库移除该数据集的图片索引、标注和不再被使用的标注类型。本地文件不会被删除。",
     "confirmFolderDescription": "只会从左侧树状图移除该文件夹路径，不会删除本地图片或 TXT 标注文件。",
-    "confirmRemove": "确认移除"
+    "confirmRemove": "确认移除",
+    "importingDatabase": "正在导入数据库",
+    "importingFolder": "正在导入文件夹"
   },
   "workspace": {
     "overview": "信息概览",
@@ -101,7 +103,42 @@
     "bottomUiOpacity": "底层 UI 不透明度",
     "bottomUiOpacityDescription": "控制窗口透明背景层",
     "topUiOpacity": "顶层 UI 不透明度",
-    "topUiOpacityDescription": "控制主体内容区域"
+    "topUiOpacityDescription": "控制主体内容区域",
+    "geminiApi": "Gemini API",
+    "geminiApiDescription": "配置 Gemini 通讯、模型和网络代理",
+    "geminiApiKey": "API 密钥",
+    "geminiApiKeyPlaceholder": "输入 Gemini API Key",
+    "geminiModel": "模型",
+    "geminiFetchModels": "获取模型",
+    "geminiTestConnection": "测试连接",
+    "geminiRpmLimit": "RPM 限制",
+    "geminiRpmLimitDescription": "0 表示不限制",
+    "networkProxy": "网络代理",
+    "networkGemini": "Gemini 设置",
+    "networkProxyShort": "代理设置",
+    "networkProxyDescription": "用于 Gemini 通讯及后续网络请求",
+    "networkImageTransfer": "图片传输优化",
+    "networkImageTransferDescription": "在发送图片前控制压缩尺寸和格式转换",
+    "geminiUseProxy": "使用代理",
+    "geminiProxyPort": "代理端口",
+    "geminiProxyPortDescription": "连接到 127.0.0.1",
+    "geminiImageResize": "图片尺寸压缩",
+    "geminiImageFormat": "图片格式转换",
+    "geminiResizeNone": "不压缩",
+    "geminiResizeLoose": "宽松（2048px）",
+    "geminiResizeNormal": "普通（1536px）",
+    "geminiResizeHigh": "高压缩（1024px）",
+    "geminiResizeExtreme": "极限（768px）",
+    "geminiFormatNone": "不转换",
+    "geminiFormatWebp": "转换为 WEBP",
+    "geminiFormatJpeg": "转换为 JPEG",
+    "geminiSave": "保存 Gemini 设置",
+    "geminiSaved": "Gemini 设置已保存",
+    "networkSave": "保存网络设置",
+    "networkSaved": "网络设置已保存",
+    "geminiModelsFetched": "已获取 {{count}} 个模型",
+    "geminiConnectionOk": "连接正常，找到 {{count}} 个模型",
+    "geminiActionFailed": "操作失败：{{message}}"
   },
   "image": {
     "annotations": "份标注",
@@ -129,6 +166,31 @@
     "scanning": "正在扫描图片文件...",
     "progress": "已处理 {{processed}} / {{total}}",
     "summary": "导入 {{imported}}，跳过 {{skipped}}，失败 {{failed}}"
+  },
+  "importWizard": {
+    "title": "您想如何处理数据集？",
+    "database": "数据库",
+    "databaseDescription": "使用 SQLite 进行高性能数据集管理，适用于同时训练多种模型，需要一张图像对应多种标注，并根据需求灵活导出训练集的情况。",
+    "folder": "文件夹",
+    "folderDescription": "使用本工具来辅助数据集文件夹的管理和标注，贴近原生系统资源管理器的逻辑，一切改动基于对工作路径下文件的修改。",
+    "databasePoints": [
+      "基于 SQLite 的高性能数据库管理",
+      "标注和指令由数据库统一储存",
+      "图片可来自任意路径",
+      "支持单图片对应多个标注类型",
+      "在训练前根据需求灵活导出",
+      "不会随文件夹变动而更新",
+      "移除后会删除程序中的数据库信息"
+    ],
+    "folderPoints": [
+      "基于 Windows 路径的文件管理",
+      "标注和指令储存为相同目录下的 txt 文件",
+      "导入路径作为唯一工作路径",
+      "单个图片仅对应单个标注",
+      "文件夹即成品，无导出步骤",
+      "软件外部的更改会动态影响内容",
+      "移除时只移除工作路径，不变动文件"
+    ]
   },
   "table": {
     "preview": "预览",

@@ -1,4 +1,12 @@
-import { ChevronDown, ChevronRight, Database, Folder, FolderOpen, Plus } from "lucide-react";
+import {
+  ChevronDown,
+  ChevronRight,
+  Database,
+  Folder,
+  FolderOpen,
+  Loader2,
+  Plus
+} from "lucide-react";
 import type { MouseEvent } from "react";
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
@@ -28,13 +36,17 @@ function ProjectNode({
   const hasChildren = Boolean(project.children?.length);
   const isExpanded = expandedIds.has(project.id);
   const imageCount = project.imageIds.length;
+  const isImportingNode = project.id.startsWith("importing-");
   const isDatabaseNode = project.id === "database-group" || project.id.startsWith("dataset-root:");
   const isGroupNode = project.id === "database-group" || project.id === "workspace-folder-group";
   const canOpenContextMenu =
-    !isGroupNode && (project.sourceKind !== "folder" || project.id.startsWith("folder-root:"));
+    !isImportingNode &&
+    !isGroupNode &&
+    (project.sourceKind !== "folder" || project.id.startsWith("folder-root:"));
   const indentation = isGroupNode ? 4 : 8 + depth * 10;
 
   const handleRowActivate = () => {
+    if (isImportingNode) return;
     if (isGroupNode) {
       toggleExpanded(project);
       return;
@@ -56,7 +68,9 @@ function ProjectNode({
         className={cn(
           "no-drag flex h-8 w-full items-stretch gap-1 rounded-md pr-2.5 text-left transition",
           sidebarLabelClass,
-          isSelected
+          isImportingNode
+            ? "cursor-not-allowed text-black/36"
+            : isSelected
             ? "bg-white/62 text-black"
             : "text-black hover:bg-slate-900/[0.045]"
         )}
@@ -98,7 +112,13 @@ function ProjectNode({
           className="no-drag flex min-w-0 flex-1 items-center gap-2 rounded border-0 bg-transparent p-0 text-left text-inherit outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-black/20"
           onClick={handleRowActivate}
         >
-          {isDatabaseNode ? (
+          {isImportingNode ? (
+            project.sourceKind === "folder" ? (
+              <Folder size={16} className="shrink-0 text-black/36" />
+            ) : (
+              <Database size={16} className="shrink-0 text-black/36" />
+            )
+          ) : isDatabaseNode ? (
             <Database size={16} className="shrink-0 text-black" />
           ) : isSelected ? (
             <FolderOpen size={16} className="shrink-0 text-black" />
@@ -106,9 +126,13 @@ function ProjectNode({
             <Folder size={16} className="shrink-0 text-black" />
           )}
           <span className={cn("min-w-0 flex-1 truncate", sidebarLabelClass)}>{project.name}</span>
-          <span className="shrink-0 rounded-full bg-white/72 px-1.5 py-0.5 text-[11px] leading-none text-black ring-1 ring-white/70">
-            {imageCount}
-          </span>
+          {isImportingNode ? (
+            <Loader2 size={13} className="shrink-0 animate-spin text-black/40" />
+          ) : (
+            <span className="shrink-0 rounded-full bg-white/72 px-1.5 py-0.5 text-[11px] leading-none text-black ring-1 ring-white/70">
+              {imageCount}
+            </span>
+          )}
         </button>
       </div>
 
@@ -132,7 +156,7 @@ function ProjectNode({
 
 export function ProjectTree() {
   const { t } = useTranslation();
-  const { projects, openImportWizard, isLoading, removeDataset, renameDatasetFolder } =
+  const { projects, openImportWizard, isLoading, pendingImportKind, removeDataset, renameDatasetFolder } =
     useDatasetStore();
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const [contextMenu, setContextMenu] = useState<{
@@ -216,12 +240,31 @@ export function ProjectTree() {
 
   const databaseProjects = projects.filter((project) => project.sourceKind !== "folder");
   const folderProjects = projects.filter((project) => project.sourceKind === "folder");
+  const importingProject: DatasetProject | undefined = pendingImportKind
+    ? {
+        id: `importing-${pendingImportKind}`,
+        name:
+          pendingImportKind === "folder"
+            ? t("tree.importingFolder")
+            : t("tree.importingDatabase"),
+        path: "",
+        imageIds: [],
+        sourceKind: pendingImportKind,
+        datasetId: `importing-${pendingImportKind}`
+      }
+    : undefined;
+  const databaseChildren =
+    importingProject?.sourceKind === "database"
+      ? [...databaseProjects, importingProject]
+      : databaseProjects;
+  const folderChildren =
+    importingProject?.sourceKind === "folder" ? [...folderProjects, importingProject] : folderProjects;
   const databaseGroup: DatasetProject = {
     id: "database-group",
     name: t("tree.projects"),
     path: "",
     imageIds: databaseProjects.flatMap((project) => project.imageIds),
-    children: databaseProjects,
+    children: databaseChildren,
     sourceKind: "database",
     datasetId: "database-group"
   };
@@ -230,7 +273,7 @@ export function ProjectTree() {
     name: t("tree.workspaceFolders"),
     path: "",
     imageIds: folderProjects.flatMap((project) => project.imageIds),
-    children: folderProjects,
+    children: folderChildren,
     sourceKind: "folder",
     datasetId: "workspace-folder-group"
   };

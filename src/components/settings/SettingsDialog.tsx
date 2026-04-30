@@ -4,6 +4,7 @@ import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 
 import i18next from "../../i18n";
+import { hasTauriRuntime, invokeCommand } from "../../lib/tauri";
 import {
   getBottomUiOpacity,
   getThemePreference,
@@ -18,6 +19,7 @@ import {
 import { Button } from "../ui/Button";
 
 type SettingsSectionKey = "general" | "language" | "network" | "localFiles" | "appearance";
+type NetworkSectionKey = "gemini" | "proxy" | "imageTransfer";
 
 interface SettingsSection {
   key: SettingsSectionKey;
@@ -44,6 +46,42 @@ const themeOptions: Array<{ value: ThemePreference; labelKey: string }> = [
   { value: "dark", labelKey: "settings.themeDark" }
 ];
 
+interface GeminiSettings {
+  apiKey: string;
+  model: string;
+  availableModels: string[];
+  rpmLimit: number;
+  useProxy: boolean;
+  proxyPort: string;
+  imageResizeMode: string;
+  imageConvertFormat: string;
+}
+
+const defaultGeminiSettings: GeminiSettings = {
+  apiKey: "",
+  model: "gemini-1.5-pro-002",
+  availableModels: ["gemini-1.5-pro-002", "gemini-1.5-flash-002"],
+  rpmLimit: 0,
+  useProxy: false,
+  proxyPort: "7890",
+  imageResizeMode: "none",
+  imageConvertFormat: "none"
+};
+
+const resizeOptions = [
+  { value: "none", labelKey: "settings.geminiResizeNone" },
+  { value: "loose", labelKey: "settings.geminiResizeLoose" },
+  { value: "normal", labelKey: "settings.geminiResizeNormal" },
+  { value: "high", labelKey: "settings.geminiResizeHigh" },
+  { value: "extreme", labelKey: "settings.geminiResizeExtreme" }
+];
+
+const convertFormatOptions = [
+  { value: "none", labelKey: "settings.geminiFormatNone" },
+  { value: "webp", labelKey: "settings.geminiFormatWebp" },
+  { value: "jpeg", labelKey: "settings.geminiFormatJpeg" }
+];
+
 interface SettingsDialogProps {
   onClose: () => void;
 }
@@ -51,14 +89,45 @@ interface SettingsDialogProps {
 export function SettingsDialog({ onClose }: SettingsDialogProps) {
   const { i18n, t } = useTranslation();
   const [activeSection, setActiveSection] = useState<SettingsSectionKey>("general");
+  const [activeNetworkSection, setActiveNetworkSection] =
+    useState<NetworkSectionKey>("gemini");
   const [themePreference, setThemePreferenceState] =
     useState<ThemePreference>(getThemePreference);
   const [bottomUiOpacity, setBottomUiOpacityState] = useState(getBottomUiOpacity);
   const [topUiOpacity, setTopUiOpacityState] = useState(getTopUiOpacity);
+  const [geminiSettings, setGeminiSettings] =
+    useState<GeminiSettings>(defaultGeminiSettings);
+  const [geminiMessage, setGeminiMessage] = useState("");
+  const [isGeminiBusy, setIsGeminiBusy] = useState(false);
+  const [hasLoadedGeminiSettings, setHasLoadedGeminiSettings] = useState(false);
   const active = sections.find((section) => section.key === activeSection) ?? sections[0];
   const currentLanguage = i18n.language.startsWith("zh") ? "zh-CN" : "en-US";
 
   useEffect(() => watchThemePreference(setThemePreferenceState), []);
+  useEffect(() => {
+    if (!hasTauriRuntime()) return;
+
+    void invokeCommand<GeminiSettings>("get_gemini_settings")
+      .then((settings) => {
+        setGeminiSettings(settings);
+        setHasLoadedGeminiSettings(true);
+      })
+      .catch((error) => setGeminiMessage(String(error)));
+  }, []);
+  useEffect(() => {
+    if (!hasTauriRuntime() || !hasLoadedGeminiSettings) return;
+
+    const saveTimer = window.setTimeout(() => {
+      void invokeCommand<GeminiSettings>("save_gemini_settings", {
+        settings: geminiSettings
+      }).catch((error) => {
+        const message = error instanceof Error ? error.message : String(error);
+        setGeminiMessage(t("settings.geminiActionFailed", { message }));
+      });
+    }, 500);
+
+    return () => window.clearTimeout(saveTimer);
+  }, [geminiSettings, hasLoadedGeminiSettings]);
   useEffect(
     () =>
       watchUiOpacity(() => {
@@ -81,6 +150,42 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
   const updateTopUiOpacity = (value: number) => {
     setTopUiOpacityState(value);
     setTopUiOpacity(value);
+  };
+
+  const patchGeminiSettings = (patch: Partial<GeminiSettings>) => {
+    setGeminiSettings((current) => ({ ...current, ...patch }));
+  };
+
+  const runGeminiAction = async (action: "fetch" | "test") => {
+    if (!hasTauriRuntime() || isGeminiBusy) return;
+
+    setIsGeminiBusy(true);
+    setGeminiMessage("");
+    try {
+      if (action === "fetch") {
+        const models = await invokeCommand<string[]>("fetch_gemini_models", {
+          settings: geminiSettings
+        });
+        const nextSettings = {
+          ...geminiSettings,
+          availableModels: models,
+          model: models[0] ?? geminiSettings.model
+        };
+        setGeminiSettings(nextSettings);
+        setGeminiMessage(t("settings.geminiModelsFetched", { count: models.length }));
+        return;
+      }
+
+      const count = await invokeCommand<number>("test_gemini_connection", {
+        settings: geminiSettings
+      });
+      setGeminiMessage(t("settings.geminiConnectionOk", { count }));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setGeminiMessage(t("settings.geminiActionFailed", { message }));
+    } finally {
+      setIsGeminiBusy(false);
+    }
   };
 
   return createPortal(
@@ -147,7 +252,10 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
             </Button>
           </header>
 
-          <div className="min-h-0 flex-1 bg-slate-50/42 p-5">
+          <div
+            className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden bg-slate-50/42 p-5"
+            style={{ scrollbarGutter: "stable" }}
+          >
             {activeSection === "language" ? (
               <div className="rounded-lg border border-slate-200 bg-white">
                 <div className="flex min-h-12 items-center justify-between gap-4 border-b border-slate-100 px-4 py-3 last:border-b-0">
@@ -207,7 +315,7 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
                   <div className="flex min-w-[210px] items-center gap-3">
                     <input
                       type="range"
-                      min={30}
+                      min={70}
                       max={100}
                       value={bottomUiOpacity}
                       onChange={(event) => updateBottomUiOpacity(Number(event.target.value))}
@@ -241,6 +349,215 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
                     </span>
                   </div>
                 </div>
+              </div>
+            ) : activeSection === "network" ? (
+              <div className="space-y-3">
+                <div className="flex gap-1 border-b border-slate-200 pb-2">
+                  {[
+                    { key: "gemini" as const, label: t("settings.networkGemini") },
+                    { key: "proxy" as const, label: t("settings.networkProxyShort") },
+                    { key: "imageTransfer" as const, label: t("settings.networkImageTransfer") }
+                  ].map((item) => {
+                    const isActive = activeNetworkSection === item.key;
+                    return (
+                      <button
+                        key={item.key}
+                        type="button"
+                        className={`no-drag h-8 rounded-md px-3 text-[13px] font-medium transition ${
+                          isActive
+                            ? "bg-white text-slate-950 shadow-sm ring-1 ring-slate-200"
+                            : "text-slate-600 hover:bg-white/72 hover:text-slate-950"
+                        }`}
+                        onClick={() => setActiveNetworkSection(item.key)}
+                      >
+                        {item.label}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {activeNetworkSection === "gemini" ? (
+                  <div className="rounded-lg border border-slate-200 bg-white">
+                    <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-4 py-3">
+                      <div className="min-w-0">
+                        <div className="text-[13px] font-semibold text-slate-900">
+                          {t("settings.geminiApi")}
+                        </div>
+                        <div className="mt-0.5 text-[12px] text-slate-500">
+                          {t("settings.geminiApiDescription")}
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        className="no-drag h-8 shrink-0 rounded-md border border-slate-200 bg-white px-3 text-[13px] text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                        disabled={isGeminiBusy}
+                        onClick={() => void runGeminiAction("test")}
+                      >
+                        {t("settings.geminiTestConnection")}
+                      </button>
+                    </div>
+
+                    <div className="space-y-3 px-4 py-3">
+                      <label className="block">
+                        <span className="mb-1 block text-[12px] font-medium text-slate-600">
+                          {t("settings.geminiApiKey")}
+                        </span>
+                        <input
+                          type="password"
+                          className="glass-input h-8 w-full px-2.5 text-[13px]"
+                          value={geminiSettings.apiKey}
+                          placeholder={t("settings.geminiApiKeyPlaceholder")}
+                          onChange={(event) => patchGeminiSettings({ apiKey: event.target.value })}
+                        />
+                      </label>
+
+                      <div className="grid grid-cols-[minmax(0,1fr)_110px] items-end gap-2">
+                        <label className="block min-w-0">
+                          <span className="mb-1 block text-[12px] font-medium text-slate-600">
+                            {t("settings.geminiModel")}
+                          </span>
+                          <input
+                            className="glass-input h-8 w-full px-2.5 text-[13px]"
+                            list="gemini-model-options"
+                            value={geminiSettings.model}
+                            onChange={(event) =>
+                              patchGeminiSettings({ model: event.target.value })
+                            }
+                          />
+                          <datalist id="gemini-model-options">
+                            {geminiSettings.availableModels.map((model) => (
+                              <option key={model} value={model} />
+                            ))}
+                          </datalist>
+                        </label>
+                        <button
+                          type="button"
+                          className="no-drag h-8 rounded-md border border-slate-200 bg-white px-2 text-[12px] text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                          disabled={isGeminiBusy}
+                          onClick={() => void runGeminiAction("fetch")}
+                        >
+                          {t("settings.geminiFetchModels")}
+                        </button>
+                      </div>
+
+                      <label className="block">
+                        <span className="mb-1 block text-[12px] font-medium text-slate-600">
+                          {t("settings.geminiRpmLimit")}
+                        </span>
+                        <input
+                          type="number"
+                          min={0}
+                          className="glass-input h-8 w-full px-2.5 text-[13px]"
+                          value={geminiSettings.rpmLimit}
+                          onChange={(event) =>
+                            patchGeminiSettings({
+                              rpmLimit: Math.max(0, Number(event.target.value) || 0)
+                            })
+                          }
+                        />
+                        <span className="mt-1 block text-[11px] text-slate-500">
+                          {t("settings.geminiRpmLimitDescription")}
+                        </span>
+                      </label>
+
+                      {geminiMessage ? (
+                        <div className="truncate text-[12px] text-slate-500">
+                          {geminiMessage}
+                        </div>
+                      ) : null}
+                    </div>
+                  </div>
+                ) : null}
+
+                {activeNetworkSection === "proxy" ? (
+                  <div className="rounded-lg border border-slate-200 bg-white">
+                  <div className="border-b border-slate-100 px-4 py-3">
+                    <div className="text-[13px] font-semibold text-slate-900">
+                      {t("settings.networkProxy")}
+                    </div>
+                    <div className="mt-0.5 text-[12px] text-slate-500">
+                      {t("settings.networkProxyDescription")}
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-[minmax(0,1fr)_160px] gap-4 px-4 py-3">
+                    <label className="flex items-center gap-2 text-[13px] text-slate-700">
+                      <input
+                        type="checkbox"
+                        checked={geminiSettings.useProxy}
+                        onChange={(event) =>
+                          patchGeminiSettings({ useProxy: event.target.checked })
+                        }
+                      />
+                      {t("settings.geminiUseProxy")}
+                    </label>
+                    <label className="block">
+                      <span className="mb-1 block text-[12px] font-medium text-slate-600">
+                        {t("settings.geminiProxyPort")}
+                      </span>
+                      <input
+                        className="glass-input h-8 w-full px-2.5 text-[13px]"
+                        value={geminiSettings.proxyPort}
+                        disabled={!geminiSettings.useProxy}
+                        onChange={(event) => patchGeminiSettings({ proxyPort: event.target.value })}
+                      />
+                      <span className="mt-1 block text-[11px] text-slate-500">
+                        {t("settings.geminiProxyPortDescription")}
+                      </span>
+                    </label>
+                  </div>
+                </div>
+                ) : null}
+
+                {activeNetworkSection === "imageTransfer" ? (
+                  <div className="rounded-lg border border-slate-200 bg-white">
+                    <div className="border-b border-slate-100 px-4 py-3">
+                      <div className="text-[13px] font-semibold text-slate-900">
+                        {t("settings.networkImageTransfer")}
+                      </div>
+                      <div className="mt-0.5 text-[12px] text-slate-500">
+                        {t("settings.networkImageTransferDescription")}
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3 px-4 py-3">
+                      <label className="block">
+                        <span className="mb-1 block text-[12px] font-medium text-slate-600">
+                          {t("settings.geminiImageResize")}
+                        </span>
+                        <select
+                          className="glass-input h-8 w-full px-2.5 text-[13px]"
+                          value={geminiSettings.imageResizeMode}
+                          onChange={(event) =>
+                            patchGeminiSettings({ imageResizeMode: event.target.value })
+                          }
+                        >
+                          {resizeOptions.map((option) => (
+                            <option key={option.value} value={option.value}>
+                              {t(option.labelKey)}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label className="block">
+                        <span className="mb-1 block text-[12px] font-medium text-slate-600">
+                          {t("settings.geminiImageFormat")}
+                        </span>
+                        <select
+                          className="glass-input h-8 w-full px-2.5 text-[13px]"
+                          value={geminiSettings.imageConvertFormat}
+                          onChange={(event) =>
+                            patchGeminiSettings({ imageConvertFormat: event.target.value })
+                          }
+                        >
+                          {convertFormatOptions.map((option) => (
+                            <option key={option.value} value={option.value}>
+                              {t(option.labelKey)}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    </div>
+                  </div>
+                ) : null}
               </div>
             ) : (
               <div className="h-full rounded-lg border border-dashed border-slate-200 bg-white/72" />

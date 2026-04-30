@@ -6,9 +6,10 @@ const bottomOpacityStorageKey = "datasets-deputy.bottom-opacity";
 const topOpacityStorageKey = "datasets-deputy.top-opacity";
 const themePreferenceChangedEvent = "datasets-deputy:theme-preference-changed";
 const uiOpacityChangedEvent = "datasets-deputy:ui-opacity-changed";
-const defaultBottomOpacity = 70;
+const defaultBottomOpacity = 85;
 const defaultTopOpacity = 95;
-const minUiOpacity = 30;
+const minBottomUiOpacity = 70;
+const minTopUiOpacity = 30;
 const maxUiOpacity = 100;
 
 function isThemePreference(value: string | null): value is ThemePreference {
@@ -73,23 +74,23 @@ export function watchThemePreference(callback: (preference: ThemePreference) => 
   return () => window.removeEventListener(themePreferenceChangedEvent, handler);
 }
 
-function clampUiOpacity(value: number) {
-  return Math.min(maxUiOpacity, Math.max(minUiOpacity, Math.round(value)));
+function clampUiOpacity(value: number, minOpacity: number) {
+  return Math.min(maxUiOpacity, Math.max(minOpacity, Math.round(value)));
 }
 
-function getStoredOpacity(storageKey: string, fallback: number) {
+function getStoredOpacity(storageKey: string, fallback: number, minOpacity: number) {
   if (typeof localStorage === "undefined") return fallback;
 
   const stored = Number(localStorage.getItem(storageKey));
-  return Number.isFinite(stored) ? clampUiOpacity(stored) : fallback;
+  return Number.isFinite(stored) ? clampUiOpacity(stored, minOpacity) : fallback;
 }
 
 export function getBottomUiOpacity() {
-  return getStoredOpacity(bottomOpacityStorageKey, defaultBottomOpacity);
+  return getStoredOpacity(bottomOpacityStorageKey, defaultBottomOpacity, minBottomUiOpacity);
 }
 
 export function getTopUiOpacity() {
-  return getStoredOpacity(topOpacityStorageKey, defaultTopOpacity);
+  return getStoredOpacity(topOpacityStorageKey, defaultTopOpacity, minTopUiOpacity);
 }
 
 export function applyUiOpacity() {
@@ -106,14 +107,14 @@ export function applyUiOpacity() {
 }
 
 export function setBottomUiOpacity(value: number) {
-  const opacity = clampUiOpacity(value);
+  const opacity = clampUiOpacity(value, minBottomUiOpacity);
   localStorage.setItem(bottomOpacityStorageKey, String(opacity));
   applyUiOpacity();
   window.dispatchEvent(new CustomEvent(uiOpacityChangedEvent));
 }
 
 export function setTopUiOpacity(value: number) {
-  const opacity = clampUiOpacity(value);
+  const opacity = clampUiOpacity(value, minTopUiOpacity);
   localStorage.setItem(topOpacityStorageKey, String(opacity));
   applyUiOpacity();
   window.dispatchEvent(new CustomEvent(uiOpacityChangedEvent));
