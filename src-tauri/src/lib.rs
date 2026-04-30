@@ -42,6 +42,7 @@ pub fn run() {
             commands::save_gemini_settings,
             commands::fetch_gemini_models,
             commands::test_gemini_connection,
+            commands::generate_gemini_annotation,
             commands::prepare_import_folder,
             commands::start_import_folder,
             commands::mount_folder_dataset,

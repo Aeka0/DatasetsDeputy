@@ -310,26 +310,27 @@ export function ProjectTree() {
       {contextMenu
         ? createPortal(
             <div
-              className="no-drag fixed z-50 min-w-[184px] rounded-md border border-slate-200 bg-white p-1 shadow-lg"
+              className="app-dropdown-menu no-drag fixed z-50 min-w-[184px] rounded-lg py-2"
               style={{ left: contextMenu.x, top: contextMenu.y }}
               onClick={(event) => event.stopPropagation()}
               onContextMenu={(event) => event.preventDefault()}
             >
+              <div className="app-dropdown-backdrop" />
               {contextMenu.project.sourceKind !== "folder" ? (
                 <>
                   <button
-                    className="flex h-8 w-full items-center rounded px-3 text-left text-[12px] text-slate-700 transition hover:bg-slate-100"
+                    className="app-dropdown-item flex h-9 w-full items-center px-3.5 text-left text-[12px] font-medium text-slate-700 transition hover:bg-slate-100"
                     onClick={() => startRename(contextMenu.project)}
                   >
                     {contextMenu.project.id.startsWith("dataset-root:")
                       ? t("tree.renameDataset")
                       : t("tree.renameFolder")}
                   </button>
-                  <div className="my-1 h-px bg-slate-200" />
+                  <div className="app-dropdown-separator my-1.5 h-px bg-slate-200" />
                 </>
               ) : null}
               <button
-                className="flex h-8 w-full items-center rounded px-3 text-left text-[12px] text-slate-700 transition hover:bg-slate-100"
+                className="app-dropdown-item flex h-9 w-full items-center px-3.5 text-left text-[12px] font-medium text-slate-700 transition hover:bg-slate-100"
                 onClick={() => {
                   const project = contextMenu.project;
                   setContextMenu(undefined);

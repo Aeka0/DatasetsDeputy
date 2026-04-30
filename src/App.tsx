@@ -3,6 +3,7 @@ import type { MouseEvent as ReactMouseEvent } from "react";
 import { useEffect, useState } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 
+import { AnnotationLogView } from "./components/content/AnnotationLogView";
 import { ImagePreviewView } from "./components/content/ImagePreviewView";
 import { DatasetWorkspace } from "./components/content/DatasetWorkspace";
 import { ImportPreviewView } from "./components/content/ImportPreviewView";
@@ -20,8 +21,9 @@ export default function App() {
   const [isProjectTreeCollapsed, setIsProjectTreeCollapsed] = useState(false);
   const load = useDatasetStore((state) => state.load);
   const initImportEvents = useDatasetStore((state) => state.initImportEvents);
+  const appView = useDatasetStore((state) => state.appView);
   const selectedProjectId = useDatasetStore((state) => state.selectedProjectId);
-  const selectedImageId = useDatasetStore((state) => state.selectedImageId);
+  const previewImageId = useDatasetStore((state) => state.previewImageId);
   const importPreview = useDatasetStore((state) => state.importPreview);
   const importProgress = useDatasetStore((state) => state.importProgress);
   const importReport = useDatasetStore((state) => state.importReport);
@@ -67,7 +69,10 @@ export default function App() {
       >
         <div className="flex items-center gap-3">
           <div className="text-[13px] font-semibold text-black">Datasets Deputy</div>
-          <TitleMenuBar />
+          <TitleMenuBar
+            isProjectTreeCollapsed={isProjectTreeCollapsed}
+            onToggleProjectTree={() => setIsProjectTreeCollapsed((collapsed) => !collapsed)}
+          />
         </div>
         <div className="z-20">
           <WindowControls />
@@ -100,7 +105,11 @@ export default function App() {
               <ImportPreviewView />
             ) : showImportWizard ? (
               <ImportWizardView />
-            ) : selectedImageId ? (
+            ) : appView === "logs" ? (
+              <AnnotationLogView />
+            ) : appView === "initial" ? (
+              <WelcomeView />
+            ) : previewImageId ? (
               <ImagePreviewView />
             ) : selectedProjectId ? (
               <DatasetWorkspace />

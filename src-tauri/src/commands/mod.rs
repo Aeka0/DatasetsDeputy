@@ -252,6 +252,16 @@ pub async fn test_gemini_connection(
 }
 
 #[tauri::command]
+pub async fn generate_gemini_annotation(
+    state: State<'_, AppState>,
+    image_path: String,
+    prompt: String,
+) -> AppResult<String> {
+    let settings = gemini::load_settings(&state.dirs)?;
+    gemini::generate_annotation(&settings, &PathBuf::from(image_path), &prompt).await
+}
+
+#[tauri::command]
 pub async fn prepare_import_folder(app: AppHandle) -> AppResult<ImportPreview> {
     let (sender, receiver) = std::sync::mpsc::channel();
     app.dialog().file().pick_folder(move |folder| {

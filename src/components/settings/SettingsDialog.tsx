@@ -1,5 +1,15 @@
-import { Folder, Globe2, Languages, MonitorCog, Settings2, Wifi, X } from "lucide-react";
-import { useEffect, useState } from "react";
+import {
+  Check,
+  ChevronDown,
+  Folder,
+  Globe2,
+  Languages,
+  MonitorCog,
+  Settings2,
+  Wifi,
+  X
+} from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 
@@ -59,8 +69,8 @@ interface GeminiSettings {
 
 const defaultGeminiSettings: GeminiSettings = {
   apiKey: "",
-  model: "gemini-1.5-pro-002",
-  availableModels: ["gemini-1.5-pro-002", "gemini-1.5-flash-002"],
+  model: "gemini-flash-latest",
+  availableModels: ["gemini-flash-latest", "gemini-pro-latest"],
   rpmLimit: 0,
   useProxy: false,
   proxyPort: "7890",
@@ -84,6 +94,99 @@ const convertFormatOptions = [
 
 interface SettingsDialogProps {
   onClose: () => void;
+}
+
+interface SelectOption {
+  value: string;
+  label: string;
+}
+
+interface SettingsSelectProps {
+  value: string;
+  options: SelectOption[];
+  onChange: (value: string) => void;
+  className?: string;
+}
+
+function SettingsSelect({ value, options, onChange, className = "" }: SettingsSelectProps) {
+  const [open, setOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const selectedOption = options.find((option) => option.value === value) ?? options[0];
+
+  useEffect(() => {
+    if (!open) return;
+
+    const close = (event: MouseEvent) => {
+      if (
+        event.target instanceof Node &&
+        containerRef.current?.contains(event.target)
+      ) {
+        return;
+      }
+      setOpen(false);
+    };
+
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setOpen(false);
+      }
+    };
+
+    window.addEventListener("mousedown", close);
+    window.addEventListener("keydown", closeOnEscape);
+    return () => {
+      window.removeEventListener("mousedown", close);
+      window.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [open]);
+
+  return (
+    <div ref={containerRef} className={`no-drag relative ${className}`}>
+      <button
+        type="button"
+        className="glass-input flex h-8 w-full items-center justify-between gap-2 px-2.5 text-left text-[13px]"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        onClick={() => setOpen((current) => !current)}
+      >
+        <span className="truncate">{selectedOption?.label}</span>
+        <ChevronDown
+          size={14}
+          className={`shrink-0 text-slate-400 transition ${open ? "rotate-180" : ""}`}
+        />
+      </button>
+
+      {open ? (
+        <div className="app-dropdown-menu absolute left-0 top-9 z-[70] min-w-full rounded-lg py-2">
+          <div className="app-dropdown-backdrop" />
+          {options.map((option) => {
+            const selected = option.value === value;
+
+            return (
+              <button
+                key={option.value}
+                type="button"
+                className={`app-dropdown-item flex h-9 w-full items-center gap-2 px-3.5 text-left text-[13px] font-medium transition hover:bg-slate-100 ${
+                  selected ? "text-slate-950" : "text-slate-600"
+                }`}
+                role="option"
+                aria-selected={selected}
+                onClick={() => {
+                  onChange(option.value);
+                  setOpen(false);
+                }}
+              >
+                <span className="flex w-4 shrink-0 justify-center">
+                  {selected ? <Check size={14} /> : null}
+                </span>
+                <span className="min-w-0 flex-1 truncate">{option.label}</span>
+              </button>
+            );
+          })}
+        </div>
+      ) : null}
+    </div>
+  );
 }
 
 export function SettingsDialog({ onClose }: SettingsDialogProps) {
@@ -191,14 +294,12 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
   return createPortal(
     <div
       className="no-drag fixed inset-0 z-50 flex items-center justify-center bg-slate-950/18 px-5"
-      onClick={onClose}
     >
       <section
         className="flex h-[560px] w-full max-w-[820px] overflow-hidden rounded-lg border border-slate-200 bg-white shadow-[0_24px_72px_rgba(15,23,42,0.22)]"
         role="dialog"
         aria-modal="true"
         aria-labelledby="settings-title"
-        onClick={(event) => event.stopPropagation()}
       >
         <aside className="flex w-[220px] shrink-0 flex-col border-r border-slate-200 bg-slate-50/90">
           <div className="flex h-14 items-center gap-2 border-b border-slate-200 px-4">
@@ -265,17 +366,15 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
                     </div>
                     <div className="mt-0.5 text-[12px] text-slate-500">Language</div>
                   </div>
-                  <select
-                    className="glass-input h-8 min-w-[150px] px-2.5 text-[13px]"
+                  <SettingsSelect
+                    className="min-w-[150px]"
                     value={currentLanguage}
-                    onChange={(event) => void i18next.changeLanguage(event.target.value)}
-                  >
-                    {languageOptions.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {t(option.labelKey)}
-                      </option>
-                    ))}
-                  </select>
+                    options={languageOptions.map((option) => ({
+                      value: option.value,
+                      label: t(option.labelKey)
+                    }))}
+                    onChange={(nextValue) => void i18next.changeLanguage(nextValue)}
+                  />
                 </div>
               </div>
             ) : activeSection === "appearance" ? (
@@ -289,19 +388,17 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
                       {t("settings.themeDescription")}
                     </div>
                   </div>
-                  <select
-                    className="glass-input h-8 min-w-[150px] px-2.5 text-[13px]"
+                  <SettingsSelect
+                    className="min-w-[150px]"
                     value={themePreference}
-                    onChange={(event) =>
-                      updateThemePreference(event.target.value as ThemePreference)
+                    options={themeOptions.map((option) => ({
+                      value: option.value,
+                      label: t(option.labelKey)
+                    }))}
+                    onChange={(nextValue) =>
+                      updateThemePreference(nextValue as ThemePreference)
                     }
-                  >
-                    {themeOptions.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {t(option.labelKey)}
-                      </option>
-                    ))}
-                  </select>
+                  />
                 </div>
                 <div className="flex min-h-12 items-center justify-between gap-4 border-b border-slate-100 px-4 py-3 last:border-b-0">
                   <div className="min-w-0">
@@ -416,19 +513,17 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
                           <span className="mb-1 block text-[12px] font-medium text-slate-600">
                             {t("settings.geminiModel")}
                           </span>
-                          <input
-                            className="glass-input h-8 w-full px-2.5 text-[13px]"
-                            list="gemini-model-options"
+                          <SettingsSelect
+                            className="w-full"
                             value={geminiSettings.model}
-                            onChange={(event) =>
-                              patchGeminiSettings({ model: event.target.value })
+                            options={geminiSettings.availableModels.map((model) => ({
+                              value: model,
+                              label: model
+                            }))}
+                            onChange={(nextValue) =>
+                              patchGeminiSettings({ model: nextValue })
                             }
                           />
-                          <datalist id="gemini-model-options">
-                            {geminiSettings.availableModels.map((model) => (
-                              <option key={model} value={model} />
-                            ))}
-                          </datalist>
                         </label>
                         <button
                           type="button"
@@ -523,37 +618,33 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
                         <span className="mb-1 block text-[12px] font-medium text-slate-600">
                           {t("settings.geminiImageResize")}
                         </span>
-                        <select
-                          className="glass-input h-8 w-full px-2.5 text-[13px]"
+                        <SettingsSelect
+                          className="w-full"
                           value={geminiSettings.imageResizeMode}
-                          onChange={(event) =>
-                            patchGeminiSettings({ imageResizeMode: event.target.value })
+                          options={resizeOptions.map((option) => ({
+                            value: option.value,
+                            label: t(option.labelKey)
+                          }))}
+                          onChange={(nextValue) =>
+                            patchGeminiSettings({ imageResizeMode: nextValue })
                           }
-                        >
-                          {resizeOptions.map((option) => (
-                            <option key={option.value} value={option.value}>
-                              {t(option.labelKey)}
-                            </option>
-                          ))}
-                        </select>
+                        />
                       </label>
                       <label className="block">
                         <span className="mb-1 block text-[12px] font-medium text-slate-600">
                           {t("settings.geminiImageFormat")}
                         </span>
-                        <select
-                          className="glass-input h-8 w-full px-2.5 text-[13px]"
+                        <SettingsSelect
+                          className="w-full"
                           value={geminiSettings.imageConvertFormat}
-                          onChange={(event) =>
-                            patchGeminiSettings({ imageConvertFormat: event.target.value })
+                          options={convertFormatOptions.map((option) => ({
+                            value: option.value,
+                            label: t(option.labelKey)
+                          }))}
+                          onChange={(nextValue) =>
+                            patchGeminiSettings({ imageConvertFormat: nextValue })
                           }
-                        >
-                          {convertFormatOptions.map((option) => (
-                            <option key={option.value} value={option.value}>
-                              {t(option.labelKey)}
-                            </option>
-                          ))}
-                        </select>
+                        />
                       </label>
                     </div>
                   </div>

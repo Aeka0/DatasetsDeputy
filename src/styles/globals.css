@@ -65,9 +65,11 @@ select {
 input,
 textarea,
 select,
-[contenteditable] {
-  user-select: auto;
-  -webkit-user-select: auto;
+[contenteditable],
+.selectable-text,
+.selectable-text * {
+  user-select: text !important;
+  -webkit-user-select: text !important;
 }
 
 button {
@@ -91,6 +93,10 @@ textarea {
 }
 
 ::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-corner {
   background: transparent;
 }
 
@@ -193,14 +199,65 @@ textarea {
   color: white;
 }
 
+.app-dropdown-menu {
+  isolation: isolate;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.62);
+  box-shadow:
+    0 10px 24px rgba(15, 23, 42, 0.12),
+    0 2px 8px rgba(15, 23, 42, 0.08);
+}
+
+.app-dropdown-backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.42), rgba(255, 255, 255, 0.2)),
+    rgba(255, 255, 255, 0.44);
+  backdrop-filter: blur(32px) saturate(1.45);
+  -webkit-backdrop-filter: blur(32px) saturate(1.45);
+  pointer-events: none;
+}
+
+.app-dropdown-item {
+  border-radius: var(--app-radius-md);
+}
+
+.table-column-resizer::after {
+  position: absolute;
+  right: 3px;
+  top: 18%;
+  bottom: 18%;
+  width: 1px;
+  background: rgba(31, 35, 40, 0.16);
+  content: "";
+  opacity: 0;
+  transition:
+    background-color 120ms ease,
+    opacity 120ms ease;
+}
+
+.table-column-resizer:hover::after,
+.table-column-resizing .table-column-resizer::after {
+  opacity: 1;
+}
+
+.table-column-resizing {
+  cursor: col-resize;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
 html[data-theme="dark"] {
   color: #e8e8e8;
   --app-bg: #141414;
   --app-bg-elevated: #202020;
   --app-bg-muted: #1a1a1a;
   --app-bg-subtle: #181818;
-  --app-border: rgba(255, 255, 255, 0.13);
-  --app-border-strong: rgba(255, 255, 255, 0.2);
+  --app-border: rgba(255, 255, 255, 0.09);
+  --app-border-strong: rgba(255, 255, 255, 0.14);
   --app-text: #e8e8e8;
   --app-text-muted: #b7b7b7;
   --app-text-subtle: #8f8f8f;
@@ -221,7 +278,7 @@ html[data-theme="dark"] ::selection {
 }
 
 html[data-theme="dark"] .fluent-shell {
-  border-color: #000000;
+  border-color: rgba(0, 0, 0, 0.52);
 }
 
 html[data-theme="dark"] .fluent-chrome,
@@ -261,11 +318,11 @@ html[data-theme="dark"] .border-slate-200,
 html[data-theme="dark"] .border-slate-300,
 html[data-theme="dark"] .border-slate-900,
 html[data-theme="dark"] .border-white\/70 {
-  border-color: rgba(255, 255, 255, 0.14);
+  border-color: rgba(255, 255, 255, 0.09);
 }
 
 html[data-theme="dark"] .border-slate-900 {
-  border-color: #e8e8e8;
+  border-color: rgba(255, 255, 255, 0.28);
 }
 
 html[data-theme="dark"] .text-black,
@@ -291,7 +348,7 @@ html[data-theme="dark"] [class*="text-black/40"] {
 }
 
 html[data-theme="dark"] .glass-input {
-  border-color: rgba(255, 255, 255, 0.16);
+  border-color: rgba(255, 255, 255, 0.11);
   background: #141414;
   color: #e8e8e8;
   caret-color: #e8e8e8;
@@ -302,8 +359,32 @@ html[data-theme="dark"] .glass-input::placeholder {
 }
 
 html[data-theme="dark"] .glass-input:focus {
-  border-color: rgba(255, 255, 255, 0.34);
-  outline-color: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.24);
+  outline-color: rgba(255, 255, 255, 0.08);
+}
+
+html[data-theme="dark"] .glass-input.dataset-cell-dirty {
+  border-color: #d97706;
+  background: rgba(120, 53, 15, 0.38);
+  color: #fde68a;
+  caret-color: #fde68a;
+}
+
+html[data-theme="dark"] .glass-input.dataset-cell-dirty:focus {
+  border-color: #f59e0b;
+  outline-color: rgba(245, 158, 11, 0.24);
+}
+
+html[data-theme="dark"] .glass-input.dataset-cell-saved {
+  border-color: #059669;
+  background: rgba(6, 78, 59, 0.4);
+  color: #a7f3d0;
+  caret-color: #a7f3d0;
+}
+
+html[data-theme="dark"] .glass-input.dataset-cell-saved:focus {
+  border-color: #10b981;
+  outline-color: rgba(16, 185, 129, 0.24);
 }
 
 html[data-theme="dark"] .shadow-lg,
@@ -323,12 +404,25 @@ html[data-theme="dark"] .title-menu-button:hover {
   color: #ffffff;
 }
 
-html[data-theme="dark"] .title-menu-button + div {
-  border-color: #000000;
+html[data-theme="dark"] .app-dropdown-menu {
+  background: rgba(36, 36, 36, 0.56);
+  box-shadow:
+    0 12px 28px rgba(0, 0, 0, 0.32),
+    0 2px 10px rgba(0, 0, 0, 0.2);
 }
 
-html[data-theme="dark"] .title-menu-button + div .bg-slate-200\/90 {
-  background-color: #000000;
+html[data-theme="dark"] .app-dropdown-backdrop {
+  background:
+    linear-gradient(180deg, rgba(58, 58, 58, 0.34), rgba(22, 22, 22, 0.2)),
+    rgba(32, 32, 32, 0.42);
+}
+
+html[data-theme="dark"] .app-dropdown-separator {
+  background-color: rgba(255, 255, 255, 0.08);
+}
+
+html[data-theme="dark"] .table-column-resizer::after {
+  background: rgba(255, 255, 255, 0.16);
 }
 
 html[data-theme="dark"] .hover\:bg-slate-50:hover,

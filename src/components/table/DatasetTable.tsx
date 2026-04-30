@@ -1,6 +1,8 @@
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { Check, ChevronDown, ImageIcon, Save } from "lucide-react";
+import { Check, ChevronDown, ImageIcon, LoaderCircle, Save } from "lucide-react";
+import type { PointerEvent as ReactPointerEvent } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 
 import { cn } from "../../lib/cn";
@@ -10,9 +12,46 @@ import type { Annotation, DatasetImage } from "../../types";
 
 const rowHeight = 120;
 type CellKind = "annotation" | "instruction";
+type TableColumnKey = "filename" | "preview" | "annotation" | "instruction";
+
+const defaultColumnWidths: Record<TableColumnKey, number> = {
+  filename: 200,
+  preview: 140,
+  annotation: 520,
+  instruction: 300
+};
+
+const minColumnWidths: Record<TableColumnKey, number> = {
+  filename: 120,
+  preview: 120,
+  annotation: 240,
+  instruction: 220
+};
 
 function createCellKey(imageId: number, kind: CellKind) {
   return `${imageId}:${kind}`;
+}
+
+function loadColumnWidths() {
+  try {
+    const raw = window.localStorage.getItem("datasets-deputy:table-column-widths");
+    if (!raw) return defaultColumnWidths;
+    const parsed = JSON.parse(raw) as Partial<Record<TableColumnKey, number>>;
+    return {
+      filename: Math.max(parsed.filename ?? defaultColumnWidths.filename, minColumnWidths.filename),
+      preview: Math.max(parsed.preview ?? defaultColumnWidths.preview, minColumnWidths.preview),
+      annotation: Math.max(
+        parsed.annotation ?? defaultColumnWidths.annotation,
+        minColumnWidths.annotation
+      ),
+      instruction: Math.max(
+        parsed.instruction ?? defaultColumnWidths.instruction,
+        minColumnWidths.instruction
+      )
+    };
+  } catch {
+    return defaultColumnWidths;
+  }
 }
 
 function getAnnotationForProfile(image: DatasetImage, profileId: number) {
@@ -55,7 +94,9 @@ export function DatasetTable({ images }: { images: DatasetImage[] }) {
     tableAnnotationDrafts: annotationDrafts,
     tableInstructionDrafts: instructionDrafts,
     tableSavedCellKeys,
+    annotatingImageIds,
     selectImage,
+    openImagePreview,
     setActiveProfile,
     resetTableDrafts,
     mergeTableDrafts,
@@ -66,9 +107,14 @@ export function DatasetTable({ images }: { images: DatasetImage[] }) {
     saveInstruction
   } = useDatasetStore();
   const parentRef = useRef<HTMLDivElement>(null);
+  const headerScrollRef = useRef<HTMLDivElement>(null);
+  const profileButtonRef = useRef<HTMLButtonElement>(null);
+  const profileMenuRef = useRef<HTMLDivElement>(null);
   const [instructionMode, setInstructionMode] = useState(false);
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
+  const [profileMenuPosition, setProfileMenuPosition] = useState({ left: 0, top: 0 });
   const [isSaving, setIsSaving] = useState(false);
+  const [columnWidths, setColumnWidths] = useState(loadColumnWidths);
   const isFolderMode = images.length > 0 && images.every((image) => image.sourceKind === "folder");
   const availableProfileIds = useMemo(
     () => new Set(images.flatMap((image) => image.annotations.map((annotation) => annotation.profileId))),
@@ -105,24 +151,74 @@ export function DatasetTable({ images }: { images: DatasetImage[] }) {
   useEffect(() => {
     if (!profileMenuOpen) return;
 
-    const close = () => setProfileMenuOpen(false);
+    const close = (event: MouseEvent) => {
+      if (
+        event.target instanceof Node &&
+        (profileMenuRef.current?.contains(event.target) ||
+          profileButtonRef.current?.contains(event.target))
+      ) {
+        return;
+      }
+      setProfileMenuOpen(false);
+    };
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
-        close();
+        setProfileMenuOpen(false);
       }
     };
 
-    window.addEventListener("click", close);
+    window.addEventListener("mousedown", close);
     window.addEventListener("keydown", closeOnEscape);
     return () => {
-      window.removeEventListener("click", close);
+      window.removeEventListener("mousedown", close);
       window.removeEventListener("keydown", closeOnEscape);
     };
   }, [profileMenuOpen]);
 
+  useEffect(() => {
+    window.localStorage.setItem(
+      "datasets-deputy:table-column-widths",
+      JSON.stringify(columnWidths)
+    );
+  }, [columnWidths]);
+
+  const resizeColumn = (column: TableColumnKey, event: ReactPointerEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const startX = event.clientX;
+    const startWidth = columnWidths[column];
+
+    const move = (moveEvent: PointerEvent) => {
+      const nextWidth = Math.max(
+        minColumnWidths[column],
+        Math.round(startWidth + moveEvent.clientX - startX)
+      );
+      setColumnWidths((current) => ({ ...current, [column]: nextWidth }));
+    };
+
+    const stop = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", stop);
+      document.body.classList.remove("table-column-resizing");
+    };
+
+    document.body.classList.add("table-column-resizing");
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", stop, { once: true });
+  };
+
+  const syncHeaderScroll = () => {
+    if (headerScrollRef.current && parentRef.current) {
+      headerScrollRef.current.scrollLeft = parentRef.current.scrollLeft;
+    }
+  };
+
   const gridTemplateColumns = instructionMode
-    ? "200px 140px minmax(360px, 1fr) 300px"
-    : "200px 140px minmax(360px, 1fr)";
+    ? `${columnWidths.filename}px ${columnWidths.preview}px ${columnWidths.annotation}px ${columnWidths.instruction}px`
+    : `${columnWidths.filename}px ${columnWidths.preview}px ${columnWidths.annotation}px`;
+  const tableWidth = instructionMode
+    ? columnWidths.filename + columnWidths.preview + columnWidths.annotation + columnWidths.instruction
+    : columnWidths.filename + columnWidths.preview + columnWidths.annotation;
 
   const virtualizer = useVirtualizer({
     count: images.length,
@@ -209,6 +305,15 @@ export function DatasetTable({ images }: { images: DatasetImage[] }) {
     return "";
   };
 
+  const renderResizeHandle = (column: TableColumnKey) => (
+    <div
+      className="table-column-resizer no-drag absolute right-0 top-0 h-full w-2 cursor-col-resize"
+      role="separator"
+      aria-orientation="vertical"
+      onPointerDown={(event) => resizeColumn(column, event)}
+    />
+  );
+
   if (images.length === 0 || availableProfiles.length === 0 || !selectedProfileId) {
     return (
       <div className="flex flex-1 flex-col items-center justify-center rounded-lg border border-slate-200 bg-slate-50 p-12 text-center">
@@ -254,69 +359,64 @@ export function DatasetTable({ images }: { images: DatasetImage[] }) {
         </div>
       </div>
 
-      <div
-        className="grid border-b border-slate-200 bg-slate-50 px-3 py-2 text-[13px] font-normal text-slate-600"
-        style={{ gridTemplateColumns }}
-      >
-        <div className="px-2">{t("table.filename")}</div>
-        <div className="px-2">{t("table.preview")}</div>
-        <div className="relative px-2">
-          {isFolderMode ? (
-            <div className="px-1">{t("table.annotationData")}</div>
-          ) : (
-            <button
-              className="no-drag flex max-w-full items-center gap-1.5 rounded px-1 text-left transition hover:bg-slate-200/70 hover:text-slate-900"
-              onClick={(event) => {
-                event.stopPropagation();
-                setProfileMenuOpen((open) => !open);
-              }}
-            >
-              <span>{t("table.annotationData")}</span>
-              <span className="truncate text-slate-400">
-                {selectedProfile ? `(${selectedProfile.name})` : ""}
-              </span>
-              <ChevronDown size={14} className="shrink-0 text-slate-400" />
-            </button>
-          )}
+      <div ref={headerScrollRef} className="overflow-hidden border-b border-slate-200 bg-slate-50">
+        <div
+          className="grid min-w-full px-3 py-2 text-[13px] font-normal text-slate-600"
+          style={{ gridTemplateColumns, width: `${tableWidth}px` }}
+        >
+          <div className="relative px-2">
+            {t("table.filename")}
+            {renderResizeHandle("filename")}
+          </div>
+          <div className="relative px-2">
+            {t("table.preview")}
+            {renderResizeHandle("preview")}
+          </div>
+          <div className="relative px-2">
+            {isFolderMode ? (
+              <div className="px-1">{t("table.annotationData")}</div>
+            ) : (
+              <button
+                ref={profileButtonRef}
+                className="no-drag flex max-w-full items-center gap-1.5 rounded px-1 text-left transition hover:bg-slate-200/70 hover:text-slate-900"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  const rect = event.currentTarget.getBoundingClientRect();
+                  setProfileMenuPosition({
+                    left: Math.min(rect.left, window.innerWidth - 232),
+                    top: rect.bottom + 6
+                  });
+                  setProfileMenuOpen((open) => !open);
+                }}
+              >
+                <span>{t("table.annotationData")}</span>
+                <span className="truncate text-slate-400">
+                  {selectedProfile ? `(${selectedProfile.name})` : ""}
+                </span>
+                <ChevronDown size={14} className="shrink-0 text-slate-400" />
+              </button>
+            )}
 
-          {profileMenuOpen && !isFolderMode ? (
-            <div
-              className="no-drag absolute left-2 top-7 z-30 min-w-56 rounded-md border border-slate-200 bg-white p-1 shadow-lg"
-              onClick={(event) => event.stopPropagation()}
-            >
-              {availableProfiles.map((profile) => {
-                const isSelectedProfile = profile.id === selectedProfileId;
-
-                return (
-                  <button
-                    key={profile.id}
-                    className={cn(
-                      "flex h-8 w-full items-center gap-2 rounded px-2 text-left text-[13px] transition hover:bg-slate-100",
-                      isSelectedProfile ? "text-slate-950" : "text-slate-600"
-                    )}
-                    onClick={() => {
-                      setActiveProfile(profile.id);
-                      setProfileMenuOpen(false);
-                    }}
-                  >
-                    <span className="flex w-4 shrink-0 justify-center">
-                      {isSelectedProfile ? <Check size={14} /> : null}
-                    </span>
-                    <span className="min-w-0 flex-1 truncate">{profile.name}</span>
-                  </button>
-                );
-              })}
+            {renderResizeHandle("annotation")}
+          </div>
+          {instructionMode ? (
+            <div className="relative px-2">
+              {t("table.instruction")}
+              {renderResizeHandle("instruction")}
             </div>
           ) : null}
         </div>
-        {instructionMode ? <div className="px-2">{t("table.instruction")}</div> : null}
       </div>
 
-      <div ref={parentRef} className="min-h-0 flex-1 overflow-auto">
-        <div className="relative w-full" style={{ height: `${virtualizer.getTotalSize()}px` }}>
+      <div ref={parentRef} className="min-h-0 flex-1 overflow-auto" onScroll={syncHeaderScroll}>
+        <div
+          className="relative min-w-full"
+          style={{ height: `${virtualizer.getTotalSize()}px`, width: `${tableWidth}px` }}
+        >
           {virtualizer.getVirtualItems().map((virtualRow) => {
             const image = images[virtualRow.index];
             const isSelected = image.id === selectedImageId;
+            const isAnnotating = annotatingImageIds.includes(image.id);
 
             return (
               <div
@@ -342,7 +442,7 @@ export function DatasetTable({ images }: { images: DatasetImage[] }) {
 
                 <button
                   className="no-drag flex items-center justify-center px-2"
-                  onClick={() => selectImage(image.id)}
+                  onClick={() => openImagePreview(image.id)}
                 >
                   <div className="flex h-[100px] w-[116px] items-center justify-center overflow-hidden bg-slate-100">
                     {image.thumbnailPath ? (
@@ -361,16 +461,22 @@ export function DatasetTable({ images }: { images: DatasetImage[] }) {
                   </div>
                 </button>
 
-                <div className="px-2">
+                <div className="relative px-2">
                   <textarea
                     value={annotationDrafts[image.id] ?? ""}
                     onChange={(event) => updateAnnotationDraft(image.id, event.target.value)}
                     className={cn(
-                      "glass-input h-[100px] w-full resize-none rounded-md p-2 text-[13px] leading-5",
+                      "glass-input h-[100px] w-full resize-none rounded-md p-2 text-[13px] leading-5 disabled:cursor-wait disabled:opacity-80",
                       getCellStateClass(image.id, "annotation")
                     )}
+                    disabled={isAnnotating}
                     spellCheck={false}
                   />
+                  {isAnnotating ? (
+                    <div className="pointer-events-none absolute inset-2 flex items-center justify-center rounded-md bg-white/54">
+                      <LoaderCircle className="h-5 w-5 animate-spin text-slate-500" />
+                    </div>
+                  ) : null}
                 </div>
 
                 {instructionMode ? (
@@ -391,6 +497,41 @@ export function DatasetTable({ images }: { images: DatasetImage[] }) {
           })}
         </div>
       </div>
+
+      {profileMenuOpen && !isFolderMode
+        ? createPortal(
+        <div
+          ref={profileMenuRef}
+          className="app-dropdown-menu no-drag fixed z-50 min-w-56 rounded-lg py-2"
+          style={{ left: profileMenuPosition.left, top: profileMenuPosition.top }}
+        >
+          <div className="app-dropdown-backdrop" />
+          {availableProfiles.map((profile) => {
+            const isSelectedProfile = profile.id === selectedProfileId;
+
+            return (
+              <button
+                key={profile.id}
+                className={cn(
+                  "app-dropdown-item flex h-9 w-full items-center gap-2 px-3.5 text-left text-[13px] font-medium transition hover:bg-slate-100",
+                  isSelectedProfile ? "text-slate-950" : "text-slate-600"
+                )}
+                onClick={() => {
+                  setActiveProfile(profile.id);
+                  setProfileMenuOpen(false);
+                }}
+              >
+                <span className="flex w-4 shrink-0 justify-center">
+                  {isSelectedProfile ? <Check size={14} /> : null}
+                </span>
+                <span className="min-w-0 flex-1 truncate">{profile.name}</span>
+              </button>
+            );
+          })}
+        </div>,
+          document.body
+        )
+        : null}
     </div>
   );
 }

@@ -1,4 +1,4 @@
-import { Save, X } from "lucide-react";
+import { LoaderCircle, Save, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -13,15 +13,16 @@ export function DetailPanel() {
     images,
     profiles,
     activeProfileId,
-    selectedImageId,
-    selectImage,
+    previewImageId,
+    annotatingImageIds,
+    closeImagePreview,
     setActiveProfile,
     saveAnnotation,
     saveInstruction
   } = useDatasetStore();
   const selectedImage = useMemo(
-    () => images.find((image) => image.id === selectedImageId),
-    [images, selectedImageId]
+    () => images.find((image) => image.id === previewImageId),
+    [images, previewImageId]
   );
   const availableProfileIds = useMemo(
     () => new Set(selectedImage?.annotations.map((annotation) => annotation.profileId) ?? []),
@@ -37,6 +38,7 @@ export function DetailPanel() {
   const selectedAnnotation = selectedImage?.annotations.find(
     (annotation) => annotation.profileId === selectedProfileId
   );
+  const isAnnotating = selectedImage ? annotatingImageIds.includes(selectedImage.id) : false;
   const [content, setContent] = useState("");
   const [instruction, setInstruction] = useState("");
 
@@ -60,7 +62,7 @@ export function DetailPanel() {
           <h2 className="m-0 text-lg font-semibold">{t("detail.title")}</h2>
           <p className="mt-1 text-sm text-white/46">{selectedImage.fileName}</p>
         </div>
-        <Button variant="ghost" className="h-9 w-9 p-0" onClick={() => selectImage(undefined)}>
+        <Button variant="ghost" className="h-9 w-9 p-0" onClick={closeImagePreview}>
           <X size={16} />
         </Button>
       </div>
@@ -99,11 +101,19 @@ export function DetailPanel() {
           <label className="text-xs uppercase tracking-[0.16em] text-white/42">
             {t("detail.annotationData")}
           </label>
-          <textarea
-            value={content}
-            onChange={(event) => setContent(event.target.value)}
-            className="glass-input min-h-32 w-full resize-none rounded-2xl p-3 text-sm"
-          />
+          <div className="relative">
+            <textarea
+              value={content}
+              onChange={(event) => setContent(event.target.value)}
+              className="glass-input min-h-32 w-full resize-none rounded-2xl p-3 text-sm disabled:cursor-wait disabled:opacity-80"
+              disabled={isAnnotating}
+            />
+            {isAnnotating ? (
+              <div className="pointer-events-none absolute inset-0 flex items-center justify-center rounded-2xl bg-white/54">
+                <LoaderCircle className="h-5 w-5 animate-spin text-slate-500" />
+              </div>
+            ) : null}
+          </div>
         </section>
 
         <section className="space-y-2">
@@ -145,7 +155,7 @@ export function DetailPanel() {
       <div className="border-t border-white/10 p-5">
         <Button
           className="w-full"
-          disabled={!selectedProfileId}
+          disabled={!selectedProfileId || isAnnotating}
           onClick={() => {
             if (!selectedProfileId) return;
             void saveAnnotation(selectedImage.id, selectedProfileId, content);

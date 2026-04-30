@@ -305,20 +305,32 @@ function flattenProjects(projects: DatasetProject[]): DatasetProject[] {
 
 type WorkspaceTab = "overview" | "grid" | "table";
 type PendingImportKind = "database" | "folder";
+type AppView = "workspace" | "initial" | "logs";
+
+export interface AppLogEntry {
+  id: number;
+  timestamp: string;
+  level: "info" | "warning" | "error";
+  message: string;
+}
 
 interface DatasetState {
   images: DatasetImage[];
   projects: DatasetProject[];
   profiles: AnnotationProfile[];
   presets: ExportPreset[];
+  appView: AppView;
   workspaceTab: WorkspaceTab;
+  appLogs: AppLogEntry[];
   selectedProjectId?: string;
   selectedImageId?: number;
+  previewImageId?: number;
   search: string;
   tableDraftProfileId?: number;
   tableAnnotationDrafts: Record<number, string>;
   tableInstructionDrafts: Record<number, string>;
   tableSavedCellKeys: string[];
+  annotatingImageIds: number[];
   activeProfileId?: number;
   isLoading: boolean;
   lastImport?: ImportSummary;
@@ -341,9 +353,14 @@ interface DatasetState {
   removeDataset: (project: DatasetProject) => Promise<void>;
   renameDatasetFolder: (project: DatasetProject, name: string) => Promise<void>;
   exportDataset: (format: "txt_per_image" | "jsonl") => Promise<void>;
+  setAppView: (view: AppView) => void;
   setWorkspaceTab: (tab: WorkspaceTab) => void;
+  addAppLog: (message: string, level?: AppLogEntry["level"]) => void;
+  clearAppLogs: () => void;
   selectProject: (id?: string) => void;
   selectImage: (id?: number) => void;
+  openImagePreview: (id: number) => void;
+  closeImagePreview: () => void;
   setSearch: (search: string) => void;
   resetTableDrafts: (
     profileId: number,
@@ -357,6 +374,8 @@ interface DatasetState {
   updateTableAnnotationDraft: (imageId: number, value: string) => void;
   updateTableInstructionDraft: (imageId: number, value: string) => void;
   markTableCellSaved: (key: string) => void;
+  clearTableSavedCellMarks: () => void;
+  markImageAnnotating: (imageId: number, annotating: boolean) => void;
   setActiveProfile: (id?: number) => void;
   saveAnnotation: (imageId: number, profileId: number, content: string) => Promise<void>;
   saveInstruction: (imageId: number, profileId: number, instruction: string) => Promise<void>;
@@ -382,14 +401,18 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
       format: "jsonl"
     }
   ],
+  appView: "initial",
   workspaceTab: "overview",
+  appLogs: [],
   selectedProjectId: undefined,
   selectedImageId: undefined,
+  previewImageId: undefined,
   search: "",
   tableDraftProfileId: undefined,
   tableAnnotationDrafts: {},
   tableInstructionDrafts: {},
   tableSavedCellKeys: [],
+  annotatingImageIds: [],
   activeProfileId: sampleProfiles[0]?.id,
   isLoading: false,
   annotationType: "",
@@ -418,6 +441,9 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
       });
 
       if (progress.done && progress.report) {
+        get().addAppLog(
+          `Import completed: imported ${progress.imported}, skipped ${progress.skipped}, failed ${progress.failed}.`
+        );
         const [images, profiles] = await Promise.all([
           invokeCommand<DatasetImage[]>("list_images"),
           invokeCommand<AnnotationProfile[]>("list_annotation_profiles")
@@ -435,8 +461,10 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
           importProgress: undefined,
           pendingImportKind: undefined,
           showImportWizard: false,
+          appView: "workspace",
           selectedProjectId: undefined,
-          selectedImageId: undefined
+          selectedImageId: undefined,
+          previewImageId: undefined
         });
       }
     });
@@ -447,6 +475,7 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
     }
 
     set({ isLoading: true });
+    get().addAppLog("Refreshing dataset state.");
     try {
       const [images, profiles] = await Promise.all([
         invokeCommand<DatasetImage[]>("list_images"),
@@ -456,25 +485,36 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
         images,
         profiles,
         projects: createProjectTree(images),
+        appView: "initial",
         selectedProjectId: undefined,
         selectedImageId: undefined,
+        previewImageId: undefined,
         activeProfileId: profiles[0]?.id
       });
+      get().addAppLog(`Refresh completed: loaded ${images.length} images and ${profiles.length} profiles.`);
     } finally {
       set({ isLoading: false });
     }
   },
   openImportWizard: () =>
-    set({
+    {
+      get().addAppLog("Import wizard opened.");
+      set({
       showImportWizard: true,
+      appView: "workspace",
       importPreview: undefined,
       importProgress: undefined,
       importReport: undefined,
       pendingImportKind: undefined,
       selectedProjectId: undefined,
-      selectedImageId: undefined
-    }),
-  closeImportWizard: () => set({ showImportWizard: false }),
+      selectedImageId: undefined,
+      previewImageId: undefined
+      });
+    },
+  closeImportWizard: () => {
+    get().addAppLog("Import wizard closed.");
+    set({ showImportWizard: false });
+  },
   importFolder: async () => {
     if (!hasTauriRuntime()) {
       return;
@@ -486,21 +526,29 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
       importProgress: undefined,
       importReport: undefined
     });
+    get().addAppLog("Folder import preparation started.");
     try {
       const preview = await invokeCommand<ImportPreview>("prepare_import_folder");
+      get().addAppLog(
+        `Folder import preview ready: ${preview.imageCount} images found, ${preview.annotatedImageCount} already annotated.`
+      );
       set({
         importPreview: preview,
+        appView: "workspace",
         showImportWizard: false,
         pendingImportKind: undefined,
         annotationType: preview.annotatedImageCount > 0 ? get().annotationType : "",
         selectedProjectId: undefined,
-        selectedImageId: undefined
+        selectedImageId: undefined,
+        previewImageId: undefined
       });
     } catch (error) {
       const payload = error as { code?: string };
       if (payload.code !== "dialog_cancelled") {
+        get().addAppLog(`Folder import preparation failed: ${String(error)}`, "error");
         throw error;
       }
+      get().addAppLog("Folder import preparation cancelled by user.", "warning");
     } finally {
       set({ isLoading: false });
     }
@@ -517,6 +565,7 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
       importReport: undefined,
       pendingImportKind: "folder"
     });
+    get().addAppLog("Workspace folder mount started.");
     try {
       await invokeCommand<void>("mount_folder_dataset");
       set({
@@ -538,15 +587,18 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
       ]);
       const projects = createProjectTree(images);
       const firstFolder = projects.find((project) => project.sourceKind === "folder");
+      get().addAppLog(`Workspace folder mounted: loaded ${images.length} images.`);
       set({
         images,
         profiles,
         projects,
+        appView: "workspace",
         showImportWizard: false,
         importProgress: undefined,
         pendingImportKind: undefined,
         selectedProjectId: firstFolder?.id,
         selectedImageId: undefined,
+        previewImageId: undefined,
         activeProfileId: firstFolder?.datasetId
           ? profiles.find((profile) => profile.datasetId === firstFolder.datasetId)?.id
           : profiles[0]?.id
@@ -555,8 +607,10 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
       const payload = error as { code?: string };
       set({ importProgress: undefined, pendingImportKind: undefined });
       if (payload.code !== "dialog_cancelled") {
+        get().addAppLog(`Workspace folder mount failed: ${String(error)}`, "error");
         throw error;
       }
+      get().addAppLog("Workspace folder mount cancelled by user.", "warning");
     } finally {
       set({ isLoading: false, importProgress: undefined, pendingImportKind: undefined });
     }
@@ -568,6 +622,7 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
     }
 
     await get().initImportEvents();
+    get().addAppLog(`Prepared import started: ${preview.folderPath}`);
     set({
       isLoading: true,
       importPreview: undefined,
@@ -590,6 +645,7 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
       });
     } catch (error) {
       set({ isLoading: false, importProgress: undefined, pendingImportKind: undefined });
+      get().addAppLog(`Prepared import failed: ${String(error)}`, "error");
       throw error;
     }
   },
@@ -600,6 +656,7 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
     }
 
     set({ isLoading: true });
+    get().addAppLog("Browsing imported dataset.");
     try {
       const [images, profiles] = await Promise.all([
         invokeCommand<DatasetImage[]>("list_images"),
@@ -616,11 +673,14 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
         images,
         profiles,
         projects,
+        appView: "workspace",
         selectedProjectId: selectedProject?.id,
         selectedImageId: undefined,
+        previewImageId: undefined,
         activeProfileId,
         importReport: undefined
       });
+      get().addAppLog(`Imported dataset opened: loaded ${images.length} images.`);
     } finally {
       set({ isLoading: false });
     }
@@ -646,8 +706,10 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
         images,
         profiles,
         projects: createProjectTree(images),
+        appView: "initial",
         selectedProjectId: undefined,
         selectedImageId: undefined,
+        previewImageId: undefined,
         activeProfileId: profiles[0]?.id,
         importPreview: undefined,
         importProgress: undefined,
@@ -671,13 +733,18 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
         images,
         profiles,
         projects: createProjectTree(images),
+        appView: "workspace",
         activeProfileId,
         selectedProjectId:
           state.selectedProjectId === project.id ? undefined : state.selectedProjectId,
         selectedImageId:
           state.selectedImageId && ids.has(state.selectedImageId)
             ? undefined
-            : state.selectedImageId
+            : state.selectedImageId,
+        previewImageId:
+          state.previewImageId && ids.has(state.previewImageId)
+            ? undefined
+            : state.previewImageId
       };
     });
   },
@@ -708,6 +775,7 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
         projects: createProjectTree(images),
         selectedProjectId: renameProjectIdPrefix(state.selectedProjectId, project.path, newPath),
         selectedImageId: state.selectedImageId,
+        previewImageId: state.previewImageId,
         activeProfileId: state.activeProfileId
       }));
       return;
@@ -749,7 +817,21 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
       }
     });
   },
-  setWorkspaceTab: (tab) => set({ workspaceTab: tab }),
+  setAppView: (view) => set({ appView: view, previewImageId: undefined }),
+  setWorkspaceTab: (tab) => set({ workspaceTab: tab, appView: "workspace" }),
+  addAppLog: (message, level = "info") =>
+    set((state) => ({
+      appLogs: [
+        ...state.appLogs,
+        {
+          id: Date.now() + state.appLogs.length,
+          timestamp: new Date().toISOString(),
+          level,
+          message
+        }
+      ].slice(-500)
+    })),
+  clearAppLogs: () => set({ appLogs: [] }),
   selectProject: (id) =>
     set((state) => {
       const project = flattenProjects(state.projects).find((project) => project.id === id);
@@ -759,8 +841,10 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
         : state.activeProfileId;
 
       return {
+        appView: "workspace",
         selectedProjectId: id,
         selectedImageId: undefined,
+        previewImageId: undefined,
         activeProfileId,
         showImportWizard: state.importProgress ? state.showImportWizard : false,
         importPreview: state.importProgress ? state.importPreview : undefined,
@@ -768,6 +852,8 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
       };
     }),
   selectImage: (id) => set({ selectedImageId: id }),
+  openImagePreview: (id) => set({ appView: "workspace", selectedImageId: id, previewImageId: id }),
+  closeImagePreview: () => set({ previewImageId: undefined }),
   setSearch: (search) => set({ search }),
   resetTableDrafts: (profileId, annotationDrafts, instructionDrafts) =>
     set({
@@ -813,6 +899,15 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
         ? state.tableSavedCellKeys
         : [...state.tableSavedCellKeys, key]
     })),
+  clearTableSavedCellMarks: () => set({ tableSavedCellKeys: [] }),
+  markImageAnnotating: (imageId, annotating) =>
+    set((state) => ({
+      annotatingImageIds: annotating
+        ? state.annotatingImageIds.includes(imageId)
+          ? state.annotatingImageIds
+          : [...state.annotatingImageIds, imageId]
+        : state.annotatingImageIds.filter((id) => id !== imageId)
+    })),
   setActiveProfile: (id) => set({ activeProfileId: id }),
   saveAnnotation: async (imageId, profileId, content) => {
     if (hasTauriRuntime()) {
@@ -834,6 +929,7 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
         images,
         projects: createProjectTree(images),
         selectedImageId: state.selectedImageId,
+        previewImageId: state.previewImageId,
         selectedProjectId: state.selectedProjectId
       }));
       return;
@@ -892,6 +988,7 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
         images,
         projects: createProjectTree(images),
         selectedImageId: state.selectedImageId,
+        previewImageId: state.previewImageId,
         selectedProjectId: state.selectedProjectId
       }));
       return;
@@ -967,6 +1064,7 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
         profiles,
         projects: createProjectTree(images),
         selectedImageId: current.selectedImageId,
+        previewImageId: current.previewImageId,
         selectedProjectId: current.selectedProjectId
       }));
       return profileId;
@@ -1027,6 +1125,7 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
         images,
         projects: createProjectTree(images),
         selectedImageId,
+        previewImageId: state.previewImageId,
         selectedProjectId: state.selectedProjectId
       }));
       return;

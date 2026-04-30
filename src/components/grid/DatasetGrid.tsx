@@ -13,7 +13,7 @@ const cardTextHeight = 52;
 
 export function DatasetGrid({ images }: { images: DatasetImage[] }) {
   const { t } = useTranslation();
-  const selectImage = useDatasetStore((state) => state.selectImage);
+  const openImagePreview = useDatasetStore((state) => state.openImagePreview);
   const parentRef = useRef<HTMLDivElement>(null);
   const [containerWidth, setContainerWidth] = useState(0);
   const datasetAnnotationTypeCount = useMemo(
@@ -85,7 +85,7 @@ export function DatasetGrid({ images }: { images: DatasetImage[] }) {
                 <button
                   key={image.id}
                   className="no-drag group min-w-0 overflow-hidden rounded-lg border border-slate-200 bg-white p-1.5 text-left transition hover:border-slate-300 hover:bg-slate-50"
-                  onClick={() => selectImage(image.id)}
+                  onClick={() => openImagePreview(image.id)}
                 >
                   <div className="flex aspect-square items-center justify-center overflow-hidden rounded-md bg-slate-100">
                     {image.thumbnailPath ? (

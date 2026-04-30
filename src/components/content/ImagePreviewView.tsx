@@ -1,4 +1,4 @@
-import { ArrowLeft, FileText, Plus, Save, Trash2 } from "lucide-react";
+import { ArrowLeft, FileText, LoaderCircle, Plus, Save, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -18,15 +18,16 @@ export function ImagePreviewView() {
   const {
     images,
     profiles,
-    selectedImageId,
-    selectImage,
+    previewImageId,
+    annotatingImageIds,
+    closeImagePreview,
     saveAnnotation,
     createAnnotationProfile,
     clearAnnotation
   } = useDatasetStore();
   const selectedImage = useMemo(
-    () => images.find((image) => image.id === selectedImageId),
-    [images, selectedImageId]
+    () => images.find((image) => image.id === previewImageId),
+    [images, previewImageId]
   );
   const [selectedAnnotationId, setSelectedAnnotationId] = useState<number | "new">("new");
   const [profileId, setProfileId] = useState<number>(profiles[0]?.id ?? 1);
@@ -89,6 +90,7 @@ export function ImagePreviewView() {
   }
 
   const isFolderImage = selectedImage.sourceKind === "folder";
+  const isAnnotating = annotatingImageIds.includes(selectedImage.id);
   const profileById = new Map(profiles.map((profile) => [profile.id, profile]));
   const previewSrc = resolveAssetSrc(selectedImage.path) ?? resolveAssetSrc(selectedImage.thumbnailPath);
   const selectedImageProfileIds = new Set(
@@ -127,7 +129,7 @@ export function ImagePreviewView() {
       <div className="mb-3 flex h-10 items-center gap-3 border-b border-slate-100 pb-3">
         <button
           className="no-drag inline-flex h-8 items-center gap-2 rounded-md border border-slate-200 bg-white px-3 text-[13px] text-slate-700 transition hover:bg-slate-50"
-          onClick={() => selectImage(undefined)}
+          onClick={closeImagePreview}
         >
           <ArrowLeft size={16} />
           {t("actions.back")}
@@ -281,16 +283,25 @@ export function ImagePreviewView() {
             )}
 
             <label className="mb-1 block text-[12px] font-medium text-slate-600">{t("image.content")}</label>
-            <textarea
-              value={content}
-              onChange={(event) => setContent(event.target.value)}
-              className="glass-input min-h-0 flex-1 resize-none p-2 text-[13px]"
-            />
+            <div className="relative min-h-0 flex-1">
+              <textarea
+                value={content}
+                onChange={(event) => setContent(event.target.value)}
+                className="glass-input h-full w-full resize-none p-2 text-[13px] disabled:cursor-wait disabled:opacity-80"
+                disabled={isAnnotating}
+              />
+              {isAnnotating ? (
+                <div className="pointer-events-none absolute inset-0 flex items-center justify-center rounded-md bg-white/54">
+                  <LoaderCircle className="h-5 w-5 animate-spin text-slate-500" />
+                </div>
+              ) : null}
+            </div>
 
             <div className="mt-3 flex gap-2">
               <button
                 className="no-drag inline-flex h-8 flex-1 items-center justify-center gap-2 rounded-md border border-slate-900 bg-slate-900 px-3 text-[13px] font-medium text-white transition hover:bg-slate-800"
                 onClick={() => void saveAnnotation(selectedImage.id, profileId, content)}
+                disabled={isAnnotating}
               >
                 <Save size={15} />
                 {t("image.save")}
