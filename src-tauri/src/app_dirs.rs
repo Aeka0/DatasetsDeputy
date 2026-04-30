@@ -24,6 +24,7 @@ pub struct AppDirs {
     pub log: PathBuf,
     pub temp: PathBuf,
     pub dataset_databases: PathBuf,
+    pub folder_registry: PathBuf,
 }
 
 pub fn ensure_release_dirs<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> AppResult<AppDirs> {
@@ -45,6 +46,7 @@ pub fn ensure_release_dirs<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> AppR
         log: root.join("log"),
         temp: root.join("temp"),
         dataset_databases: root.join("runtime").join("datasets"),
+        folder_registry: root.join("config").join("folder-datasets.json"),
         root,
     };
 
@@ -97,14 +99,6 @@ fn sanitize_file_stem(value: &str) -> String {
             }
         })
         .collect()
-}
-
-#[allow(dead_code)]
-pub fn dataset_thumbnail_dir(root: &Path, project_name: &str) -> PathBuf {
-    root.join("datasets")
-        .join(project_name)
-        .join("cache")
-        .join("thumbnails")
 }
 
 pub fn init_logging(dirs: &AppDirs) -> AppResult<()> {

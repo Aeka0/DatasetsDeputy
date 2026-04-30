@@ -13,7 +13,7 @@ export function TopToolbar() {
     search,
     activeProfileId,
     isLoading,
-    importFolder,
+    openImportWizard,
     exportDataset,
     setSearch,
     setActiveProfile
@@ -49,9 +49,9 @@ export function TopToolbar() {
         ))}
       </select>
 
-      <Button variant="ghost" onClick={() => void importFolder()} disabled={isLoading}>
+      <Button variant="ghost" onClick={openImportWizard} disabled={isLoading}>
         <FolderOpen size={16} />
-        {t("actions.importFolder")}
+        导入数据集...
       </Button>
       <Button variant="ghost">
         <Plus size={16} />

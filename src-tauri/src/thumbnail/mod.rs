@@ -16,11 +16,20 @@ pub fn create_thumbnail(
     hash: &str,
 ) -> AppResult<ThumbnailResult> {
     std::fs::create_dir_all(target_dir)?;
+    let target = target_dir.join(format!("{hash}.webp"));
+
+    if target.is_file() {
+        let (width, height) = image::image_dimensions(source)?;
+        return Ok(ThumbnailResult {
+            path: target,
+            width,
+            height,
+        });
+    }
 
     let image = image::open(source)?;
     let (width, height) = image.dimensions();
     let thumbnail = image.thumbnail(256, 256);
-    let target = target_dir.join(format!("{hash}.webp"));
     thumbnail.save(&target)?;
 
     Ok(ThumbnailResult {

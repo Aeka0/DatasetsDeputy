@@ -15,6 +15,8 @@ pub struct AnnotationProfile {
     pub source_type: String,
     pub description: Option<String>,
     pub model_info: Option<String>,
+    pub source_kind: Option<String>,
+    pub dataset_id: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -44,6 +46,9 @@ pub struct DatasetImage {
     pub imported_at: String,
     pub updated_at: String,
     pub annotations: Vec<Annotation>,
+    pub source_kind: Option<String>,
+    pub dataset_id: Option<String>,
+    pub root_path: Option<String>,
 }
 
 pub struct NewImage {
@@ -144,6 +149,76 @@ impl Database {
         Ok(())
     }
 
+    pub fn rename_folder_paths(
+        &mut self,
+        old_folder_path: &str,
+        new_folder_path: &str,
+    ) -> AppResult<usize> {
+        let old_folder_path = normalize_dataset_path(old_folder_path);
+        let new_folder_path = normalize_dataset_path(new_folder_path);
+        let old_child_prefix = format!("{old_folder_path}/");
+        let now = Utc::now().to_rfc3339();
+        let images = self
+            .list_images()?
+            .into_iter()
+            .filter_map(|image| {
+                let normalized_path = normalize_dataset_path(&image.path);
+                if normalized_path == old_folder_path {
+                    Some((image.id, new_folder_path.clone()))
+                } else if normalized_path.starts_with(&old_child_prefix) {
+                    Some((
+                        image.id,
+                        format!(
+                            "{}{}",
+                            new_folder_path,
+                            &normalized_path[old_folder_path.len()..]
+                        ),
+                    ))
+                } else {
+                    None
+                }
+            })
+            .collect::<Vec<_>>();
+        let renamed = images.len();
+
+        let tx = self.conn.transaction()?;
+        for (image_id, path) in images {
+            tx.execute(
+                "UPDATE images SET path = ?1, updated_at = ?2 WHERE id = ?3",
+                params![path, now, image_id],
+            )?;
+        }
+
+        let root_path: Option<String> = tx
+            .query_row(
+                "SELECT value FROM dataset_metadata WHERE key = 'root_path'",
+                [],
+                |row| row.get(0),
+            )
+            .optional()?;
+        if root_path.as_deref().map(normalize_dataset_path).as_deref()
+            == Some(old_folder_path.as_str())
+        {
+            let root_name = Path::new(&new_folder_path)
+                .file_name()
+                .and_then(|name| name.to_str())
+                .unwrap_or("Dataset");
+            tx.execute(
+                "INSERT INTO dataset_metadata (key, value) VALUES ('root_name', ?1)
+                 ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                params![root_name],
+            )?;
+            tx.execute(
+                "INSERT INTO dataset_metadata (key, value) VALUES ('root_path', ?1)
+                 ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                params![new_folder_path],
+            )?;
+        }
+
+        tx.commit()?;
+        Ok(renamed)
+    }
+
     pub fn dataset_root_path(&self) -> AppResult<Option<String>> {
         self.conn
             .query_row(
@@ -167,6 +242,8 @@ impl Database {
                 source_type: row.get(3)?,
                 description: row.get(4)?,
                 model_info: row.get(5)?,
+                source_kind: None,
+                dataset_id: None,
             })
         })?;
 
@@ -286,6 +363,9 @@ impl Database {
                 imported_at,
                 updated_at,
                 annotations,
+                source_kind: None,
+                dataset_id: None,
+                root_path: None,
             });
         }
 

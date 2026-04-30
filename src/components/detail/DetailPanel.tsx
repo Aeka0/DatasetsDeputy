@@ -23,7 +23,17 @@ export function DetailPanel() {
     () => images.find((image) => image.id === selectedImageId),
     [images, selectedImageId]
   );
-  const selectedProfileId = activeProfileId ?? profiles[0]?.id;
+  const availableProfileIds = useMemo(
+    () => new Set(selectedImage?.annotations.map((annotation) => annotation.profileId) ?? []),
+    [selectedImage]
+  );
+  const availableProfiles = useMemo(
+    () => profiles.filter((profile) => availableProfileIds.has(profile.id)),
+    [availableProfileIds, profiles]
+  );
+  const selectedProfileId = availableProfiles.some((profile) => profile.id === activeProfileId)
+    ? activeProfileId
+    : availableProfiles[0]?.id;
   const selectedAnnotation = selectedImage?.annotations.find(
     (annotation) => annotation.profileId === selectedProfileId
   );
@@ -77,7 +87,7 @@ export function DetailPanel() {
             onChange={(event) => setActiveProfile(Number(event.target.value))}
             className="glass-input h-9 w-full px-3 text-sm"
           >
-            {profiles.map((profile) => (
+            {availableProfiles.map((profile) => (
               <option key={profile.id} value={profile.id}>
                 {profile.name}
               </option>

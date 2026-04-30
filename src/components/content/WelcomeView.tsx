@@ -5,7 +5,7 @@ import { useDatasetStore } from "../../stores/datasetStore";
 
 export function WelcomeView() {
   const { t } = useTranslation();
-  const importFolder = useDatasetStore((state) => state.importFolder);
+  const openImportWizard = useDatasetStore((state) => state.openImportWizard);
 
   return (
     <div className="flex h-full flex-col items-center justify-center px-6 text-center">
@@ -20,10 +20,10 @@ export function WelcomeView() {
       </p>
       <button
         className="no-drag mt-5 inline-flex h-8 items-center gap-2 rounded-md border border-slate-900 bg-slate-900 px-3 text-[13px] font-medium text-white transition hover:bg-slate-800"
-        onClick={() => void importFolder()}
+        onClick={openImportWizard}
       >
         <FolderOpen size={15} />
-        {t("actions.importFolder")}
+        导入数据集
       </button>
     </div>
   );

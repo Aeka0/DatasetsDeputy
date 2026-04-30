@@ -4,6 +4,7 @@ mod db;
 mod errors;
 mod export;
 mod files;
+mod folders;
 mod thumbnail;
 #[cfg(target_os = "windows")]
 mod window_region;
@@ -38,11 +39,16 @@ pub fn run() {
             commands::list_annotation_profiles,
             commands::prepare_import_folder,
             commands::start_import_folder,
+            commands::mount_folder_dataset,
             commands::save_annotation,
             commands::save_instruction,
+            commands::save_folder_annotation,
+            commands::save_folder_instruction,
             commands::create_annotation_profile,
             commands::clear_annotation,
             commands::remove_dataset_folder,
+            commands::remove_folder_dataset,
+            commands::rename_dataset_folder,
             commands::export_dataset
         ])
         .run(tauri::generate_context!())

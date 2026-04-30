@@ -8,10 +8,17 @@ type MenuKey = "file" | "edit" | "settings" | "about";
 type DialogKey = "settings" | "about";
 
 interface MenuAction {
+  type?: "action";
   label: string;
   disabled?: boolean;
   onSelect: () => void | Promise<void>;
 }
+
+interface MenuSeparator {
+  type: "separator";
+}
+
+type MenuEntry = MenuAction | MenuSeparator;
 
 const copy = {
   file: "\u6587\u4ef6",
@@ -48,7 +55,7 @@ export function TitleMenuBar() {
     search,
     selectedImageId,
     isLoading,
-    importFolder,
+    openImportWizard,
     exportDataset,
     load,
     selectImage,
@@ -92,12 +99,12 @@ export function TitleMenuBar() {
     window.close();
   };
 
-  const menus: Record<MenuKey, MenuAction[]> = {
+  const menus: Record<MenuKey, MenuEntry[]> = {
     file: [
       {
         label: copy.importDataset,
         disabled: isLoading,
-        onSelect: importFolder
+        onSelect: openImportWizard
       },
       {
         label: copy.exportTxt,
@@ -109,6 +116,7 @@ export function TitleMenuBar() {
         disabled: isLoading,
         onSelect: load
       },
+      { type: "separator" },
       {
         label: copy.exit,
         onSelect: closeWindow
@@ -157,10 +165,10 @@ export function TitleMenuBar() {
           <div key={menu.key} className="relative">
             <button
               type="button"
-              className={`title-menu-button h-5 rounded-[3px] px-2 text-[0.6875rem] leading-5 transition ${
+              className={`title-menu-button h-7 rounded-md px-3 text-[12px] font-medium leading-7 transition ${
                 openMenu === menu.key
                   ? "bg-slate-900/8 text-black"
-                  : "text-black hover:bg-slate-900/6"
+                  : "text-black/78 hover:bg-slate-900/6 hover:text-black"
               }`}
               onClick={() =>
                 setOpenMenu((current) => (current === menu.key ? undefined : menu.key))
@@ -170,18 +178,25 @@ export function TitleMenuBar() {
             </button>
 
             {openMenu === menu.key ? (
-              <div className="absolute left-0 top-6 z-50 min-w-32 rounded-[4px] border border-slate-200/90 bg-white/98 py-0.5">
-                {menus[menu.key].map((action) => (
-                  <button
-                    key={action.label}
-                    type="button"
-                    className="flex h-[18px] w-full items-center px-4 text-left text-[0.6875rem] leading-[18px] text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:text-slate-400 disabled:hover:bg-transparent"
-                    disabled={action.disabled}
-                    onClick={() => selectAction(action)}
-                  >
-                    <span className="truncate">{action.label}</span>
-                  </button>
-                ))}
+              <div className="absolute left-0 top-8 z-50 min-w-[180px] rounded-lg border border-slate-200/90 bg-white/98 py-1.5 shadow-[0_12px_32px_rgba(15,23,42,0.16)]">
+                {menus[menu.key].map((entry, index) =>
+                  entry.type === "separator" ? (
+                    <div
+                      key={`${menu.key}-separator-${index}`}
+                      className="my-1 h-px bg-slate-200/90"
+                    />
+                  ) : (
+                    <button
+                      key={entry.label}
+                      type="button"
+                      className="flex h-8 w-full items-center px-3.5 text-left text-[12px] font-medium leading-4 text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:text-slate-400 disabled:hover:bg-transparent"
+                      disabled={entry.disabled}
+                      onClick={() => selectAction(entry)}
+                    >
+                      <span className="truncate">{entry.label}</span>
+                    </button>
+                  )
+                )}
               </div>
             ) : null}
           </div>

@@ -32,11 +32,11 @@
     "datasetCount": "{{count}} images"
   },
   "tree": {
-    "projects": "Project folders",
+    "projects": "Databases",
     "hint": "Select a dataset folder to show its image grid on the right."
   },
   "welcome": {
-    "title": "Let's build",
+    "title": "Let's start",
     "description": "Select a dataset project on the left, or import an image folder to start browsing, curating, and manually annotating."
   },
   "import": {
@@ -48,6 +48,13 @@
   "table": {
     "preview": "Preview",
     "filename": "Filename",
+    "annotationData": "Annotation Data",
+    "instruction": "Instruction",
+    "instructionMode": "Instruction Mode",
+    "ready": "Ready",
+    "unsavedCells": "{{count}} unsaved cells",
+    "saveChanges": "Save changes",
+    "saving": "Saving...",
     "dimensions": "Dimensions",
     "size": "Size",
     "updated": "Updated",

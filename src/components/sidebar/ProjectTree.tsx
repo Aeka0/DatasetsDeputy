@@ -1,6 +1,7 @@
-import { ChevronDown, ChevronRight, Folder, FolderOpen, HardDrive, Plus } from "lucide-react";
+import { ChevronDown, ChevronRight, Database, Folder, FolderOpen, Plus } from "lucide-react";
 import type { MouseEvent } from "react";
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 
 import { cn } from "../../lib/cn";
@@ -8,11 +9,22 @@ import { useDatasetStore } from "../../stores/datasetStore";
 import type { DatasetProject } from "../../types";
 
 const copy = {
+  importDataset: "\u5bfc\u5165\u6570\u636e\u96c6...",
+  workspaceFolders: "\u5de5\u4f5c\u6587\u4ef6\u5939",
+  renameDataset: "\u91cd\u547d\u540d\u6570\u636e\u96c6",
+  renameFolder: "\u91cd\u547d\u540d\u6587\u4ef6\u5939",
+  renameTitle: "\u91cd\u547d\u540d",
+  renameNameLabel: "\u540d\u79f0",
   removeDataset: "\u79fb\u9664\u6570\u636e\u96c6",
+  removeFolder: "\u79fb\u9664\u6587\u4ef6\u5939",
   confirmTitle: "\u79fb\u9664\u6570\u636e\u96c6\uff1f",
+  confirmFolderTitle: "\u79fb\u9664\u6587\u4ef6\u5939\uff1f",
   confirmDescription:
     "\u5c06\u4ece\u7a0b\u5e8f\u6570\u636e\u5e93\u79fb\u9664\u8be5\u6570\u636e\u96c6\u7684\u56fe\u7247\u7d22\u5f15\u3001\u6807\u6ce8\u548c\u4e0d\u518d\u88ab\u4f7f\u7528\u7684\u6807\u6ce8\u7c7b\u578b\u3002\u672c\u5730\u6587\u4ef6\u4e0d\u4f1a\u88ab\u5220\u9664\u3002",
+  confirmFolderDescription:
+    "\u53ea\u4f1a\u4ece\u5de6\u4fa7\u6811\u72b6\u56fe\u79fb\u9664\u8be5\u6587\u4ef6\u5939\u8def\u5f84\uff0c\u4e0d\u4f1a\u5220\u9664\u672c\u5730\u56fe\u7247\u6216 TXT \u6807\u6ce8\u6587\u4ef6\u3002",
   cancel: "\u53d6\u6d88",
+  save: "\u4fdd\u5b58",
   confirm: "\u786e\u8ba4\u79fb\u9664"
 };
 
@@ -31,52 +43,94 @@ function ProjectNode({
   toggleExpanded: (project: DatasetProject) => void;
   openContextMenu: (event: MouseEvent, project: DatasetProject) => void;
 }) {
-  const { selectedProjectId, selectProject, images } = useDatasetStore();
+  const { selectedProjectId, selectProject } = useDatasetStore();
   const isSelected = selectedProjectId === project.id;
   const hasChildren = Boolean(project.children?.length);
   const isExpanded = expandedIds.has(project.id);
   const imageCount = project.imageIds.length;
+  const isDatabaseNode = project.id === "database-group" || project.id.startsWith("dataset-root:");
+  const isGroupNode = project.id === "database-group" || project.id === "workspace-folder-group";
+  const canOpenContextMenu =
+    !isGroupNode && (project.sourceKind !== "folder" || project.id.startsWith("folder-root:"));
+  const indentation = isGroupNode ? 4 : 8 + depth * 10;
+
+  const handleRowActivate = () => {
+    if (isGroupNode) {
+      toggleExpanded(project);
+      return;
+    }
+    if (!hasChildren) {
+      selectProject(project.id);
+      return;
+    }
+    if (!isSelected) {
+      selectProject(project.id);
+      return;
+    }
+    toggleExpanded(project);
+  };
 
   return (
     <div>
-      <button
+      <div
         className={cn(
-          "no-drag flex h-8 w-full items-center gap-2 rounded-md px-2.5 text-left transition",
+          "no-drag flex h-8 w-full items-stretch gap-1 rounded-md pr-2.5 text-left transition",
           sidebarLabelClass,
           isSelected
             ? "bg-white/62 text-black"
             : "text-black hover:bg-slate-900/[0.045]"
         )}
-        style={{ paddingLeft: `${12 + depth * 16}px` }}
-        onContextMenu={(event) => openContextMenu(event, project)}
-        onClick={() => {
-          selectProject(project.id);
-          if (hasChildren) {
-            toggleExpanded(project);
+        style={{ paddingLeft: `${indentation}px` }}
+        onContextMenu={(event) => {
+          if (canOpenContextMenu) {
+            openContextMenu(event, project);
           }
         }}
       >
         {hasChildren ? (
-          isExpanded ? (
-            <ChevronDown size={15} className="shrink-0 text-black" />
+          <button
+            type="button"
+            className="no-drag group flex w-[22px] shrink-0 items-center justify-center rounded border-0 bg-transparent p-0 text-inherit outline-none focus-visible:ring-2 focus-visible:ring-black/20"
+            aria-expanded={isExpanded}
+            aria-label={isExpanded ? "折叠子文件夹" : "展开子文件夹"}
+            onClick={(event) => {
+              event.stopPropagation();
+              toggleExpanded(project);
+            }}
+          >
+            {isExpanded ? (
+              <ChevronDown
+                size={15}
+                className="shrink-0 text-black/50 transition-[color,opacity] duration-150 ease-out group-hover:text-black"
+              />
+            ) : (
+              <ChevronRight
+                size={15}
+                className="shrink-0 text-black/50 transition-[color,opacity] duration-150 ease-out group-hover:text-black"
+              />
+            )}
+          </button>
+        ) : (
+          <span className="w-[22px] shrink-0" aria-hidden />
+        )}
+        <button
+          type="button"
+          className="no-drag flex min-w-0 flex-1 items-center gap-2 rounded border-0 bg-transparent p-0 text-left text-inherit outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-black/20"
+          onClick={handleRowActivate}
+        >
+          {isDatabaseNode ? (
+            <Database size={16} className="shrink-0 text-black" />
+          ) : isSelected ? (
+            <FolderOpen size={16} className="shrink-0 text-black" />
           ) : (
-            <ChevronRight size={15} className="shrink-0 text-black" />
-          )
-        ) : (
-          <span className="w-[15px] shrink-0" />
-        )}
-        {isSelected ? (
-          <FolderOpen size={16} className="shrink-0 text-black" />
-        ) : (
-          <Folder size={16} className="shrink-0 text-black" />
-        )}
-        <span className={cn("min-w-0 flex-1 truncate", sidebarLabelClass)}>
-          {project.name}
-        </span>
-        <span className="shrink-0 rounded-full bg-white/72 px-1.5 py-0.5 text-[11px] leading-none text-black ring-1 ring-white/70">
-          {imageCount || images.length}
-        </span>
-      </button>
+            <Folder size={16} className="shrink-0 text-black" />
+          )}
+          <span className={cn("min-w-0 flex-1 truncate", sidebarLabelClass)}>{project.name}</span>
+          <span className="shrink-0 rounded-full bg-white/72 px-1.5 py-0.5 text-[11px] leading-none text-black ring-1 ring-white/70">
+            {imageCount}
+          </span>
+        </button>
+      </div>
 
       {hasChildren && isExpanded ? (
         <div className="mt-1.5 space-y-1">
@@ -98,7 +152,8 @@ function ProjectNode({
 
 export function ProjectTree() {
   const { t } = useTranslation();
-  const { projects, importFolder, isLoading, removeDataset } = useDatasetStore();
+  const { projects, openImportWizard, isLoading, removeDataset, renameDatasetFolder } =
+    useDatasetStore();
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const [contextMenu, setContextMenu] = useState<{
     x: number;
@@ -106,6 +161,8 @@ export function ProjectTree() {
     project: DatasetProject;
   }>();
   const [pendingRemoval, setPendingRemoval] = useState<DatasetProject>();
+  const [pendingRename, setPendingRename] = useState<DatasetProject>();
+  const [renameValue, setRenameValue] = useState("");
 
   useEffect(() => {
     if (!contextMenu) return;
@@ -131,6 +188,8 @@ export function ProjectTree() {
   useEffect(() => {
     setExpandedIds((current) => {
       const next = new Set(current);
+      next.add("database-group");
+      next.add("workspace-folder-group");
       for (const project of projects) {
         next.add(project.id);
       }
@@ -153,65 +212,157 @@ export function ProjectTree() {
   const openContextMenu = (event: MouseEvent, project: DatasetProject) => {
     event.preventDefault();
     event.stopPropagation();
+    const menuWidth = 184;
+    const menuHeight = 80;
     setContextMenu({
-      x: event.clientX,
-      y: event.clientY,
+      x: Math.max(8, Math.min(event.clientX, window.innerWidth - menuWidth - 8)),
+      y: Math.max(8, Math.min(event.clientY, window.innerHeight - menuHeight - 8)),
       project
     });
+  };
+
+  const startRename = (project: DatasetProject) => {
+    setContextMenu(undefined);
+    setPendingRename(project);
+    setRenameValue(project.name);
+  };
+
+  const submitRename = async () => {
+    if (!pendingRename) return;
+    await renameDatasetFolder(pendingRename, renameValue);
+    setPendingRename(undefined);
+    setRenameValue("");
+  };
+
+  const databaseProjects = projects.filter((project) => project.sourceKind !== "folder");
+  const folderProjects = projects.filter((project) => project.sourceKind === "folder");
+  const databaseGroup: DatasetProject = {
+    id: "database-group",
+    name: t("tree.projects"),
+    path: "",
+    imageIds: databaseProjects.flatMap((project) => project.imageIds),
+    children: databaseProjects,
+    sourceKind: "database",
+    datasetId: "database-group"
+  };
+  const workspaceFolderGroup: DatasetProject = {
+    id: "workspace-folder-group",
+    name: copy.workspaceFolders,
+    path: "",
+    imageIds: folderProjects.flatMap((project) => project.imageIds),
+    children: folderProjects,
+    sourceKind: "folder",
+    datasetId: "workspace-folder-group"
   };
 
   return (
     <aside className="fluent-sidebar flex h-full w-[248px] shrink-0 flex-col">
       <div className="no-drag px-3 pt-3">
         <button
-          className="flex h-8 w-full items-center gap-2 rounded-md border border-white/70 bg-white/54 px-3 text-[13px] font-medium text-black transition hover:bg-white/72 disabled:cursor-not-allowed disabled:opacity-50"
-          onClick={() => void importFolder()}
+          className="flex h-8 w-full items-center justify-center gap-2 rounded-md border border-white/70 bg-white/54 px-3 text-[13px] font-medium text-black transition hover:bg-white/72 disabled:cursor-not-allowed disabled:opacity-50"
+          onClick={openImportWizard}
           disabled={isLoading}
         >
           <Plus size={16} />
-          {t("actions.importFolder")}
+          <span className="truncate">{copy.importDataset}</span>
         </button>
       </div>
 
       <div className="mt-4 flex-1 overflow-y-auto px-3">
-        <div
-          className={cn(
-            "mb-2 flex items-center gap-2 px-2 font-medium uppercase tracking-[0.04em] text-black",
-            sidebarLabelClass
-          )}
-        >
-          <HardDrive size={14} />
-          {t("tree.projects")}
-        </div>
         <div className="no-drag space-y-1">
-          {projects.map((project) => (
-            <ProjectNode
-              key={project.id}
-              project={project}
-              expandedIds={expandedIds}
-              toggleExpanded={toggleExpanded}
-              openContextMenu={openContextMenu}
-            />
-          ))}
+          <ProjectNode
+            project={databaseGroup}
+            expandedIds={expandedIds}
+            toggleExpanded={toggleExpanded}
+            openContextMenu={openContextMenu}
+          />
+          <ProjectNode
+            project={workspaceFolderGroup}
+            expandedIds={expandedIds}
+            toggleExpanded={toggleExpanded}
+            openContextMenu={openContextMenu}
+          />
         </div>
       </div>
-      {contextMenu ? (
+      {contextMenu
+        ? createPortal(
+            <div
+              className="no-drag fixed z-50 min-w-[184px] rounded-md border border-slate-200 bg-white p-1 shadow-lg"
+              style={{ left: contextMenu.x, top: contextMenu.y }}
+              onClick={(event) => event.stopPropagation()}
+              onContextMenu={(event) => event.preventDefault()}
+            >
+              {contextMenu.project.sourceKind !== "folder" ? (
+                <>
+                  <button
+                    className="flex h-8 w-full items-center rounded px-3 text-left text-[12px] text-slate-700 transition hover:bg-slate-100"
+                    onClick={() => startRename(contextMenu.project)}
+                  >
+                    {contextMenu.project.id.startsWith("dataset-root:")
+                      ? copy.renameDataset
+                      : copy.renameFolder}
+                  </button>
+                  <div className="my-1 h-px bg-slate-200" />
+                </>
+              ) : null}
+              <button
+                className="flex h-8 w-full items-center rounded px-3 text-left text-[12px] text-slate-700 transition hover:bg-slate-100"
+                onClick={() => {
+                  const project = contextMenu.project;
+                  setContextMenu(undefined);
+                  setPendingRemoval(project);
+                }}
+              >
+                {contextMenu.project.sourceKind === "folder"
+                  ? copy.removeFolder
+                  : copy.removeDataset}
+              </button>
+            </div>,
+            document.body
+          )
+        : null}
+      {pendingRename ? (
         <div
-          className="no-drag fixed z-50 min-w-40 rounded-md border border-slate-200 bg-white p-1"
-          style={{ left: contextMenu.x, top: contextMenu.y }}
-          onClick={(event) => event.stopPropagation()}
-          onContextMenu={(event) => event.preventDefault()}
+          className="no-drag fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/24 px-4"
+          onClick={() => setPendingRename(undefined)}
         >
-          <button
-            className="flex h-7 w-full items-center rounded px-3 text-left text-[12px] text-slate-700 transition hover:bg-slate-100"
-            onClick={() => {
-              const project = contextMenu.project;
-              setContextMenu(undefined);
-              setPendingRemoval(project);
+          <form
+            className="w-full max-w-[360px] rounded-lg border border-slate-200 bg-white p-5 shadow-xl"
+            onClick={(event) => event.stopPropagation()}
+            onSubmit={(event) => {
+              event.preventDefault();
+              void submitRename();
             }}
           >
-            {copy.removeDataset}
-          </button>
+            <h2 className="m-0 text-[15px] font-semibold leading-6 text-slate-950">
+              {copy.renameTitle}
+            </h2>
+            <label className="mt-4 block text-[12px] font-medium text-slate-600">
+              {copy.renameNameLabel}
+            </label>
+            <input
+              autoFocus
+              value={renameValue}
+              onChange={(event) => setRenameValue(event.target.value)}
+              className="glass-input mt-1 h-9 w-full px-3 text-[13px]"
+            />
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                type="button"
+                className="h-8 rounded-md border border-slate-200 bg-white px-3 text-[13px] text-slate-700 transition hover:bg-slate-50"
+                onClick={() => setPendingRename(undefined)}
+              >
+                {copy.cancel}
+              </button>
+              <button
+                type="submit"
+                className="h-8 rounded-md bg-slate-950 px-3 text-[13px] font-medium text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+                disabled={!renameValue.trim()}
+              >
+                {copy.save}
+              </button>
+            </div>
+          </form>
         </div>
       ) : null}
       {pendingRemoval ? (
@@ -224,10 +375,14 @@ export function ProjectTree() {
             onClick={(event) => event.stopPropagation()}
           >
             <h2 className="m-0 text-[15px] font-semibold leading-6 text-slate-950">
-              {copy.confirmTitle}
+              {pendingRemoval.sourceKind === "folder"
+                ? copy.confirmFolderTitle
+                : copy.confirmTitle}
             </h2>
             <p className="mt-2 text-[13px] leading-5 text-slate-600">
-              {copy.confirmDescription}
+              {pendingRemoval.sourceKind === "folder"
+                ? copy.confirmFolderDescription
+                : copy.confirmDescription}
             </p>
             <div className="mt-3 rounded-md bg-slate-50 px-3 py-2 text-[12px] leading-5 text-slate-600">
               <div className="truncate font-medium text-slate-900">{pendingRemoval.name}</div>

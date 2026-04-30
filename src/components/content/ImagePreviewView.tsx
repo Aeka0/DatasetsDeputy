@@ -105,8 +105,16 @@ export function ImagePreviewView() {
     return null;
   }
 
+  const isFolderImage = selectedImage.sourceKind === "folder";
   const profileById = new Map(profiles.map((profile) => [profile.id, profile]));
   const previewSrc = resolveAssetSrc(selectedImage.path) ?? resolveAssetSrc(selectedImage.thumbnailPath);
+  const selectedImageProfileIds = new Set(
+    selectedImage.annotations.map((annotation) => annotation.profileId)
+  );
+  const filledAnnotationCount = selectedImage.annotations.filter((annotation) =>
+    annotation.content.trim()
+  ).length;
+  const annotationCountLabel = `${filledAnnotationCount}/${selectedImageProfileIds.size}`;
 
   const selectAnnotation = (annotation: Annotation) => {
     setSelectedAnnotationId(annotation.id);
@@ -115,6 +123,7 @@ export function ImagePreviewView() {
   };
 
   const startNewAnnotationType = () => {
+    if (isFolderImage) return;
     setIsCreatingProfile(true);
     setNewProfileName("");
   };
@@ -139,13 +148,13 @@ export function ImagePreviewView() {
           {copy.back}
         </button>
         <div className="min-w-0">
-          <h2 className="m-0 truncate text-[14px] font-semibold text-slate-900">
-            {selectedImage.fileName}
+          <h2 className="m-0 flex min-w-0 items-center gap-2 text-[14px] font-semibold text-slate-900">
+            <span className="min-w-0 truncate">{selectedImage.fileName}</span>
+            <span className="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-normal text-slate-500">
+              {annotationCountLabel}
+              {copy.annotations}
+            </span>
           </h2>
-          <div className="mt-0.5 text-[12px] text-slate-500">
-            {selectedImage.annotations.length}
-            {copy.annotations}
-          </div>
         </div>
       </div>
 
@@ -197,6 +206,7 @@ export function ImagePreviewView() {
               className="no-drag inline-flex h-7 w-7 items-center justify-center rounded-md text-slate-600 transition hover:bg-slate-100"
               onClick={startNewAnnotationType}
               title={copy.newAnnotation}
+              disabled={isFolderImage}
             >
               <Plus size={16} />
             </button>

@@ -32,11 +32,11 @@
     "datasetCount": "{{count}} 张图片"
   },
   "tree": {
-    "projects": "工程文件夹",
+    "projects": "数据库",
     "hint": "选择一个数据集文件夹后，右侧会切换为图片网格列表。"
   },
   "welcome": {
-    "title": "Let's build",
+    "title": "Let's start",
     "description": "选择左侧的数据集工程，或导入一个图片文件夹来开始浏览、整理和手动标注。"
   },
   "import": {
@@ -48,6 +48,13 @@
   "table": {
     "preview": "预览",
     "filename": "文件名",
+    "annotationData": "标注数据",
+    "instruction": "指令",
+    "instructionMode": "指令模式",
+    "ready": "就绪",
+    "unsavedCells": "{{count}} 个单元格未保存",
+    "saveChanges": "保存改动",
+    "saving": "保存中...",
     "dimensions": "尺寸",
     "size": "大小",
     "tags": "标签",

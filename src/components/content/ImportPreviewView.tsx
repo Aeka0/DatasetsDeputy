@@ -1,9 +1,10 @@
-import { FolderOpen, Play } from "lucide-react";
+import { ArrowLeft, FolderOpen, Play } from "lucide-react";
 
 import { useDatasetStore } from "../../stores/datasetStore";
 
 const copy = {
-  title: "\u5bfc\u5165\u6570\u636e\u96c6",
+  back: "\u8fd4\u56de",
+  title: "\u5bfc\u5165\u6570\u636e\u5e93",
   folderPath: "\u6587\u4ef6\u5939\u8def\u5f84\uff1a",
   imageCount: "\u5f20\u56fe\u7247",
   imageFolderCount: "\u4e2a\u542b\u6709\u56fe\u7247\u7684\u5b50\u6587\u4ef6\u5939",
@@ -22,6 +23,7 @@ export function ImportPreviewView() {
   const isLoading = useDatasetStore((state) => state.isLoading);
   const setAnnotationType = useDatasetStore((state) => state.setAnnotationType);
   const startPreparedImport = useDatasetStore((state) => state.startPreparedImport);
+  const openImportWizard = useDatasetStore((state) => state.openImportWizard);
 
   if (!preview) {
     return null;
@@ -36,7 +38,17 @@ export function ImportPreviewView() {
   return (
     <div className="flex h-full min-h-0 flex-col px-3 py-2 text-[13px]">
       <div className="min-h-0 flex-1 overflow-auto pr-1">
-        <div className="flex items-center gap-2 border-b border-slate-100 pb-3">
+        <div className="flex items-center gap-3 border-b border-slate-100 pb-3">
+          <button
+            type="button"
+            className="no-drag inline-flex h-8 items-center gap-2 rounded-md px-2.5 text-[13px] text-slate-500 transition hover:bg-slate-100 hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-300"
+            onClick={openImportWizard}
+            disabled={isLoading}
+          >
+            <ArrowLeft size={15} />
+            {copy.back}
+          </button>
+          <div className="h-5 w-px bg-slate-200" aria-hidden />
           <FolderOpen size={18} className="text-slate-600" />
           <h2 className="m-0 text-[15px] font-semibold leading-6 text-slate-950">{copy.title}</h2>
         </div>

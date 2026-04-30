@@ -13,6 +13,7 @@ use crate::{
     errors::{AppError, AppResult},
     export::{self, ExportRequest},
     files::{self, ImportPreview, ImportSummary},
+    folders,
     AppState,
 };
 
@@ -109,16 +110,21 @@ fn open_database_by_prefix(
 
 fn namespace_profile(mut profile: AnnotationProfile, prefix: i64) -> AnnotationProfile {
     profile.id = to_public_id(prefix, profile.id);
+    profile.source_kind = Some("database".to_owned());
+    profile.dataset_id = Some(format!("database:{prefix}"));
     profile
 }
 
-fn namespace_image(mut image: DatasetImage, prefix: i64) -> DatasetImage {
+fn namespace_image(mut image: DatasetImage, prefix: i64, root_path: Option<String>) -> DatasetImage {
     image.id = to_public_id(prefix, image.id);
     for annotation in &mut image.annotations {
         annotation.id = to_public_id(prefix, annotation.id);
         annotation.image_id = to_public_id(prefix, annotation.image_id);
         annotation.profile_id = to_public_id(prefix, annotation.profile_id);
     }
+    image.source_kind = Some("database".to_owned());
+    image.dataset_id = Some(format!("database:{prefix}"));
+    image.root_path = root_path;
     image
 }
 
@@ -143,28 +149,68 @@ fn remove_sqlite_files(path: &Path) -> AppResult<()> {
     Ok(())
 }
 
-#[tauri::command]
-pub fn list_images(state: State<'_, AppState>) -> AppResult<Vec<DatasetImage>> {
+fn renamed_folder_path(folder_path: &str, new_name: &str) -> AppResult<PathBuf> {
+    let new_name = new_name.trim();
+    if new_name.is_empty() || new_name.contains('/') || new_name.contains('\\') {
+        return Err(AppError::InvalidInput(
+            "Folder name cannot be empty or contain path separators".to_owned(),
+        ));
+    }
+
+    let old_path = PathBuf::from(folder_path);
+    let parent = old_path.parent().ok_or_else(|| {
+        AppError::InvalidInput(format!(
+            "Cannot rename folder without a parent: {folder_path}"
+        ))
+    })?;
+    Ok(parent.join(new_name))
+}
+
+fn list_images_for_dirs(dirs: &app_dirs::AppDirs) -> AppResult<Vec<DatasetImage>> {
     let mut images = Vec::new();
-    for db_ref in dataset_database_refs(&state.dirs)? {
+    for db_ref in dataset_database_refs(dirs)? {
         let db = open_database(&db_ref.path)?;
+        let root_path = db.dataset_root_path()?;
         for image in db.list_images()? {
-            images.push(namespace_image(image, db_ref.prefix));
+            images.push(namespace_image(image, db_ref.prefix, root_path.clone()));
         }
     }
+    images.extend(folders::list_folder_images(dirs)?);
     Ok(images)
 }
 
-#[tauri::command]
-pub fn list_annotation_profiles(state: State<'_, AppState>) -> AppResult<Vec<AnnotationProfile>> {
+fn list_annotation_profiles_for_dirs(
+    dirs: &app_dirs::AppDirs,
+) -> AppResult<Vec<AnnotationProfile>> {
     let mut profiles = Vec::new();
-    for db_ref in dataset_database_refs(&state.dirs)? {
+    for db_ref in dataset_database_refs(dirs)? {
         let db = open_database(&db_ref.path)?;
         for profile in db.list_annotation_profiles()? {
             profiles.push(namespace_profile(profile, db_ref.prefix));
         }
     }
+    profiles.extend(folders::list_folder_profiles(dirs)?);
     Ok(profiles)
+}
+
+#[tauri::command]
+pub async fn list_images(state: State<'_, AppState>) -> AppResult<Vec<DatasetImage>> {
+    let dirs = state.dirs.clone();
+    tauri::async_runtime::spawn_blocking(move || list_images_for_dirs(&dirs))
+        .await
+        .map_err(|error| AppError::InvalidInput(format!("Image listing task failed: {error}")))?
+}
+
+#[tauri::command]
+pub async fn list_annotation_profiles(
+    state: State<'_, AppState>,
+) -> AppResult<Vec<AnnotationProfile>> {
+    let dirs = state.dirs.clone();
+    tauri::async_runtime::spawn_blocking(move || list_annotation_profiles_for_dirs(&dirs))
+        .await
+        .map_err(|error| {
+            AppError::InvalidInput(format!("Profile listing task failed: {error}"))
+        })?
 }
 
 #[tauri::command]
@@ -188,6 +234,28 @@ pub async fn prepare_import_folder(app: AppHandle) -> AppResult<ImportPreview> {
     tauri::async_runtime::spawn_blocking(move || files::scan_import_preview(&folder))
         .await
         .map_err(|error| AppError::InvalidInput(format!("Import preview task failed: {error}")))
+}
+
+#[tauri::command]
+pub async fn mount_folder_dataset(app: AppHandle, state: State<'_, AppState>) -> AppResult<()> {
+    let dirs = state.dirs.clone();
+    let (sender, receiver) = std::sync::mpsc::channel();
+    app.dialog().file().pick_folder(move |folder| {
+        let _ = sender.send(folder);
+    });
+
+    let Some(folder) = tauri::async_runtime::spawn_blocking(move || receiver.recv())
+        .await
+        .map_err(|error| AppError::InvalidInput(format!("Folder picker task failed: {error}")))?
+        .map_err(|error| AppError::InvalidInput(format!("Folder picker failed: {error}")))?
+    else {
+        return Err(AppError::DialogCancelled);
+    };
+    let folder = folder
+        .into_path()
+        .map_err(|_| AppError::InvalidInput("Selected folder is not a local path".to_owned()))?;
+
+    folders::add_folder_dataset(&dirs, &folder)
 }
 
 #[tauri::command]
@@ -392,6 +460,16 @@ pub fn start_import_folder(
 }
 
 #[tauri::command]
+pub fn save_folder_annotation(image_path: String, content: String) -> AppResult<()> {
+    folders::save_folder_annotation(&image_path, &content)
+}
+
+#[tauri::command]
+pub fn save_folder_instruction(image_path: String, instruction: String) -> AppResult<()> {
+    folders::save_folder_instruction(&image_path, &instruction)
+}
+
+#[tauri::command]
 pub fn save_annotation(
     state: State<'_, AppState>,
     image_id: i64,
@@ -511,13 +589,57 @@ pub fn remove_dataset_folder(state: State<'_, AppState>, folder_path: String) ->
 }
 
 #[tauri::command]
+pub fn remove_folder_dataset(state: State<'_, AppState>, folder_path: String) -> AppResult<usize> {
+    tracing::info!("Unmounting folder dataset path={}", folder_path);
+    folders::remove_folder_dataset(&state.dirs, &folder_path)
+}
+
+#[tauri::command]
+pub fn rename_dataset_folder(
+    state: State<'_, AppState>,
+    folder_path: String,
+    new_name: String,
+) -> AppResult<String> {
+    let new_path = renamed_folder_path(&folder_path, &new_name)?;
+    let old_path = PathBuf::from(&folder_path);
+    if !old_path.is_dir() {
+        return Err(AppError::InvalidInput(format!(
+            "Folder does not exist: {folder_path}"
+        )));
+    }
+    if new_path.exists() {
+        return Err(AppError::InvalidInput(format!(
+            "Target folder already exists: {}",
+            new_path.to_string_lossy()
+        )));
+    }
+
+    tracing::info!(
+        "Renaming dataset folder from {:?} to {:?}",
+        old_path,
+        new_path
+    );
+    fs::rename(&old_path, &new_path)?;
+
+    let new_path_string = new_path.to_string_lossy().to_string();
+    for db_ref in dataset_database_refs(&state.dirs)? {
+        let mut db = open_database(&db_ref.path)?;
+        db.rename_folder_paths(&folder_path, &new_path_string)?;
+    }
+
+    Ok(new_path_string)
+}
+
+#[tauri::command]
 pub fn export_dataset(state: State<'_, AppState>, request: ExportRequest) -> AppResult<usize> {
     let mut images = Vec::new();
     for db_ref in dataset_database_refs(&state.dirs)? {
         let db = open_database(&db_ref.path)?;
+        let root_path = db.dataset_root_path()?;
         for image in db.list_images()? {
-            images.push(namespace_image(image, db_ref.prefix));
+            images.push(namespace_image(image, db_ref.prefix, root_path.clone()));
         }
     }
+    images.extend(folders::list_folder_images(&state.dirs)?);
     export::export_dataset(&images, request)
 }

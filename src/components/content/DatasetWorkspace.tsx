@@ -1,18 +1,16 @@
 import {
   FolderOpen,
   Grid3X3,
-  Images,
   Info,
-  ListChecks,
   Search,
   Table2
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
 
 import { cn } from "../../lib/cn";
 import { useDatasetStore } from "../../stores/datasetStore";
-import type { DatasetImage, DatasetProject } from "../../types";
+import type { AnnotationProfile, DatasetImage, DatasetProject } from "../../types";
 import { DatasetGrid } from "../grid/DatasetGrid";
 import { DatasetTable } from "../table/DatasetTable";
 
@@ -26,6 +24,28 @@ const tabs: Array<{ id: WorkspaceTab; label: string; icon: typeof Info }> = [
 
 function flattenProjects(projects: DatasetProject[]): DatasetProject[] {
   return projects.flatMap((project) => [project, ...flattenProjects(project.children ?? [])]);
+}
+
+function findProjectTrail(
+  projects: DatasetProject[],
+  projectId: string | undefined,
+  parents: DatasetProject[] = []
+): DatasetProject[] {
+  if (!projectId) return [];
+
+  for (const project of projects) {
+    const trail = [...parents, project];
+    if (project.id === projectId) {
+      return trail;
+    }
+
+    const childTrail = findProjectTrail(project.children ?? [], projectId, trail);
+    if (childTrail.length) {
+      return childTrail;
+    }
+  }
+
+  return [];
 }
 
 function formatBytes(value: number) {
@@ -63,111 +83,87 @@ function getVisibleImages(
   });
 }
 
+function PropertyRow({
+  label,
+  value,
+  mono
+}: {
+  label: string;
+  value: string | number;
+  mono?: boolean;
+}) {
+  return (
+    <div className="flex min-h-[28px] items-baseline gap-3 text-[13px]">
+      <dt className="w-[86px] shrink-0 text-slate-500">{label}</dt>
+      <dd className={cn("m-0 min-w-0 truncate text-slate-900", mono && "font-mono text-[12px]")}>
+        {value}
+      </dd>
+    </div>
+  );
+}
+
+function SectionHeader({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="mb-1 mt-4 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.06em] text-slate-400 first:mt-0">
+      {children}
+    </div>
+  );
+}
+
 function DatasetOverview({
   images,
-  selectedProject
+  selectedProject,
+  profiles
 }: {
   images: DatasetImage[];
   selectedProject: DatasetProject | undefined;
+  profiles: AnnotationProfile[];
 }) {
   const totalSize = images.reduce((sum, image) => sum + (image.fileSize ?? 0), 0);
   const annotatedImages = images.filter(
     (image) => image.annotations.some((annotation) => annotation.content.trim())
   ).length;
-  const annotationTypes = new Set(
-    images.flatMap((image) => image.annotations.map((annotation) => annotation.profileId))
-  ).size;
+  const profileById = new Map(profiles.map((profile) => [profile.id, profile.name]));
+  const annotationTypeNames = Array.from(
+    new Set(
+      images.flatMap((image) =>
+        image.annotations.map(
+          (annotation) => profileById.get(annotation.profileId) ?? `#${annotation.profileId}`
+        )
+      )
+    )
+  ).join(", ");
   const latestUpdate = images
     .map((image) => image.updatedAt)
     .filter(Boolean)
     .sort()
     .at(-1);
 
-  const metrics = [
-    {
-      label: "\u56fe\u7247\u6570\u91cf",
-      value: images.length.toLocaleString(),
-      detail: selectedProject?.name ?? "-"
-    },
-    {
-      label: "\u5df2\u6807\u6ce8\u56fe\u7247",
-      value: annotatedImages.toLocaleString(),
-      detail: `${images.length ? Math.round((annotatedImages / images.length) * 100) : 0}%`
-    },
-    {
-      label: "\u6807\u6ce8\u7c7b\u578b",
-      value: annotationTypes.toLocaleString(),
-      detail: "\u5f53\u524d\u6570\u636e\u96c6"
-    },
-    {
-      label: "\u6587\u4ef6\u4f53\u79ef",
-      value: formatBytes(totalSize),
-      detail: "\u5df2\u7d22\u5f15\u56fe\u7247"
-    }
-  ];
-
   return (
     <div className="min-h-0 flex-1 overflow-auto px-1.5 pb-4">
-      <div className="grid grid-cols-4 gap-3">
-        {metrics.map((metric) => (
-          <div key={metric.label} className="rounded-lg border border-slate-200 bg-slate-50 p-4">
-            <div className="text-[12px] text-slate-500">{metric.label}</div>
-            <div className="mt-2 truncate text-[22px] font-semibold text-slate-950">
-              {metric.value}
-            </div>
-            <div className="mt-1 truncate text-[12px] text-slate-500">{metric.detail}</div>
-          </div>
-        ))}
-      </div>
+      <div className="max-w-[540px]">
+        <SectionHeader>数据集</SectionHeader>
+        <dl className="space-y-0.5">
+          <PropertyRow label="名称" value={selectedProject?.name ?? "-"} />
+          <PropertyRow label="路径" value={selectedProject?.path ?? "-"} mono />
+          <PropertyRow
+            label="最近更新"
+            value={latestUpdate ? new Date(latestUpdate).toLocaleString() : "-"}
+          />
+        </dl>
 
-      <div className="mt-4 grid grid-cols-[1.2fr_0.8fr] gap-3">
-        <section className="rounded-lg border border-slate-200 bg-white p-4">
-          <div className="flex items-center gap-2 text-[13px] font-semibold text-slate-900">
-            <ListChecks size={16} className="text-slate-500" />
-            <span>{"\u6570\u636e\u96c6\u4fe1\u606f"}</span>
-          </div>
-          <dl className="mt-4 grid grid-cols-[92px_minmax(0,1fr)] gap-x-3 gap-y-3 text-[13px]">
-            <dt className="text-slate-500">{"\u540d\u79f0"}</dt>
-            <dd className="m-0 truncate text-slate-900">{selectedProject?.name ?? "-"}</dd>
-            <dt className="text-slate-500">{"\u8def\u5f84"}</dt>
-            <dd className="m-0 truncate text-slate-900">{selectedProject?.path ?? "-"}</dd>
-            <dt className="text-slate-500">{"\u6700\u8fd1\u66f4\u65b0"}</dt>
-            <dd className="m-0 truncate text-slate-900">
-              {latestUpdate ? new Date(latestUpdate).toLocaleString() : "-"}
-            </dd>
-          </dl>
-        </section>
+        <div className="my-3 h-px bg-slate-200/70" />
 
-        <section className="rounded-lg border border-slate-200 bg-white p-4">
-          <div className="flex items-center gap-2 text-[13px] font-semibold text-slate-900">
-            <Images size={16} className="text-slate-500" />
-            <span>{"\u56fe\u7247\u72b6\u6001"}</span>
-          </div>
-          <div className="mt-4 space-y-3 text-[13px]">
-            <div className="flex items-center justify-between gap-3">
-              <span className="text-slate-500">{"\u6709\u5c3a\u5bf8\u4fe1\u606f"}</span>
-              <span className="font-medium text-slate-900">
-                {images.filter((image) => image.width && image.height).length}
-              </span>
-            </div>
-            <div className="flex items-center justify-between gap-3">
-              <span className="text-slate-500">{"\u6709\u6807\u6ce8\u5185\u5bb9"}</span>
-              <span className="font-medium text-slate-900">
-                {images.filter((image) =>
-                  image.annotations.some((annotation) => annotation.content.trim())
-                ).length}
-              </span>
-            </div>
-            <div className="flex items-center justify-between gap-3">
-              <span className="text-slate-500">{"\u6709 AI \u6307\u4ee4"}</span>
-              <span className="font-medium text-slate-900">
-                {images.filter((image) =>
-                  image.annotations.some((annotation) => annotation.instruction.trim())
-                ).length}
-              </span>
-            </div>
-          </div>
-        </section>
+        <SectionHeader>统计</SectionHeader>
+        <dl className="space-y-0.5">
+          <PropertyRow label="图片数量" value={images.length.toLocaleString()} />
+          <PropertyRow
+            label="已标注"
+            value={`${annotatedImages} / ${images.length}`}
+          />
+          <PropertyRow label="标注类型" value={annotationTypeNames || "-"} />
+          <PropertyRow label="文件体积" value={formatBytes(totalSize)} />
+        </dl>
       </div>
     </div>
   );
@@ -175,11 +171,30 @@ function DatasetOverview({
 
 export function DatasetWorkspace() {
   const { t } = useTranslation();
-  const [activeTab, setActiveTab] = useState<WorkspaceTab>("overview");
-  const { images, projects, selectedProjectId, search, setSearch } = useDatasetStore();
+  const {
+    images,
+    projects,
+    profiles,
+    workspaceTab: activeTab,
+    selectedProjectId,
+    search,
+    setSearch,
+    setWorkspaceTab
+  } = useDatasetStore();
   const selectedProject = flattenProjects(projects).find(
     (project) => project.id === selectedProjectId
   );
+  const selectedProjectTrail = useMemo(
+    () => findProjectTrail(projects, selectedProjectId),
+    [projects, selectedProjectId]
+  );
+  const titlePathPrefix =
+    selectedProjectTrail.length > 1
+      ? `${selectedProjectTrail
+          .slice(0, -1)
+          .map((project) => project.name)
+          .join("/")}/`
+      : "";
   const visibleImages = useMemo(
     () => getVisibleImages(images, selectedProject, search),
     [images, search, selectedProject]
@@ -189,9 +204,14 @@ export function DatasetWorkspace() {
     <div className="flex h-full min-h-0 flex-col">
       <div className="mb-3 flex min-h-11 items-center gap-3 border-b border-slate-100 px-1.5 pb-3 pt-0.5">
         <div className="min-w-0 flex-1">
-          <h2 className="m-0 flex min-w-0 items-center gap-2 text-[14px] font-semibold text-slate-900">
+          <h2 className="m-0 flex min-w-0 items-center gap-2 text-[14px] text-slate-900">
             <FolderOpen size={16} className="shrink-0 text-slate-500" />
-            <span className="truncate">{selectedProject?.name}</span>
+            <span className="min-w-0 flex-1 truncate leading-5">
+              {titlePathPrefix ? (
+                <span className="font-normal text-slate-500">{titlePathPrefix}</span>
+              ) : null}
+              <span className="font-semibold">{selectedProject?.name}</span>
+            </span>
             <span className="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-normal text-slate-500">
               {t("toolbar.datasetCount", { count: visibleImages.length })}
             </span>
@@ -225,7 +245,7 @@ export function DatasetWorkspace() {
                   ? "border-slate-900 text-slate-950"
                   : "border-transparent text-slate-500 hover:text-slate-900"
               )}
-              onClick={() => setActiveTab(tab.id)}
+              onClick={() => setWorkspaceTab(tab.id)}
             >
               <Icon size={15} />
               <span>{tab.label}</span>
@@ -235,7 +255,11 @@ export function DatasetWorkspace() {
       </div>
 
       {activeTab === "overview" ? (
-        <DatasetOverview images={visibleImages} selectedProject={selectedProject} />
+        <DatasetOverview
+          images={visibleImages}
+          selectedProject={selectedProject}
+          profiles={profiles}
+        />
       ) : activeTab === "grid" ? (
         <DatasetGrid images={visibleImages} />
       ) : (

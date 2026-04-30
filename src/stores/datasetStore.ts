@@ -23,7 +23,9 @@ const sampleProfiles: AnnotationProfile[] = [
     name: "Sample imported annotation",
     formatType: "structured",
     sourceType: "imported",
-    description: "Sample annotation type created during import"
+    description: "Sample annotation type created during import",
+    sourceKind: "database",
+    datasetId: "database:sample"
   }
 ];
 
@@ -38,6 +40,9 @@ const sampleImages: DatasetImage[] = [
     fileHash: "demo-a1",
     importedAt: now,
     updatedAt: now,
+    sourceKind: "database",
+    datasetId: "database:sample",
+    rootPath: "datasets/sample",
     annotations: [
       {
         id: 101,
@@ -60,6 +65,9 @@ const sampleImages: DatasetImage[] = [
     fileHash: "demo-b2",
     importedAt: now,
     updatedAt: now,
+    sourceKind: "database",
+    datasetId: "database:sample",
+    rootPath: "datasets/sample",
     annotations: [
       {
         id: 102,
@@ -82,6 +90,9 @@ const sampleImages: DatasetImage[] = [
     fileHash: "demo-c3",
     importedAt: now,
     updatedAt: now,
+    sourceKind: "database",
+    datasetId: "database:sample",
+    rootPath: "datasets/sample",
     annotations: [
       {
         id: 103,
@@ -102,18 +113,24 @@ const sampleProjects: DatasetProject[] = [
     name: "Sample Dataset",
     path: "datasets/sample",
     imageIds: [1, 2, 3],
+    sourceKind: "database",
+    datasetId: "database:sample",
     children: [
       {
         id: "sample-training",
         name: "training",
         path: "datasets/sample/training",
-        imageIds: [1, 2]
+        imageIds: [1, 2],
+        sourceKind: "database",
+        datasetId: "database:sample"
       },
       {
         id: "sample-reference",
         name: "reference",
         path: "datasets/sample/reference",
-        imageIds: [3]
+        imageIds: [3],
+        sourceKind: "database",
+        datasetId: "database:sample"
       }
     ]
   }
@@ -134,6 +151,28 @@ function getDirectory(path: string) {
 function getPathName(path: string, fallback: string) {
   const normalized = normalizePath(path);
   return normalized.split("/").filter(Boolean).at(-1) ?? fallback;
+}
+
+function renamePathPrefix(path: string, oldPrefix: string, newPrefix: string) {
+  const normalizedPath = normalizePath(path);
+  const normalizedOldPrefix = normalizePath(oldPrefix);
+  const normalizedNewPrefix = normalizePath(newPrefix);
+  if (normalizedPath === normalizedOldPrefix) {
+    return normalizedNewPrefix;
+  }
+  if (normalizedPath.startsWith(`${normalizedOldPrefix}/`)) {
+    return `${normalizedNewPrefix}${normalizedPath.slice(normalizedOldPrefix.length)}`;
+  }
+  return path;
+}
+
+function renameProjectIdPrefix(id: string | undefined, oldPrefix: string, newPrefix: string) {
+  if (!id?.startsWith("folder:")) {
+    return id;
+  }
+
+  const renamedPath = renamePathPrefix(id.slice("folder:".length), oldPrefix, newPrefix);
+  return `folder:${renamedPath}`;
 }
 
 function getCommonDirectory(images: DatasetImage[]) {
@@ -158,6 +197,14 @@ function getDatasetGroupKey(image: DatasetImage) {
   return Math.floor(image.id / 1_000_000);
 }
 
+function getImageDatasetId(image: DatasetImage) {
+  return image.datasetId ?? `database:${getDatasetGroupKey(image)}`;
+}
+
+function getProjectSourceKind(project: DatasetProject | undefined) {
+  return project?.sourceKind ?? (project?.id.startsWith("folder-root:") ? "folder" : "database");
+}
+
 function createProjectTree(
   images: DatasetImage[],
   rootName?: string,
@@ -165,9 +212,9 @@ function createProjectTree(
 ): DatasetProject[] {
   if (images.length === 0) return [];
 
-  const groups = new Map<number, DatasetImage[]>();
+  const groups = new Map<string, DatasetImage[]>();
   for (const image of images) {
-    const key = getDatasetGroupKey(image);
+    const key = getImageDatasetId(image);
     const current = groups.get(key);
     if (current) {
       current.push(image);
@@ -176,22 +223,31 @@ function createProjectTree(
     }
   }
 
-  const normalizedImportRoot = rootPath ? normalizePath(rootPath) : undefined;
-
   return Array.from(groups.entries()).map(([groupKey, groupImages]) => {
+    const sourceKind = groupImages[0]?.sourceKind ?? "database";
+    const imageRoot = groupImages.find((image) => image.rootPath)?.rootPath;
+    const groupRootPath = sourceKind === "folder" ? imageRoot : rootPath;
+    const groupRootName = sourceKind === "folder"
+      ? getPathName(imageRoot ?? "", "Folder")
+      : rootName;
+    const normalizedGroupRoot = groupRootPath ? normalizePath(groupRootPath) : undefined;
     const groupMatchesImportRoot =
-      normalizedImportRoot &&
-      groupImages.every((image) => normalizePath(image.path).startsWith(normalizedImportRoot));
+      normalizedGroupRoot &&
+      groupImages.every((image) => normalizePath(image.path).startsWith(normalizedGroupRoot));
     const normalizedRoot = groupMatchesImportRoot
-      ? normalizedImportRoot
+      ? normalizedGroupRoot
       : normalizePath(getCommonDirectory(groupImages));
 
     const root: DatasetProject = {
-      id: `dataset-root:${groupKey}`,
-      name: groupMatchesImportRoot && rootName ? rootName : getPathName(normalizedRoot, "Dataset"),
+      id: sourceKind === "folder" ? `folder-root:${groupKey}` : `dataset-root:${groupKey}`,
+      name: groupMatchesImportRoot && groupRootName
+        ? groupRootName
+        : getPathName(normalizedRoot, sourceKind === "folder" ? "Folder" : "Dataset"),
       path: normalizedRoot,
       imageIds: groupImages.map((image) => image.id),
-      children: []
+      children: [],
+      sourceKind,
+      datasetId: groupKey
     };
 
     const ensureChild = (parent: DatasetProject, name: string, path: string) => {
@@ -199,11 +255,13 @@ function createProjectTree(
       let child = parent.children.find((item) => item.path === path);
       if (!child) {
         child = {
-          id: `folder:${path}`,
+          id: `${sourceKind}-folder:${path}`,
           name,
           path,
           imageIds: [],
-          children: []
+          children: [],
+          sourceKind,
+          datasetId: groupKey
         };
         parent.children.push(child);
       }
@@ -245,33 +303,58 @@ function flattenProjects(projects: DatasetProject[]): DatasetProject[] {
   return projects.flatMap((project) => [project, ...flattenProjects(project.children ?? [])]);
 }
 
+type WorkspaceTab = "overview" | "grid" | "table";
+
 interface DatasetState {
   images: DatasetImage[];
   projects: DatasetProject[];
   profiles: AnnotationProfile[];
   presets: ExportPreset[];
+  workspaceTab: WorkspaceTab;
   selectedProjectId?: string;
   selectedImageId?: number;
   search: string;
+  tableDraftProfileId?: number;
+  tableAnnotationDrafts: Record<number, string>;
+  tableInstructionDrafts: Record<number, string>;
+  tableSavedCellKeys: string[];
   activeProfileId?: number;
   isLoading: boolean;
   lastImport?: ImportSummary;
   importPreview?: ImportPreview;
   importProgress?: ImportProgress;
   importReport?: ImportReport;
+  showImportWizard: boolean;
   annotationType: string;
   initImportEvents: () => Promise<void>;
   load: () => Promise<void>;
+  openImportWizard: () => void;
+  closeImportWizard: () => void;
   importFolder: () => Promise<void>;
+  mountFolder: () => Promise<void>;
   startPreparedImport: () => Promise<void>;
   browseImportedDataset: () => Promise<void>;
   setAnnotationType: (annotationType: string) => void;
   clearImportPreview: () => void;
   removeDataset: (project: DatasetProject) => Promise<void>;
+  renameDatasetFolder: (project: DatasetProject, name: string) => Promise<void>;
   exportDataset: (format: "txt_per_image" | "jsonl") => Promise<void>;
+  setWorkspaceTab: (tab: WorkspaceTab) => void;
   selectProject: (id?: string) => void;
   selectImage: (id?: number) => void;
   setSearch: (search: string) => void;
+  resetTableDrafts: (
+    profileId: number,
+    annotationDrafts: Record<number, string>,
+    instructionDrafts: Record<number, string>
+  ) => void;
+  mergeTableDrafts: (
+    annotationDrafts: Record<number, string>,
+    instructionDrafts: Record<number, string>
+  ) => void;
+  updateTableAnnotationDraft: (imageId: number, value: string) => void;
+  updateTableInstructionDraft: (imageId: number, value: string) => void;
+  markTableCellSaved: (key: string) => void;
   setActiveProfile: (id?: number) => void;
   saveAnnotation: (imageId: number, profileId: number, content: string) => Promise<void>;
   saveInstruction: (imageId: number, profileId: number, instruction: string) => Promise<void>;
@@ -297,15 +380,21 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
       format: "jsonl"
     }
   ],
+  workspaceTab: "overview",
   selectedProjectId: undefined,
   selectedImageId: undefined,
   search: "",
+  tableDraftProfileId: undefined,
+  tableAnnotationDrafts: {},
+  tableInstructionDrafts: {},
+  tableSavedCellKeys: [],
   activeProfileId: sampleProfiles[0]?.id,
   isLoading: false,
   annotationType: "",
   importPreview: undefined,
   importProgress: undefined,
   importReport: undefined,
+  showImportWizard: false,
   initImportEvents: async () => {
     if (!hasTauriRuntime() || unlistenImportProgress) {
       return;
@@ -329,6 +418,7 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
         set({
           importReport: progress.report,
           importProgress: undefined,
+          showImportWizard: false,
           selectedProjectId: undefined,
           selectedImageId: undefined
         });
@@ -358,6 +448,16 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
       set({ isLoading: false });
     }
   },
+  openImportWizard: () =>
+    set({
+      showImportWizard: true,
+      importPreview: undefined,
+      importProgress: undefined,
+      importReport: undefined,
+      selectedProjectId: undefined,
+      selectedImageId: undefined
+    }),
+  closeImportWizard: () => set({ showImportWizard: false }),
   importFolder: async () => {
     if (!hasTauriRuntime()) {
       return;
@@ -373,6 +473,7 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
       const preview = await invokeCommand<ImportPreview>("prepare_import_folder");
       set({
         importPreview: preview,
+        showImportWizard: false,
         annotationType: preview.annotatedImageCount > 0 ? get().annotationType : "",
         selectedProjectId: undefined,
         selectedImageId: undefined
@@ -384,6 +485,60 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
       }
     } finally {
       set({ isLoading: false });
+    }
+  },
+  mountFolder: async () => {
+    if (!hasTauriRuntime()) {
+      return;
+    }
+
+    set({
+      isLoading: true,
+      importPreview: undefined,
+      importProgress: undefined,
+      importReport: undefined
+    });
+    try {
+      await invokeCommand<void>("mount_folder_dataset");
+      set({
+        showImportWizard: false,
+        importProgress: {
+          phase: "scanning",
+          processed: 0,
+          total: 0,
+          imported: 0,
+          skipped: 0,
+          failed: 0,
+          currentPath: "正在扫描工作文件夹...",
+          done: false
+        }
+      });
+      const [images, profiles] = await Promise.all([
+        invokeCommand<DatasetImage[]>("list_images"),
+        invokeCommand<AnnotationProfile[]>("list_annotation_profiles")
+      ]);
+      const projects = createProjectTree(images);
+      const firstFolder = projects.find((project) => project.sourceKind === "folder");
+      set({
+        images,
+        profiles,
+        projects,
+        showImportWizard: false,
+        importProgress: undefined,
+        selectedProjectId: firstFolder?.id,
+        selectedImageId: undefined,
+        activeProfileId: firstFolder?.datasetId
+          ? profiles.find((profile) => profile.datasetId === firstFolder.datasetId)?.id
+          : profiles[0]?.id
+      });
+    } catch (error) {
+      const payload = error as { code?: string };
+      set({ importProgress: undefined });
+      if (payload.code !== "dialog_cancelled") {
+        throw error;
+      }
+    } finally {
+      set({ isLoading: false, importProgress: undefined });
     }
   },
   startPreparedImport: async () => {
@@ -433,11 +588,8 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
       const selectedProject = projects.find(
         (project) => report.rootPath && normalizePath(project.path) === normalizePath(report.rootPath)
       );
-      const selectedDatasetKey = selectedProject?.imageIds[0]
-        ? Math.floor(selectedProject.imageIds[0] / 1_000_000)
-        : undefined;
       const activeProfileId =
-        profiles.find((profile) => Math.floor(profile.id / 1_000_000) === selectedDatasetKey)?.id ??
+        profiles.find((profile) => profile.datasetId === selectedProject?.datasetId)?.id ??
         profiles[0]?.id;
       set({
         images,
@@ -456,9 +608,15 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
   clearImportPreview: () => set({ importPreview: undefined, annotationType: "" }),
   removeDataset: async (project) => {
     if (hasTauriRuntime()) {
-      await invokeCommand<number>("remove_dataset_folder", {
-        folderPath: project.path
-      });
+      if (getProjectSourceKind(project) === "folder") {
+        await invokeCommand<number>("remove_folder_dataset", {
+          folderPath: project.path
+        });
+      } else {
+        await invokeCommand<number>("remove_dataset_folder", {
+          folderPath: project.path
+        });
+      }
       const [images, profiles] = await Promise.all([
         invokeCommand<DatasetImage[]>("list_images"),
         invokeCommand<AnnotationProfile[]>("list_annotation_profiles")
@@ -501,6 +659,50 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
       };
     });
   },
+  renameDatasetFolder: async (project, name) => {
+    const trimmedName = name.trim();
+    if (!trimmedName || trimmedName === project.name) {
+      return;
+    }
+
+    if (/[\\/]/.test(trimmedName)) {
+      throw new Error("Folder name cannot contain path separators.");
+    }
+
+    const parentPath = getDirectory(project.path);
+    const newPath = parentPath ? `${parentPath}/${trimmedName}` : trimmedName;
+    if (hasTauriRuntime()) {
+      await invokeCommand<string>("rename_dataset_folder", {
+        folderPath: project.path,
+        newName: trimmedName
+      });
+      const [images, profiles] = await Promise.all([
+        invokeCommand<DatasetImage[]>("list_images"),
+        invokeCommand<AnnotationProfile[]>("list_annotation_profiles")
+      ]);
+      set((state) => ({
+        images,
+        profiles,
+        projects: createProjectTree(images),
+        selectedProjectId: renameProjectIdPrefix(state.selectedProjectId, project.path, newPath),
+        selectedImageId: state.selectedImageId,
+        activeProfileId: state.activeProfileId
+      }));
+      return;
+    }
+
+    set((state) => {
+      const images = state.images.map((image) => ({
+        ...image,
+        path: renamePathPrefix(image.path, project.path, newPath)
+      }));
+      return {
+        images,
+        projects: createProjectTree(images),
+        selectedProjectId: renameProjectIdPrefix(state.selectedProjectId, project.path, newPath)
+      };
+    });
+  },
   exportDataset: async (format) => {
     if (!hasTauriRuntime()) {
       return;
@@ -525,22 +727,84 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
       }
     });
   },
-  selectProject: (id) => set({ selectedProjectId: id, selectedImageId: undefined }),
+  setWorkspaceTab: (tab) => set({ workspaceTab: tab }),
+  selectProject: (id) =>
+    set((state) => {
+      const project = flattenProjects(state.projects).find((project) => project.id === id);
+      const activeProfileId = project?.datasetId
+        ? state.profiles.find((profile) => profile.datasetId === project.datasetId)?.id ??
+          state.activeProfileId
+        : state.activeProfileId;
+
+      return { selectedProjectId: id, selectedImageId: undefined, activeProfileId };
+    }),
   selectImage: (id) => set({ selectedImageId: id }),
   setSearch: (search) => set({ search }),
+  resetTableDrafts: (profileId, annotationDrafts, instructionDrafts) =>
+    set({
+      tableDraftProfileId: profileId,
+      tableAnnotationDrafts: annotationDrafts,
+      tableInstructionDrafts: instructionDrafts,
+      tableSavedCellKeys: []
+    }),
+  mergeTableDrafts: (annotationDrafts, instructionDrafts) =>
+    set((state) => ({
+      tableAnnotationDrafts: {
+        ...annotationDrafts,
+        ...state.tableAnnotationDrafts
+      },
+      tableInstructionDrafts: {
+        ...instructionDrafts,
+        ...state.tableInstructionDrafts
+      }
+    })),
+  updateTableAnnotationDraft: (imageId, value) =>
+    set((state) => ({
+      tableAnnotationDrafts: {
+        ...state.tableAnnotationDrafts,
+        [imageId]: value
+      },
+      tableSavedCellKeys: state.tableSavedCellKeys.filter(
+        (key) => key !== `${imageId}:annotation`
+      )
+    })),
+  updateTableInstructionDraft: (imageId, value) =>
+    set((state) => ({
+      tableInstructionDrafts: {
+        ...state.tableInstructionDrafts,
+        [imageId]: value
+      },
+      tableSavedCellKeys: state.tableSavedCellKeys.filter(
+        (key) => key !== `${imageId}:instruction`
+      )
+    })),
+  markTableCellSaved: (key) =>
+    set((state) => ({
+      tableSavedCellKeys: state.tableSavedCellKeys.includes(key)
+        ? state.tableSavedCellKeys
+        : [...state.tableSavedCellKeys, key]
+    })),
   setActiveProfile: (id) => set({ activeProfileId: id }),
   saveAnnotation: async (imageId, profileId, content) => {
     if (hasTauriRuntime()) {
-      await invokeCommand("save_annotation", {
-        imageId,
-        profileId,
-        content
-      });
+      const image = get().images.find((image) => image.id === imageId);
+      if (image?.sourceKind === "folder") {
+        await invokeCommand("save_folder_annotation", {
+          imagePath: image.path,
+          content
+        });
+      } else {
+        await invokeCommand("save_annotation", {
+          imageId,
+          profileId,
+          content
+        });
+      }
       const images = await invokeCommand<DatasetImage[]>("list_images");
       set((state) => ({
         images,
         projects: createProjectTree(images),
-        selectedImageId: imageId,
+        selectedImageId: state.selectedImageId,
         selectedProjectId: state.selectedProjectId
       }));
       return;
@@ -581,16 +845,24 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
   },
   saveInstruction: async (imageId, profileId, instruction) => {
     if (hasTauriRuntime()) {
-      await invokeCommand("save_instruction", {
-        imageId,
-        profileId,
-        instruction
-      });
+      const image = get().images.find((image) => image.id === imageId);
+      if (image?.sourceKind === "folder") {
+        await invokeCommand("save_folder_instruction", {
+          imagePath: image.path,
+          instruction
+        });
+      } else {
+        await invokeCommand("save_instruction", {
+          imageId,
+          profileId,
+          instruction
+        });
+      }
       const images = await invokeCommand<DatasetImage[]>("list_images");
       set((state) => ({
         images,
         projects: createProjectTree(images),
-        selectedImageId: imageId,
+        selectedImageId: state.selectedImageId,
         selectedProjectId: state.selectedProjectId
       }));
       return;
@@ -639,13 +911,16 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
     const selectedProject = flattenProjects(state.projects).find(
       (project) => project.id === state.selectedProjectId
     );
+    if (getProjectSourceKind(selectedProject) === "folder") {
+      return undefined;
+    }
     const selectedImage = state.images.find((image) => image.id === state.selectedImageId);
-    const selectedDatasetKey = selectedImage ? getDatasetGroupKey(selectedImage) : undefined;
+    const selectedDatasetId = selectedImage ? getImageDatasetId(selectedImage) : undefined;
     const imageIds = selectedProject?.imageIds.length
       ? selectedProject.imageIds
-      : selectedDatasetKey !== undefined
+      : selectedDatasetId
         ? state.images
-            .filter((image) => getDatasetGroupKey(image) === selectedDatasetKey)
+            .filter((image) => getImageDatasetId(image) === selectedDatasetId)
             .map((image) => image.id)
         : state.projects[0]?.imageIds ?? state.images.map((image) => image.id);
 
@@ -675,7 +950,9 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
       name: trimmedName,
       formatType: "structured",
       sourceType: "manual",
-      description: "Dataset-wide annotation"
+      description: "Dataset-wide annotation",
+      sourceKind: "database",
+      datasetId: selectedProject?.datasetId
     };
     const idSet = new Set(imageIds);
     set((current) => ({
@@ -705,7 +982,17 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
   clearAnnotation: async (annotationId) => {
     const selectedImageId = get().selectedImageId;
     if (hasTauriRuntime()) {
-      await invokeCommand("clear_annotation", { annotationId });
+      const image = get().images.find((image) =>
+        image.annotations.some((annotation) => annotation.id === annotationId)
+      );
+      if (image?.sourceKind === "folder") {
+        await invokeCommand("save_folder_annotation", {
+          imagePath: image.path,
+          content: ""
+        });
+      } else {
+        await invokeCommand("clear_annotation", { annotationId });
+      }
       const images = await invokeCommand<DatasetImage[]>("list_images");
       set((state) => ({
         images,

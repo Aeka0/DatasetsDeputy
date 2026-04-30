@@ -9,6 +9,8 @@ export interface AnnotationProfile {
   sourceType: AnnotationSource;
   description?: string;
   modelInfo?: string;
+  sourceKind?: DatasetSourceKind;
+  datasetId?: string;
 }
 
 export interface Annotation {
@@ -34,7 +36,12 @@ export interface DatasetImage {
   importedAt: string;
   updatedAt: string;
   annotations: Annotation[];
+  sourceKind?: DatasetSourceKind;
+  datasetId?: string;
+  rootPath?: string;
 }
+
+export type DatasetSourceKind = "database" | "folder";
 
 export interface DatasetProject {
   id: string;
@@ -42,6 +49,8 @@ export interface DatasetProject {
   path: string;
   imageIds: number[];
   children?: DatasetProject[];
+  sourceKind?: DatasetSourceKind;
+  datasetId?: string;
 }
 
 export interface ImportSummary {

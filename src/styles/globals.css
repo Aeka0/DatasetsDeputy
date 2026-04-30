@@ -130,6 +130,26 @@ textarea {
   outline-offset: 0;
 }
 
+.glass-input.dataset-cell-dirty {
+  border-color: #f59e0b;
+  background: #fffbeb;
+}
+
+.glass-input.dataset-cell-dirty:focus {
+  border-color: #d97706;
+  outline-color: rgba(245, 158, 11, 0.18);
+}
+
+.glass-input.dataset-cell-saved {
+  border-color: #10b981;
+  background: #ecfdf5;
+}
+
+.glass-input.dataset-cell-saved:focus {
+  border-color: #059669;
+  outline-color: rgba(16, 185, 129, 0.18);
+}
+
 .fluent-shell {
   border: 1px solid rgba(31, 35, 40, 0.16);
   background: transparent;
