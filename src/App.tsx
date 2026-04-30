@@ -78,7 +78,7 @@ export default function App() {
         {isProjectTreeCollapsed ? null : <ProjectTree />}
 
         <section className="min-w-0 flex-1 p-3">
-          <div className="relative h-full min-h-0 rounded-lg border border-slate-200 bg-white p-4">
+          <div className="app-surface relative h-full min-h-0 rounded-lg border border-slate-200 bg-white p-4">
             <button
               type="button"
               className="no-drag absolute left-0 top-1/2 z-20 flex h-36 w-3 -translate-y-1/2 items-center justify-center rounded-r-sm text-black/38 transition hover:bg-black/[0.055] hover:text-black focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black/20"

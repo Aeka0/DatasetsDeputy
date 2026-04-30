@@ -97,7 +97,11 @@
     "themeDescription": "Choose the app color mode",
     "themeSystem": "Use system setting",
     "themeLight": "Light mode",
-    "themeDark": "Dark mode"
+    "themeDark": "Dark mode",
+    "bottomUiOpacity": "Bottom UI opacity",
+    "bottomUiOpacityDescription": "Controls the transparent window layer",
+    "topUiOpacity": "Top UI opacity",
+    "topUiOpacityDescription": "Controls the main content surface"
   },
   "image": {
     "annotations": "annotations",

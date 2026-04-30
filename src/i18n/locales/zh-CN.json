@@ -97,7 +97,11 @@
     "themeDescription": "选择应用界面的颜色模式",
     "themeSystem": "跟随系统",
     "themeLight": "亮色模式",
-    "themeDark": "暗色模式"
+    "themeDark": "暗色模式",
+    "bottomUiOpacity": "底层 UI 不透明度",
+    "bottomUiOpacityDescription": "控制窗口透明背景层",
+    "topUiOpacity": "顶层 UI 不透明度",
+    "topUiOpacityDescription": "控制主体内容区域"
   },
   "image": {
     "annotations": "份标注",

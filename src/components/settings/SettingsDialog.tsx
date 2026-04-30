@@ -5,8 +5,13 @@ import { useTranslation } from "react-i18next";
 
 import i18next from "../../i18n";
 import {
+  getBottomUiOpacity,
   getThemePreference,
+  getTopUiOpacity,
   setThemePreference,
+  setBottomUiOpacity,
+  setTopUiOpacity,
+  watchUiOpacity,
   watchThemePreference,
   type ThemePreference
 } from "../../lib/theme";
@@ -48,14 +53,34 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
   const [activeSection, setActiveSection] = useState<SettingsSectionKey>("general");
   const [themePreference, setThemePreferenceState] =
     useState<ThemePreference>(getThemePreference);
+  const [bottomUiOpacity, setBottomUiOpacityState] = useState(getBottomUiOpacity);
+  const [topUiOpacity, setTopUiOpacityState] = useState(getTopUiOpacity);
   const active = sections.find((section) => section.key === activeSection) ?? sections[0];
   const currentLanguage = i18n.language.startsWith("zh") ? "zh-CN" : "en-US";
 
   useEffect(() => watchThemePreference(setThemePreferenceState), []);
+  useEffect(
+    () =>
+      watchUiOpacity(() => {
+        setBottomUiOpacityState(getBottomUiOpacity());
+        setTopUiOpacityState(getTopUiOpacity());
+      }),
+    []
+  );
 
   const updateThemePreference = (preference: ThemePreference) => {
     setThemePreferenceState(preference);
     setThemePreference(preference);
+  };
+
+  const updateBottomUiOpacity = (value: number) => {
+    setBottomUiOpacityState(value);
+    setBottomUiOpacity(value);
+  };
+
+  const updateTopUiOpacity = (value: number) => {
+    setTopUiOpacityState(value);
+    setTopUiOpacity(value);
   };
 
   return createPortal(
@@ -169,6 +194,52 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
                       </option>
                     ))}
                   </select>
+                </div>
+                <div className="flex min-h-12 items-center justify-between gap-4 border-b border-slate-100 px-4 py-3 last:border-b-0">
+                  <div className="min-w-0">
+                    <div className="text-[13px] font-medium text-slate-900">
+                      {t("settings.bottomUiOpacity")}
+                    </div>
+                    <div className="mt-0.5 text-[12px] text-slate-500">
+                      {t("settings.bottomUiOpacityDescription")}
+                    </div>
+                  </div>
+                  <div className="flex min-w-[210px] items-center gap-3">
+                    <input
+                      type="range"
+                      min={30}
+                      max={100}
+                      value={bottomUiOpacity}
+                      onChange={(event) => updateBottomUiOpacity(Number(event.target.value))}
+                      className="no-drag w-full"
+                    />
+                    <span className="w-10 text-right text-[12px] text-slate-500">
+                      {bottomUiOpacity}%
+                    </span>
+                  </div>
+                </div>
+                <div className="flex min-h-12 items-center justify-between gap-4 border-b border-slate-100 px-4 py-3 last:border-b-0">
+                  <div className="min-w-0">
+                    <div className="text-[13px] font-medium text-slate-900">
+                      {t("settings.topUiOpacity")}
+                    </div>
+                    <div className="mt-0.5 text-[12px] text-slate-500">
+                      {t("settings.topUiOpacityDescription")}
+                    </div>
+                  </div>
+                  <div className="flex min-w-[210px] items-center gap-3">
+                    <input
+                      type="range"
+                      min={30}
+                      max={100}
+                      value={topUiOpacity}
+                      onChange={(event) => updateTopUiOpacity(Number(event.target.value))}
+                      className="no-drag w-full"
+                    />
+                    <span className="w-10 text-right text-[12px] text-slate-500">
+                      {topUiOpacity}%
+                    </span>
+                  </div>
                 </div>
               </div>
             ) : (

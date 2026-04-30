@@ -19,7 +19,12 @@
   --app-radius-sm: 4px;
   --app-radius-md: 6px;
   --app-radius-lg: 8px;
-  --app-chrome-bg: rgba(255, 255, 255, 0.45);
+  --app-bottom-opacity: 0.45;
+  --app-top-opacity: 1;
+  --app-chrome-rgb: 255 255 255;
+  --app-surface-rgb: 255 255 255;
+  --app-chrome-bg: rgb(var(--app-chrome-rgb) / var(--app-bottom-opacity));
+  --app-surface-bg: rgb(var(--app-surface-rgb) / var(--app-top-opacity));
   --app-chrome-border: rgba(255, 255, 255, 0.6);
   font-family:
     "Segoe UI", Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
@@ -114,7 +119,7 @@ textarea {
 
 .glass-panel {
   border: 1px solid var(--app-border);
-  background: var(--app-bg-elevated);
+  background: var(--app-surface-bg);
 }
 
 .glass-input {
@@ -165,6 +170,10 @@ textarea {
   backdrop-filter: blur(48px) saturate(1.28);
 }
 
+.app-surface {
+  background: var(--app-surface-bg);
+}
+
 .fluent-sidebar {
   background: transparent;
 }
@@ -199,7 +208,10 @@ html[data-theme="dark"] {
   --app-accent-hover: #d9d9d9;
   --app-selection: #4a4a4a;
   --app-hover: rgba(255, 255, 255, 0.08);
-  --app-chrome-bg: rgba(20, 20, 20, 0.76);
+  --app-chrome-rgb: 20 20 20;
+  --app-surface-rgb: 32 32 32;
+  --app-chrome-bg: rgb(var(--app-chrome-rgb) / var(--app-bottom-opacity));
+  --app-surface-bg: rgb(var(--app-surface-rgb) / var(--app-top-opacity));
   --app-chrome-border: rgba(0, 0, 0, 0.86);
 }
 
@@ -221,6 +233,10 @@ html[data-theme="dark"] .bg-white,
 html[data-theme="dark"] .bg-slate-50,
 html[data-theme="dark"] .bg-slate-100 {
   background-color: #202020;
+}
+
+html[data-theme="dark"] .app-surface {
+  background: var(--app-surface-bg);
 }
 
 html[data-theme="dark"] .bg-white\/54,
