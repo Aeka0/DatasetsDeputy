@@ -1,8 +1,8 @@
 import {
   Check,
   ChevronDown,
-  Folder,
   Globe2,
+  HardDrive,
   Languages,
   MonitorCog,
   Settings2,
@@ -26,10 +26,17 @@ import {
   watchThemePreference,
   type ThemePreference
 } from "../../lib/theme";
+import { useDatasetStore } from "../../stores/datasetStore";
 import { Button } from "../ui/Button";
 
-type SettingsSectionKey = "general" | "language" | "network" | "localFiles" | "appearance";
+type SettingsSectionKey =
+  | "general"
+  | "language"
+  | "network"
+  | "localFiles"
+  | "appearance";
 type NetworkSectionKey = "gemini" | "proxy" | "imageTransfer";
+type LocalFilesSectionKey = "environment" | "cache";
 
 interface SettingsSection {
   key: SettingsSectionKey;
@@ -41,7 +48,7 @@ const sections: SettingsSection[] = [
   { key: "general", labelKey: "settings.general", icon: Settings2 },
   { key: "language", labelKey: "settings.language", icon: Languages },
   { key: "network", labelKey: "settings.network", icon: Wifi },
-  { key: "localFiles", labelKey: "settings.localFiles", icon: Folder },
+  { key: "localFiles", labelKey: "settings.localFiles", icon: HardDrive },
   { key: "appearance", labelKey: "settings.appearance", icon: MonitorCog }
 ];
 
@@ -67,6 +74,46 @@ interface GeminiSettings {
   imageConvertFormat: string;
 }
 
+type PythonEnvMode = "externalVenv" | "managedVenv";
+type PythonEnvInstallProfile = "cpu" | "cuda121" | "cuda124";
+
+interface PythonEnvSettings {
+  mode: PythonEnvMode;
+  externalPath: string;
+  managedPath: string;
+  installProfile: PythonEnvInstallProfile;
+}
+
+interface PythonEnvProbeReport {
+  ok: boolean;
+  mode: PythonEnvMode;
+  pythonPath?: string;
+  managedPath: string;
+  pythonAvailable: boolean;
+  pythonVersion?: string;
+  torchAvailable: boolean;
+  torchVersion?: string;
+  cudaAvailable: boolean;
+  cudaVersion?: string;
+  deviceNames: string[];
+  error?: string;
+  stdout: string;
+  stderr: string;
+}
+
+interface PythonEnvInstallResult {
+  success: boolean;
+  message: string;
+  managedPath: string;
+  pythonPath?: string;
+  stdout: string;
+  stderr: string;
+}
+
+interface ThumbnailCacheInfo {
+  sizeBytes: number;
+}
+
 const defaultGeminiSettings: GeminiSettings = {
   apiKey: "",
   model: "gemini-flash-latest",
@@ -77,6 +124,27 @@ const defaultGeminiSettings: GeminiSettings = {
   imageResizeMode: "none",
   imageConvertFormat: "none"
 };
+
+const defaultPythonEnvSettings: PythonEnvSettings = {
+  mode: "managedVenv",
+  externalPath: "",
+  managedPath: "",
+  installProfile: "cuda121"
+};
+
+const pythonEnvModeOptions: Array<{ value: PythonEnvMode; labelKey: string }> = [
+  { value: "managedVenv", labelKey: "settings.pythonEnvModeManaged" },
+  { value: "externalVenv", labelKey: "settings.pythonEnvModeExternal" }
+];
+
+const pythonInstallProfileOptions: Array<{
+  value: PythonEnvInstallProfile;
+  labelKey: string;
+}> = [
+  { value: "cuda121", labelKey: "settings.pythonInstallCuda121" },
+  { value: "cuda124", labelKey: "settings.pythonInstallCuda124" },
+  { value: "cpu", labelKey: "settings.pythonInstallCpu" }
+];
 
 const resizeOptions = [
   { value: "none", labelKey: "settings.geminiResizeNone" },
@@ -91,6 +159,18 @@ const convertFormatOptions = [
   { value: "webp", labelKey: "settings.geminiFormatWebp" },
   { value: "jpeg", labelKey: "settings.geminiFormatJpeg" }
 ];
+
+function formatByteSize(value: number) {
+  if (!value) return "0 B";
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  let size = value;
+  let index = 0;
+  while (size >= 1024 && index < units.length - 1) {
+    size /= 1024;
+    index += 1;
+  }
+  return `${size.toFixed(index === 0 ? 0 : 1)} ${units[index]}`;
+}
 
 interface SettingsDialogProps {
   onClose: () => void;
@@ -194,6 +274,8 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
   const [activeSection, setActiveSection] = useState<SettingsSectionKey>("general");
   const [activeNetworkSection, setActiveNetworkSection] =
     useState<NetworkSectionKey>("gemini");
+  const [activeLocalFilesSection, setActiveLocalFilesSection] =
+    useState<LocalFilesSectionKey>("environment");
   const [themePreference, setThemePreferenceState] =
     useState<ThemePreference>(getThemePreference);
   const [bottomUiOpacity, setBottomUiOpacityState] = useState(getBottomUiOpacity);
@@ -203,6 +285,17 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
   const [geminiMessage, setGeminiMessage] = useState("");
   const [isGeminiBusy, setIsGeminiBusy] = useState(false);
   const [hasLoadedGeminiSettings, setHasLoadedGeminiSettings] = useState(false);
+  const [pythonEnvSettings, setPythonEnvSettings] =
+    useState<PythonEnvSettings>(defaultPythonEnvSettings);
+  const [pythonEnvProbe, setPythonEnvProbe] = useState<PythonEnvProbeReport>();
+  const [pythonEnvMessage, setPythonEnvMessage] = useState("");
+  const [isPythonEnvBusy, setIsPythonEnvBusy] = useState(false);
+  const [hasLoadedPythonEnvSettings, setHasLoadedPythonEnvSettings] = useState(false);
+  const { highlightCellState, setHighlightCellState, refreshImages } = useDatasetStore();
+  const [thumbnailCacheInfo, setThumbnailCacheInfo] =
+    useState<ThumbnailCacheInfo>({ sizeBytes: 0 });
+  const [isThumbnailCacheBusy, setIsThumbnailCacheBusy] = useState(false);
+  const [localFilesMessage, setLocalFilesMessage] = useState("");
   const active = sections.find((section) => section.key === activeSection) ?? sections[0];
   const currentLanguage = i18n.language.startsWith("zh") ? "zh-CN" : "en-US";
 
@@ -218,6 +311,16 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
       .catch((error) => setGeminiMessage(String(error)));
   }, []);
   useEffect(() => {
+    if (!hasTauriRuntime()) return;
+
+    void invokeCommand<PythonEnvSettings>("get_python_env_settings")
+      .then((settings) => {
+        setPythonEnvSettings(settings);
+        setHasLoadedPythonEnvSettings(true);
+      })
+      .catch((error) => setPythonEnvMessage(String(error)));
+  }, []);
+  useEffect(() => {
     if (!hasTauriRuntime() || !hasLoadedGeminiSettings) return;
 
     const saveTimer = window.setTimeout(() => {
@@ -231,6 +334,21 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
 
     return () => window.clearTimeout(saveTimer);
   }, [geminiSettings, hasLoadedGeminiSettings]);
+  useEffect(() => {
+    if (!hasTauriRuntime() || !hasLoadedPythonEnvSettings) return;
+
+    const saveTimer = window.setTimeout(() => {
+      void invokeCommand<PythonEnvSettings>("save_python_env_settings", {
+        settings: pythonEnvSettings
+      })
+        .catch((error) => {
+          const message = error instanceof Error ? error.message : String(error);
+          setPythonEnvMessage(t("settings.pythonEnvActionFailed", { message }));
+        });
+    }, 500);
+
+    return () => window.clearTimeout(saveTimer);
+  }, [pythonEnvSettings, hasLoadedPythonEnvSettings]);
   useEffect(
     () =>
       watchUiOpacity(() => {
@@ -257,6 +375,11 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
 
   const patchGeminiSettings = (patch: Partial<GeminiSettings>) => {
     setGeminiSettings((current) => ({ ...current, ...patch }));
+  };
+
+  const patchPythonEnvSettings = (patch: Partial<PythonEnvSettings>) => {
+    setPythonEnvSettings((current) => ({ ...current, ...patch }));
+    setPythonEnvProbe(undefined);
   };
 
   const runGeminiAction = async (action: "fetch" | "test") => {
@@ -290,6 +413,143 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
       setIsGeminiBusy(false);
     }
   };
+
+  const pickPythonEnvPath = async (selectionMode: "folder" | "file") => {
+    if (!hasTauriRuntime() || isPythonEnvBusy) return;
+
+    setIsPythonEnvBusy(true);
+    setPythonEnvMessage("");
+    try {
+      const path = await invokeCommand<string>("pick_python_env_path", {
+        selectionMode
+      });
+      patchPythonEnvSettings({ mode: "externalVenv", externalPath: path });
+      setPythonEnvMessage(t("settings.pythonEnvPathSelected"));
+    } catch (error) {
+      const payload = error as { code?: string; message?: string };
+      if (payload.code !== "dialog_cancelled") {
+        const message = error instanceof Error ? error.message : String(payload.message ?? error);
+        setPythonEnvMessage(t("settings.pythonEnvActionFailed", { message }));
+      }
+    } finally {
+      setIsPythonEnvBusy(false);
+    }
+  };
+
+  const probePythonEnv = async (settings = pythonEnvSettings) => {
+    if (!hasTauriRuntime() || isPythonEnvBusy) return;
+
+    setIsPythonEnvBusy(true);
+    setPythonEnvMessage("");
+    try {
+      const report = await invokeCommand<PythonEnvProbeReport>("probe_python_env", {
+        settings
+      });
+      setPythonEnvProbe(report);
+      setPythonEnvMessage(
+        report.ok
+          ? t("settings.pythonEnvProbeOk")
+          : t("settings.pythonEnvProbeFailed", {
+              message: report.error ?? t("settings.pythonEnvUnknownError")
+            })
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setPythonEnvMessage(t("settings.pythonEnvActionFailed", { message }));
+    } finally {
+      setIsPythonEnvBusy(false);
+    }
+  };
+
+  const createManagedPythonEnv = async () => {
+    if (!hasTauriRuntime() || isPythonEnvBusy) return;
+
+    const confirmed = window.confirm(t("settings.pythonEnvInstallConfirm"));
+    if (!confirmed) return;
+
+    const nextSettings: PythonEnvSettings = {
+      ...pythonEnvSettings,
+      mode: "managedVenv"
+    };
+    setPythonEnvSettings(nextSettings);
+    setPythonEnvProbe(undefined);
+    setIsPythonEnvBusy(true);
+    setPythonEnvMessage(t("settings.pythonEnvCreating"));
+    try {
+      const createResult = await invokeCommand<PythonEnvInstallResult>(
+        "create_managed_python_env"
+      );
+      if (!createResult.success) {
+        setPythonEnvMessage(createResult.message);
+        return;
+      }
+
+      setPythonEnvMessage(t("settings.pythonEnvInstalling"));
+      const installResult = await invokeCommand<PythonEnvInstallResult>(
+        "install_managed_python_deps",
+        {
+          installProfile: nextSettings.installProfile
+        }
+      );
+      setPythonEnvSettings((current) => ({
+        ...current,
+        mode: "managedVenv",
+        managedPath: installResult.managedPath || createResult.managedPath
+      }));
+      setPythonEnvMessage(installResult.message);
+      if (installResult.success) {
+        await probePythonEnv({
+          ...nextSettings,
+          managedPath: installResult.managedPath || createResult.managedPath
+        });
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setPythonEnvMessage(t("settings.pythonEnvActionFailed", { message }));
+    } finally {
+      setIsPythonEnvBusy(false);
+    }
+  };
+
+  const refreshThumbnailCacheInfo = async () => {
+    if (!hasTauriRuntime() || isThumbnailCacheBusy) return;
+
+    setIsThumbnailCacheBusy(true);
+    setLocalFilesMessage("");
+    try {
+      const info = await invokeCommand<ThumbnailCacheInfo>("get_thumbnail_cache_info");
+      setThumbnailCacheInfo(info);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setLocalFilesMessage(t("settings.thumbnailCacheActionFailed", { message }));
+    } finally {
+      setIsThumbnailCacheBusy(false);
+    }
+  };
+
+  const clearThumbnailCache = async () => {
+    if (!hasTauriRuntime() || isThumbnailCacheBusy) return;
+
+    setIsThumbnailCacheBusy(true);
+    setLocalFilesMessage("");
+    try {
+      const info = await invokeCommand<ThumbnailCacheInfo>("clear_thumbnail_cache");
+      setThumbnailCacheInfo(info);
+      await refreshImages();
+      setLocalFilesMessage(t("settings.thumbnailCacheCleared"));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setLocalFilesMessage(t("settings.thumbnailCacheActionFailed", { message }));
+    } finally {
+      setIsThumbnailCacheBusy(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeSection === "localFiles" && activeLocalFilesSection === "cache") {
+      void refreshThumbnailCacheInfo();
+    }
+  }, [activeSection, activeLocalFilesSection]);
 
   return createPortal(
     <div
@@ -357,14 +617,35 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
             className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden bg-slate-50/42 p-5"
             style={{ scrollbarGutter: "stable" }}
           >
-            {activeSection === "language" ? (
+            {activeSection === "general" ? (
+              <div className="rounded-lg border border-slate-200 bg-white">
+                <label className="flex min-h-12 items-center justify-between gap-4 px-4 py-3">
+                  <div className="min-w-0">
+                    <div className="text-[13px] font-medium text-slate-900">
+                      {t("settings.highlightCellState")}
+                    </div>
+                    <div className="mt-0.5 text-[12px] text-slate-500">
+                      {t("settings.highlightCellStateDescription")}
+                    </div>
+                  </div>
+                  <input
+                    type="checkbox"
+                    className="no-drag h-4 w-4 shrink-0"
+                    checked={highlightCellState}
+                    onChange={(event) => setHighlightCellState(event.target.checked)}
+                  />
+                </label>
+              </div>
+            ) : activeSection === "language" ? (
               <div className="rounded-lg border border-slate-200 bg-white">
                 <div className="flex min-h-12 items-center justify-between gap-4 border-b border-slate-100 px-4 py-3 last:border-b-0">
                   <div className="min-w-0">
                     <div className="text-[13px] font-medium text-slate-900">
                       {t("settings.languageNative")}
                     </div>
-                    <div className="mt-0.5 text-[12px] text-slate-500">Language</div>
+                    <div className="mt-0.5 text-[12px] text-slate-500">
+                      {t("settings.languageDescription")}
+                    </div>
                   </div>
                   <SettingsSelect
                     className="min-w-[150px]"
@@ -376,6 +657,266 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
                     onChange={(nextValue) => void i18next.changeLanguage(nextValue)}
                   />
                 </div>
+              </div>
+            ) : activeSection === "localFiles" ? (
+              <div className="space-y-3">
+                <div className="flex gap-1 border-b border-slate-200 pb-2">
+                  {[
+                    { key: "environment" as const, label: t("settings.localFilesEnvironment") },
+                    { key: "cache" as const, label: t("settings.localFilesCache") }
+                  ].map((item) => {
+                    const isActive = activeLocalFilesSection === item.key;
+                    return (
+                      <button
+                        key={item.key}
+                        type="button"
+                        className={`no-drag h-8 rounded-md px-3 text-[13px] font-medium transition ${
+                          isActive
+                            ? "bg-white text-slate-950 shadow-sm ring-1 ring-slate-200"
+                            : "text-slate-600 hover:bg-white/72 hover:text-slate-950"
+                        }`}
+                        onClick={() => setActiveLocalFilesSection(item.key)}
+                      >
+                        {item.label}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {activeLocalFilesSection === "environment" ? (
+                <div className="rounded-lg border border-slate-200 bg-white">
+                  <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-4 py-3">
+                    <div className="min-w-0">
+                      <div className="text-[13px] font-semibold text-slate-900">
+                        {t("settings.pythonEnvTitle")}
+                      </div>
+                      <div className="mt-0.5 text-[12px] text-slate-500">
+                        {t("settings.pythonEnvDescription")}
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      className="no-drag h-8 shrink-0 rounded-md border border-slate-200 bg-white px-3 text-[13px] text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                      disabled={isPythonEnvBusy}
+                      onClick={() => void probePythonEnv()}
+                    >
+                      {t("settings.pythonEnvProbe")}
+                    </button>
+                  </div>
+
+                  <div className="space-y-3 px-4 py-3">
+                    <div className="grid grid-cols-[180px_minmax(0,1fr)] items-center gap-3">
+                      <div className="text-[12px] font-medium text-slate-600">
+                        {t("settings.pythonEnvMode")}
+                      </div>
+                      <SettingsSelect
+                        value={pythonEnvSettings.mode}
+                        options={pythonEnvModeOptions.map((option) => ({
+                          value: option.value,
+                          label: t(option.labelKey)
+                        }))}
+                        onChange={(nextValue) =>
+                          patchPythonEnvSettings({ mode: nextValue as PythonEnvMode })
+                        }
+                      />
+                    </div>
+
+                    {pythonEnvSettings.mode === "externalVenv" ? (
+                    <div className="rounded-md border border-slate-100 bg-white/72 p-3">
+                      <div className="mb-2 text-[12px] font-semibold text-slate-700">
+                        {t("settings.pythonEnvExternal")}
+                      </div>
+                      <div className="grid grid-cols-[minmax(0,1fr)_92px_92px] gap-2">
+                        <input
+                          className="glass-input h-8 min-w-0 px-2.5 text-[13px]"
+                          value={pythonEnvSettings.externalPath}
+                          placeholder={t("settings.pythonEnvExternalPlaceholder")}
+                          onChange={(event) =>
+                            patchPythonEnvSettings({
+                              mode: "externalVenv",
+                              externalPath: event.target.value
+                            })
+                          }
+                        />
+                        <button
+                          type="button"
+                          className="no-drag h-8 rounded-md border border-slate-200 bg-white px-2 text-[12px] text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                          disabled={isPythonEnvBusy}
+                          onClick={() => void pickPythonEnvPath("folder")}
+                        >
+                          {t("settings.pythonEnvPickFolder")}
+                        </button>
+                        <button
+                          type="button"
+                          className="no-drag h-8 rounded-md border border-slate-200 bg-white px-2 text-[12px] text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                          disabled={isPythonEnvBusy}
+                          onClick={() => void pickPythonEnvPath("file")}
+                        >
+                          {t("settings.pythonEnvPickFile")}
+                        </button>
+                      </div>
+                      <div className="mt-2 text-[11px] leading-5 text-slate-500">
+                        {t("settings.pythonEnvExternalHint")}
+                      </div>
+                    </div>
+                    ) : null}
+
+                    {pythonEnvSettings.mode === "managedVenv" ? (
+                    <div className="rounded-md border border-slate-100 bg-white/72 p-3">
+                      <div className="mb-2 flex items-center justify-between gap-3">
+                        <div>
+                          <div className="text-[12px] font-semibold text-slate-700">
+                            {t("settings.pythonEnvManaged")}
+                          </div>
+                          <div className="mt-0.5 break-all text-[11px] text-slate-500">
+                            {pythonEnvSettings.managedPath || "-"}
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          className="no-drag h-8 shrink-0 rounded-md border border-slate-900 bg-slate-900 px-3 text-[12px] font-medium text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+                          disabled={isPythonEnvBusy}
+                          onClick={() => void createManagedPythonEnv()}
+                        >
+                          {t("settings.pythonEnvCreateManaged")}
+                        </button>
+                      </div>
+                      <div className="grid grid-cols-[180px_minmax(0,1fr)] items-center gap-3">
+                        <div className="text-[12px] font-medium text-slate-600">
+                          {t("settings.pythonEnvInstallProfile")}
+                        </div>
+                        <SettingsSelect
+                          value={pythonEnvSettings.installProfile}
+                          options={pythonInstallProfileOptions.map((option) => ({
+                            value: option.value,
+                            label: t(option.labelKey)
+                          }))}
+                          onChange={(nextValue) =>
+                            patchPythonEnvSettings({
+                              installProfile: nextValue as PythonEnvInstallProfile
+                            })
+                          }
+                        />
+                      </div>
+                      <div className="mt-2 text-[11px] leading-5 text-slate-500">
+                        {t("settings.pythonEnvManagedHint")}
+                      </div>
+                    </div>
+                    ) : null}
+
+                    {pythonEnvProbe ? (
+                      <div className="rounded-md border border-slate-100 bg-white p-3">
+                        <div className="mb-2 text-[12px] font-semibold text-slate-700">
+                          {t("settings.pythonEnvProbeResult")}
+                        </div>
+                        <div className="grid grid-cols-[150px_minmax(0,1fr)] gap-x-3 gap-y-1 text-[12px]">
+                          <span className="text-slate-500">
+                            {t("settings.pythonEnvStatus")}
+                          </span>
+                          <span className={pythonEnvProbe.ok ? "text-emerald-700" : "text-red-600"}>
+                            {pythonEnvProbe.ok
+                              ? t("settings.pythonEnvStatusOk")
+                              : t("settings.pythonEnvStatusFailed")}
+                          </span>
+                          <span className="text-slate-500">
+                            {t("settings.pythonEnvPythonPath")}
+                          </span>
+                          <span className="break-all text-slate-700">
+                            {pythonEnvProbe.pythonPath ?? "-"}
+                          </span>
+                          <span className="text-slate-500">
+                            {t("settings.pythonEnvPythonVersion")}
+                          </span>
+                          <span className="text-slate-700">
+                            {pythonEnvProbe.pythonVersion ?? "-"}
+                          </span>
+                          <span className="text-slate-500">
+                            {t("settings.pythonEnvTorchVersion")}
+                          </span>
+                          <span className="text-slate-700">
+                            {pythonEnvProbe.torchVersion ?? "-"}
+                          </span>
+                          <span className="text-slate-500">
+                            {t("settings.pythonEnvCuda")}
+                          </span>
+                          <span className="text-slate-700">
+                            {pythonEnvProbe.cudaAvailable
+                              ? t("settings.pythonEnvCudaAvailable", {
+                                  version: pythonEnvProbe.cudaVersion ?? "-"
+                                })
+                              : t("settings.pythonEnvCudaUnavailable")}
+                          </span>
+                          <span className="text-slate-500">
+                            {t("settings.pythonEnvDevices")}
+                          </span>
+                          <span className="text-slate-700">
+                            {pythonEnvProbe.deviceNames.length > 0
+                              ? pythonEnvProbe.deviceNames.join(", ")
+                              : "-"}
+                          </span>
+                          {pythonEnvProbe.error ? (
+                            <>
+                              <span className="text-slate-500">
+                                {t("settings.pythonEnvError")}
+                              </span>
+                              <span className="break-words text-red-600">
+                                {pythonEnvProbe.error}
+                              </span>
+                            </>
+                          ) : null}
+                        </div>
+                      </div>
+                    ) : null}
+
+                    {pythonEnvMessage ? (
+                      <div className="text-[12px] leading-5 text-slate-500">
+                        {pythonEnvMessage}
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
+                ) : null}
+
+                {activeLocalFilesSection === "cache" ? (
+              <div className="rounded-lg border border-slate-200 bg-white">
+                <div className="flex min-h-12 items-center justify-between gap-4 border-b border-slate-100 px-4 py-3 last:border-b-0">
+                  <div className="min-w-0">
+                    <div className="text-[13px] font-medium text-slate-900">
+                      {t("settings.thumbnailCache")}
+                    </div>
+                    <div className="mt-0.5 text-[12px] text-slate-500">
+                      {t("settings.thumbnailCacheDescription")}
+                    </div>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-2">
+                    <span className="min-w-20 text-right text-[13px] font-medium text-slate-700">
+                      {formatByteSize(thumbnailCacheInfo.sizeBytes)}
+                    </span>
+                    <button
+                      type="button"
+                      className="no-drag h-8 rounded-md border border-slate-200 bg-white px-3 text-[13px] text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                      disabled={isThumbnailCacheBusy}
+                      onClick={() => void refreshThumbnailCacheInfo()}
+                    >
+                      {t("settings.thumbnailCacheRefresh")}
+                    </button>
+                    <button
+                      type="button"
+                      className="no-drag h-8 rounded-md border border-slate-900 bg-slate-900 px-3 text-[13px] font-medium text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+                      disabled={isThumbnailCacheBusy || thumbnailCacheInfo.sizeBytes === 0}
+                      onClick={() => void clearThumbnailCache()}
+                    >
+                      {t("settings.thumbnailCacheClear")}
+                    </button>
+                  </div>
+                </div>
+                {localFilesMessage ? (
+                  <div className="px-4 py-3 text-[12px] text-slate-500">
+                    {localFilesMessage}
+                  </div>
+                ) : null}
+              </div>
+                ) : null}
               </div>
             ) : activeSection === "appearance" ? (
               <div className="rounded-lg border border-slate-200 bg-white">

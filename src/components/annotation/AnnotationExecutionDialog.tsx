@@ -11,6 +11,7 @@ export type AnnotationConflictStrategy = "overwrite" | "skip";
 interface AnnotationExecutionDialogProps {
   datasetName: string;
   hasSelectedImage: boolean;
+  selectedImageCount: number;
   onClose: () => void;
   onConfirm: (options: {
     scope: AnnotationExecutionScope;
@@ -21,6 +22,7 @@ interface AnnotationExecutionDialogProps {
 export function AnnotationExecutionDialog({
   datasetName,
   hasSelectedImage,
+  selectedImageCount,
   onClose,
   onConfirm
 }: AnnotationExecutionDialogProps) {
@@ -90,7 +92,7 @@ export function AnnotationExecutionDialog({
                   checked={scope === "selected"}
                   onChange={() => setScope("selected")}
                 />
-                {t("annotationRun.scopeSelected")}
+                {t("annotationRun.scopeSelected", { count: selectedImageCount })}
               </label>
               <label className="flex min-h-8 items-center gap-2 text-[13px] text-slate-700">
                 <input

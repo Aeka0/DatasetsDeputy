@@ -1,6 +1,9 @@
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { Check, ChevronDown, ImageIcon, LoaderCircle, Save } from "lucide-react";
-import type { PointerEvent as ReactPointerEvent } from "react";
+import type {
+  MouseEvent as ReactMouseEvent,
+  PointerEvent as ReactPointerEvent
+} from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
@@ -90,12 +93,17 @@ export function DatasetTable({ images }: { images: DatasetImage[] }) {
     profiles,
     activeProfileId,
     selectedImageId,
+    selectedImageIds,
+    selectionAnchorImageId,
     tableDraftProfileId,
     tableAnnotationDrafts: annotationDrafts,
     tableInstructionDrafts: instructionDrafts,
     tableSavedCellKeys,
     annotatingImageIds,
+    highlightCellState,
     selectImage,
+    setImageSelection,
+    toggleImageSelection,
     openImagePreview,
     setActiveProfile,
     resetTableDrafts,
@@ -116,6 +124,7 @@ export function DatasetTable({ images }: { images: DatasetImage[] }) {
   const [isSaving, setIsSaving] = useState(false);
   const [columnWidths, setColumnWidths] = useState(loadColumnWidths);
   const isFolderMode = images.length > 0 && images.every((image) => image.sourceKind === "folder");
+  const selectedImageIdSet = useMemo(() => new Set(selectedImageIds), [selectedImageIds]);
   const availableProfileIds = useMemo(
     () => new Set(images.flatMap((image) => image.annotations.map((annotation) => annotation.profileId))),
     [images]
@@ -213,6 +222,39 @@ export function DatasetTable({ images }: { images: DatasetImage[] }) {
     }
   };
 
+  const selectTableImage = (imageId: number, event: ReactMouseEvent<HTMLButtonElement>) => {
+    event.preventDefault();
+
+    if (event.shiftKey) {
+      const anchorId = selectionAnchorImageId ?? selectedImageId ?? imageId;
+      const anchorIndex = images.findIndex((image) => image.id === anchorId);
+      const targetIndex = images.findIndex((image) => image.id === imageId);
+
+      if (anchorIndex === -1 || targetIndex === -1) {
+        selectImage(imageId);
+        return;
+      }
+
+      const [startIndex, endIndex] =
+        anchorIndex < targetIndex ? [anchorIndex, targetIndex] : [targetIndex, anchorIndex];
+      const rangeIds = images.slice(startIndex, endIndex + 1).map((image) => image.id);
+      const nextIds =
+        event.ctrlKey || event.metaKey
+          ? Array.from(new Set([...selectedImageIds, ...rangeIds]))
+          : rangeIds;
+
+      setImageSelection(nextIds, imageId, anchorId);
+      return;
+    }
+
+    if (event.ctrlKey || event.metaKey) {
+      toggleImageSelection(imageId);
+      return;
+    }
+
+    selectImage(imageId);
+  };
+
   const gridTemplateColumns = instructionMode
     ? `${columnWidths.filename}px ${columnWidths.preview}px ${columnWidths.annotation}px ${columnWidths.instruction}px`
     : `${columnWidths.filename}px ${columnWidths.preview}px ${columnWidths.annotation}px`;
@@ -295,6 +337,10 @@ export function DatasetTable({ images }: { images: DatasetImage[] }) {
   };
 
   const getCellStateClass = (imageId: number, kind: CellKind) => {
+    if (!highlightCellState) {
+      return "";
+    }
+
     const key = createCellKey(imageId, kind);
     if (dirtyCells.has(key)) {
       return "dataset-cell-dirty";
@@ -415,7 +461,7 @@ export function DatasetTable({ images }: { images: DatasetImage[] }) {
         >
           {virtualizer.getVirtualItems().map((virtualRow) => {
             const image = images[virtualRow.index];
-            const isSelected = image.id === selectedImageId;
+            const isSelected = selectedImageIdSet.has(image.id);
             const isAnnotating = annotatingImageIds.includes(image.id);
 
             return (
@@ -423,9 +469,9 @@ export function DatasetTable({ images }: { images: DatasetImage[] }) {
                 key={image.id}
                 className={cn(
                   "absolute left-0 grid w-full border-b border-slate-100 px-3 py-2 text-[13px] transition",
-                  "hover:bg-slate-50",
-                  isSelected && "bg-slate-100"
+                  isSelected ? "dataset-table-row-selected" : "hover:bg-slate-50"
                 )}
+                aria-selected={isSelected}
                 style={{
                   gridTemplateColumns,
                   height: `${virtualRow.size}px`,
@@ -434,7 +480,7 @@ export function DatasetTable({ images }: { images: DatasetImage[] }) {
               >
                 <button
                   className="no-drag min-w-0 px-2 text-left text-[13px] font-medium leading-5 text-slate-900"
-                  onClick={() => selectImage(image.id)}
+                  onClick={(event) => selectTableImage(image.id, event)}
                   title={image.path}
                 >
                   <span className="block truncate">{image.fileName}</span>

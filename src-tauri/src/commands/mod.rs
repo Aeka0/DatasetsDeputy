@@ -15,6 +15,7 @@ use crate::{
     files::{self, ImportPreview, ImportSummary},
     folders,
     gemini::{self, GeminiSettings},
+    python_env::{self, PythonEnvInstallResult, PythonEnvProbeReport, PythonEnvSettings},
     AppState,
 };
 
@@ -52,6 +53,12 @@ pub struct ImportProgress {
     pub root_path: Option<String>,
     pub done: bool,
     pub report: Option<ImportReport>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ThumbnailCacheInfo {
+    pub size_bytes: u64,
 }
 
 struct DatasetDatabaseRef {
@@ -148,6 +155,25 @@ fn remove_sqlite_files(path: &Path) -> AppResult<()> {
         }
     }
     Ok(())
+}
+
+fn directory_size(path: &Path) -> AppResult<u64> {
+    if !path.exists() {
+        return Ok(0);
+    }
+
+    let mut size = 0;
+    for entry in fs::read_dir(path)? {
+        let entry = entry?;
+        let metadata = entry.metadata()?;
+        if metadata.is_dir() {
+            size += directory_size(&entry.path())?;
+        } else if metadata.is_file() {
+            size += metadata.len();
+        }
+    }
+
+    Ok(size)
 }
 
 fn renamed_folder_path(folder_path: &str, new_name: &str) -> AppResult<PathBuf> {
@@ -262,6 +288,82 @@ pub async fn generate_gemini_annotation(
 }
 
 #[tauri::command]
+pub fn get_python_env_settings(state: State<'_, AppState>) -> AppResult<PythonEnvSettings> {
+    python_env::load_settings(&state.dirs)
+}
+
+#[tauri::command]
+pub fn save_python_env_settings(
+    state: State<'_, AppState>,
+    settings: PythonEnvSettings,
+) -> AppResult<PythonEnvSettings> {
+    python_env::save_settings(&state.dirs, settings)
+}
+
+#[tauri::command]
+pub async fn pick_python_env_path(
+    app: AppHandle,
+    selection_mode: Option<String>,
+) -> AppResult<String> {
+    let (sender, receiver) = std::sync::mpsc::channel();
+    if selection_mode.as_deref() == Some("file") {
+        app.dialog().file().pick_file(move |path| {
+            let _ = sender.send(path);
+        });
+    } else {
+        app.dialog().file().pick_folder(move |path| {
+            let _ = sender.send(path);
+        });
+    }
+
+    let Some(path) = tauri::async_runtime::spawn_blocking(move || receiver.recv())
+        .await
+        .map_err(|error| AppError::InvalidInput(format!("环境路径选择任务失败：{error}")))?
+        .map_err(|error| AppError::InvalidInput(format!("环境路径选择失败：{error}")))?
+    else {
+        return Err(AppError::DialogCancelled);
+    };
+    let path = path
+        .into_path()
+        .map_err(|_| AppError::InvalidInput("选择的路径不是本地路径".to_owned()))?;
+    Ok(path.to_string_lossy().to_string())
+}
+
+#[tauri::command]
+pub async fn probe_python_env(
+    state: State<'_, AppState>,
+    settings: Option<PythonEnvSettings>,
+) -> AppResult<PythonEnvProbeReport> {
+    let dirs = state.dirs.clone();
+    tauri::async_runtime::spawn_blocking(move || python_env::probe_environment(&dirs, settings))
+        .await
+        .map_err(|error| AppError::InvalidInput(format!("Python 环境检测任务失败：{error}")))?
+}
+
+#[tauri::command]
+pub async fn create_managed_python_env(
+    state: State<'_, AppState>,
+) -> AppResult<PythonEnvInstallResult> {
+    let dirs = state.dirs.clone();
+    tauri::async_runtime::spawn_blocking(move || python_env::create_managed_environment(&dirs))
+        .await
+        .map_err(|error| AppError::InvalidInput(format!("独立 Python 环境创建任务失败：{error}")))?
+}
+
+#[tauri::command]
+pub async fn install_managed_python_deps(
+    state: State<'_, AppState>,
+    install_profile: Option<String>,
+) -> AppResult<PythonEnvInstallResult> {
+    let dirs = state.dirs.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        python_env::install_managed_dependencies(&dirs, install_profile)
+    })
+    .await
+    .map_err(|error| AppError::InvalidInput(format!("PyTorch 依赖安装任务失败：{error}")))?
+}
+
+#[tauri::command]
 pub async fn prepare_import_folder(app: AppHandle) -> AppResult<ImportPreview> {
     let (sender, receiver) = std::sync::mpsc::channel();
     app.dialog().file().pick_folder(move |folder| {
@@ -304,6 +406,33 @@ pub async fn mount_folder_dataset(app: AppHandle, state: State<'_, AppState>) ->
         .map_err(|_| AppError::InvalidInput("Selected folder is not a local path".to_owned()))?;
 
     folders::add_folder_dataset(&dirs, &folder)
+}
+
+#[tauri::command]
+pub fn get_thumbnail_cache_info(state: State<'_, AppState>) -> AppResult<ThumbnailCacheInfo> {
+    let thumbnail_dir = files::default_thumbnail_dir(&state.dirs.root);
+    Ok(ThumbnailCacheInfo {
+        size_bytes: directory_size(&thumbnail_dir)?,
+    })
+}
+
+#[tauri::command]
+pub fn clear_thumbnail_cache(state: State<'_, AppState>) -> AppResult<ThumbnailCacheInfo> {
+    let thumbnail_dir = files::default_thumbnail_dir(&state.dirs.root);
+    if thumbnail_dir.exists() {
+        fs::remove_dir_all(&thumbnail_dir)?;
+    }
+    fs::create_dir_all(&thumbnail_dir)?;
+
+    let mut cleared_paths = 0;
+    for db_ref in dataset_database_refs(&state.dirs)? {
+        let db = open_database(&db_ref.path)?;
+        cleared_paths += db.clear_thumbnail_paths()?;
+    }
+
+    tracing::info!("已清空缩略图缓存，清理数据库缩略图路径 {} 条", cleared_paths);
+
+    Ok(ThumbnailCacheInfo { size_bytes: 0 })
 }
 
 #[tauri::command]

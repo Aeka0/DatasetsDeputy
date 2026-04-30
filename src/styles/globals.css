@@ -250,6 +250,11 @@ textarea {
   -webkit-user-select: none;
 }
 
+.dataset-table-row-selected {
+  background: var(--app-selection);
+  box-shadow: inset 3px 0 0 var(--app-accent);
+}
+
 html[data-theme="dark"] {
   color: #e8e8e8;
   --app-bg: #141414;

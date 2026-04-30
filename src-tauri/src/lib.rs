@@ -6,6 +6,7 @@ mod export;
 mod files;
 mod folders;
 mod gemini;
+mod python_env;
 mod thumbnail;
 #[cfg(target_os = "windows")]
 mod window_region;
@@ -43,9 +44,17 @@ pub fn run() {
             commands::fetch_gemini_models,
             commands::test_gemini_connection,
             commands::generate_gemini_annotation,
+            commands::get_python_env_settings,
+            commands::save_python_env_settings,
+            commands::pick_python_env_path,
+            commands::probe_python_env,
+            commands::create_managed_python_env,
+            commands::install_managed_python_deps,
             commands::prepare_import_folder,
             commands::start_import_folder,
             commands::mount_folder_dataset,
+            commands::get_thumbnail_cache_info,
+            commands::clear_thumbnail_cache,
             commands::save_annotation,
             commands::save_instruction,
             commands::save_folder_annotation,

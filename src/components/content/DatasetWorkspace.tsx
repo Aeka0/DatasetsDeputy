@@ -162,6 +162,7 @@ export function DatasetWorkspace() {
     profiles,
     workspaceTab: activeTab,
     selectedProjectId,
+    selectedImageIds,
     search,
     setSearch,
     setWorkspaceTab
@@ -184,6 +185,10 @@ export function DatasetWorkspace() {
     () => getVisibleImages(images, selectedProject, search),
     [images, search, selectedProject]
   );
+  const selectedVisibleImageCount = useMemo(() => {
+    const visibleImageIds = new Set(visibleImages.map((image) => image.id));
+    return selectedImageIds.filter((imageId) => visibleImageIds.has(imageId)).length;
+  }, [selectedImageIds, visibleImages]);
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -200,6 +205,11 @@ export function DatasetWorkspace() {
             <span className="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-normal text-slate-500">
               {t("toolbar.datasetCount", { count: visibleImages.length })}
             </span>
+            {selectedVisibleImageCount > 0 ? (
+              <span className="shrink-0 rounded-full bg-slate-900 px-2 py-0.5 text-[11px] font-normal text-white">
+                {t("toolbar.selectedCount", { count: selectedVisibleImageCount })}
+              </span>
+            ) : null}
           </h2>
         </div>
         <div className="relative w-72">

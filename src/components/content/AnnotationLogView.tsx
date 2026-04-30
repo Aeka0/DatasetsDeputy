@@ -1,8 +1,10 @@
 import { Trash2 } from "lucide-react";
+import { useTranslation } from "react-i18next";
 
 import { useDatasetStore } from "../../stores/datasetStore";
 
 export function AnnotationLogView() {
+  const { t } = useTranslation();
   const logs = useDatasetStore((state) => state.appLogs);
   const clearAppLogs = useDatasetStore((state) => state.clearAppLogs);
 
@@ -10,10 +12,9 @@ export function AnnotationLogView() {
     <div className="flex h-full min-h-0 flex-col">
       <div className="mb-3 flex min-h-11 items-center justify-between border-b border-slate-100 px-1.5 pb-3 pt-0.5">
         <div>
-          <h2 className="m-0 text-[14px] font-semibold text-slate-900">Logs</h2>
-          <div className="mt-0.5 text-[12px] text-slate-500">
-            All log output is recorded in English.
-          </div>
+          <h2 className="m-0 text-[14px] font-semibold text-slate-900">
+            {t("logs.title")}
+          </h2>
         </div>
         <button
           type="button"
@@ -22,7 +23,7 @@ export function AnnotationLogView() {
           onClick={clearAppLogs}
         >
           <Trash2 size={14} />
-          Clear
+          {t("logs.clear")}
         </button>
       </div>
 
@@ -31,7 +32,7 @@ export function AnnotationLogView() {
         data-native-context-menu="true"
       >
         {logs.length === 0 ? (
-          <div className="text-slate-500">No logs yet.</div>
+          <div className="text-slate-500">{t("logs.empty")}</div>
         ) : (
           <div className="space-y-1">
             {logs.map((log) => (

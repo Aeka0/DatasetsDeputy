@@ -306,6 +306,7 @@ function flattenProjects(projects: DatasetProject[]): DatasetProject[] {
 type WorkspaceTab = "overview" | "grid" | "table";
 type PendingImportKind = "database" | "folder";
 type AppView = "workspace" | "initial" | "logs";
+const highlightCellStateStorageKey = "datasets-deputy.highlight-cell-state";
 
 export interface AppLogEntry {
   id: number;
@@ -324,6 +325,8 @@ interface DatasetState {
   appLogs: AppLogEntry[];
   selectedProjectId?: string;
   selectedImageId?: number;
+  selectedImageIds: number[];
+  selectionAnchorImageId?: number;
   previewImageId?: number;
   search: string;
   tableDraftProfileId?: number;
@@ -331,6 +334,7 @@ interface DatasetState {
   tableInstructionDrafts: Record<number, string>;
   tableSavedCellKeys: string[];
   annotatingImageIds: number[];
+  highlightCellState: boolean;
   activeProfileId?: number;
   isLoading: boolean;
   lastImport?: ImportSummary;
@@ -342,6 +346,7 @@ interface DatasetState {
   annotationType: string;
   initImportEvents: () => Promise<void>;
   load: () => Promise<void>;
+  refreshImages: () => Promise<void>;
   openImportWizard: () => void;
   closeImportWizard: () => void;
   importFolder: () => Promise<void>;
@@ -359,6 +364,8 @@ interface DatasetState {
   clearAppLogs: () => void;
   selectProject: (id?: string) => void;
   selectImage: (id?: number) => void;
+  setImageSelection: (ids: number[], activeId?: number, anchorId?: number) => void;
+  toggleImageSelection: (id: number) => void;
   openImagePreview: (id: number) => void;
   closeImagePreview: () => void;
   setSearch: (search: string) => void;
@@ -375,12 +382,34 @@ interface DatasetState {
   updateTableInstructionDraft: (imageId: number, value: string) => void;
   markTableCellSaved: (key: string) => void;
   clearTableSavedCellMarks: () => void;
+  setHighlightCellState: (enabled: boolean) => void;
   markImageAnnotating: (imageId: number, annotating: boolean) => void;
   setActiveProfile: (id?: number) => void;
   saveAnnotation: (imageId: number, profileId: number, content: string) => Promise<void>;
   saveInstruction: (imageId: number, profileId: number, instruction: string) => Promise<void>;
   createAnnotationProfile: (name: string) => Promise<number | undefined>;
   clearAnnotation: (annotationId: number) => Promise<void>;
+}
+
+function createImageSelection(ids: number[], activeId?: number, anchorId?: number) {
+  const selectedImageIds = Array.from(new Set(ids));
+  const selectedImageId =
+    activeId !== undefined && selectedImageIds.includes(activeId)
+      ? activeId
+      : selectedImageIds.at(-1);
+  const selectionAnchorImageId =
+    anchorId !== undefined && selectedImageIds.includes(anchorId) ? anchorId : selectedImageId;
+
+  return {
+    selectedImageId,
+    selectedImageIds,
+    selectionAnchorImageId
+  };
+}
+
+function getStoredHighlightCellState() {
+  if (typeof localStorage === "undefined") return true;
+  return localStorage.getItem(highlightCellStateStorageKey) !== "false";
 }
 
 export const useDatasetStore = create<DatasetState>((set, get) => ({
@@ -406,6 +435,8 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
   appLogs: [],
   selectedProjectId: undefined,
   selectedImageId: undefined,
+  selectedImageIds: [],
+  selectionAnchorImageId: undefined,
   previewImageId: undefined,
   search: "",
   tableDraftProfileId: undefined,
@@ -413,6 +444,7 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
   tableInstructionDrafts: {},
   tableSavedCellKeys: [],
   annotatingImageIds: [],
+  highlightCellState: getStoredHighlightCellState(),
   activeProfileId: sampleProfiles[0]?.id,
   isLoading: false,
   annotationType: "",
@@ -442,7 +474,7 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
 
       if (progress.done && progress.report) {
         get().addAppLog(
-          `Import completed: imported ${progress.imported}, skipped ${progress.skipped}, failed ${progress.failed}.`
+          `导入完成：已导入 ${progress.imported}，已跳过 ${progress.skipped}，失败 ${progress.failed}。`
         );
         const [images, profiles] = await Promise.all([
           invokeCommand<DatasetImage[]>("list_images"),
@@ -463,7 +495,7 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
           showImportWizard: false,
           appView: "workspace",
           selectedProjectId: undefined,
-          selectedImageId: undefined,
+          ...createImageSelection([]),
           previewImageId: undefined
         });
       }
@@ -475,7 +507,7 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
     }
 
     set({ isLoading: true });
-    get().addAppLog("Refreshing dataset state.");
+    get().addAppLog("正在刷新数据集状态。");
     try {
       const [images, profiles] = await Promise.all([
         invokeCommand<DatasetImage[]>("list_images"),
@@ -487,18 +519,47 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
         projects: createProjectTree(images),
         appView: "initial",
         selectedProjectId: undefined,
-        selectedImageId: undefined,
+        ...createImageSelection([]),
         previewImageId: undefined,
         activeProfileId: profiles[0]?.id
       });
-      get().addAppLog(`Refresh completed: loaded ${images.length} images and ${profiles.length} profiles.`);
+      get().addAppLog(`刷新完成：已加载 ${images.length} 张图片和 ${profiles.length} 个标注类型。`);
     } finally {
       set({ isLoading: false });
     }
   },
+  refreshImages: async () => {
+    if (!hasTauriRuntime()) {
+      return;
+    }
+
+    const images = await invokeCommand<DatasetImage[]>("list_images");
+    set((state) => {
+      const imageIds = new Set(images.map((image) => image.id));
+      const selectedImageIds = state.selectedImageIds.filter((imageId) => imageIds.has(imageId));
+      const selectedImageId =
+        state.selectedImageId !== undefined && imageIds.has(state.selectedImageId)
+          ? state.selectedImageId
+          : undefined;
+      const selectionAnchorImageId =
+        state.selectionAnchorImageId !== undefined && imageIds.has(state.selectionAnchorImageId)
+          ? state.selectionAnchorImageId
+          : undefined;
+
+      return {
+        images,
+        projects: createProjectTree(images),
+        ...createImageSelection(selectedImageIds, selectedImageId, selectionAnchorImageId),
+        previewImageId:
+          state.previewImageId !== undefined && imageIds.has(state.previewImageId)
+            ? state.previewImageId
+            : undefined
+      };
+    });
+  },
   openImportWizard: () =>
     {
-      get().addAppLog("Import wizard opened.");
+      get().addAppLog("已打开导入向导。");
       set({
       showImportWizard: true,
       appView: "workspace",
@@ -507,12 +568,12 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
       importReport: undefined,
       pendingImportKind: undefined,
       selectedProjectId: undefined,
-      selectedImageId: undefined,
+      ...createImageSelection([]),
       previewImageId: undefined
       });
     },
   closeImportWizard: () => {
-    get().addAppLog("Import wizard closed.");
+    get().addAppLog("已关闭导入向导。");
     set({ showImportWizard: false });
   },
   importFolder: async () => {
@@ -526,11 +587,11 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
       importProgress: undefined,
       importReport: undefined
     });
-    get().addAppLog("Folder import preparation started.");
+    get().addAppLog("开始准备文件夹导入。");
     try {
       const preview = await invokeCommand<ImportPreview>("prepare_import_folder");
       get().addAppLog(
-        `Folder import preview ready: ${preview.imageCount} images found, ${preview.annotatedImageCount} already annotated.`
+        `文件夹导入预览完成：找到 ${preview.imageCount} 张图片，其中 ${preview.annotatedImageCount} 张已有标注。`
       );
       set({
         importPreview: preview,
@@ -539,16 +600,16 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
         pendingImportKind: undefined,
         annotationType: preview.annotatedImageCount > 0 ? get().annotationType : "",
         selectedProjectId: undefined,
-        selectedImageId: undefined,
+        ...createImageSelection([]),
         previewImageId: undefined
       });
     } catch (error) {
       const payload = error as { code?: string };
       if (payload.code !== "dialog_cancelled") {
-        get().addAppLog(`Folder import preparation failed: ${String(error)}`, "error");
+        get().addAppLog(`文件夹导入准备失败：${String(error)}`, "error");
         throw error;
       }
-      get().addAppLog("Folder import preparation cancelled by user.", "warning");
+      get().addAppLog("用户已取消文件夹导入准备。", "warning");
     } finally {
       set({ isLoading: false });
     }
@@ -565,7 +626,7 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
       importReport: undefined,
       pendingImportKind: "folder"
     });
-    get().addAppLog("Workspace folder mount started.");
+    get().addAppLog("开始挂载工作文件夹。");
     try {
       await invokeCommand<void>("mount_folder_dataset");
       set({
@@ -587,7 +648,7 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
       ]);
       const projects = createProjectTree(images);
       const firstFolder = projects.find((project) => project.sourceKind === "folder");
-      get().addAppLog(`Workspace folder mounted: loaded ${images.length} images.`);
+      get().addAppLog(`工作文件夹挂载完成：已加载 ${images.length} 张图片。`);
       set({
         images,
         profiles,
@@ -597,7 +658,7 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
         importProgress: undefined,
         pendingImportKind: undefined,
         selectedProjectId: firstFolder?.id,
-        selectedImageId: undefined,
+        ...createImageSelection([]),
         previewImageId: undefined,
         activeProfileId: firstFolder?.datasetId
           ? profiles.find((profile) => profile.datasetId === firstFolder.datasetId)?.id
@@ -607,10 +668,10 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
       const payload = error as { code?: string };
       set({ importProgress: undefined, pendingImportKind: undefined });
       if (payload.code !== "dialog_cancelled") {
-        get().addAppLog(`Workspace folder mount failed: ${String(error)}`, "error");
+        get().addAppLog(`工作文件夹挂载失败：${String(error)}`, "error");
         throw error;
       }
-      get().addAppLog("Workspace folder mount cancelled by user.", "warning");
+      get().addAppLog("用户已取消工作文件夹挂载。", "warning");
     } finally {
       set({ isLoading: false, importProgress: undefined, pendingImportKind: undefined });
     }
@@ -622,7 +683,7 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
     }
 
     await get().initImportEvents();
-    get().addAppLog(`Prepared import started: ${preview.folderPath}`);
+    get().addAppLog(`开始执行已准备的导入：${preview.folderPath}`);
     set({
       isLoading: true,
       importPreview: undefined,
@@ -645,7 +706,7 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
       });
     } catch (error) {
       set({ isLoading: false, importProgress: undefined, pendingImportKind: undefined });
-      get().addAppLog(`Prepared import failed: ${String(error)}`, "error");
+      get().addAppLog(`已准备的导入失败：${String(error)}`, "error");
       throw error;
     }
   },
@@ -656,7 +717,7 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
     }
 
     set({ isLoading: true });
-    get().addAppLog("Browsing imported dataset.");
+    get().addAppLog("正在打开已导入的数据集。");
     try {
       const [images, profiles] = await Promise.all([
         invokeCommand<DatasetImage[]>("list_images"),
@@ -675,12 +736,12 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
         projects,
         appView: "workspace",
         selectedProjectId: selectedProject?.id,
-        selectedImageId: undefined,
+        ...createImageSelection([]),
         previewImageId: undefined,
         activeProfileId,
         importReport: undefined
       });
-      get().addAppLog(`Imported dataset opened: loaded ${images.length} images.`);
+      get().addAppLog(`已打开导入数据集：加载 ${images.length} 张图片。`);
     } finally {
       set({ isLoading: false });
     }
@@ -708,7 +769,7 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
         projects: createProjectTree(images),
         appView: "initial",
         selectedProjectId: undefined,
-        selectedImageId: undefined,
+        ...createImageSelection([]),
         previewImageId: undefined,
         activeProfileId: profiles[0]?.id,
         importPreview: undefined,
@@ -729,6 +790,15 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
       const activeProfileId = profiles.some((profile) => profile.id === state.activeProfileId)
         ? state.activeProfileId
         : profiles[0]?.id;
+      const nextSelectedImageIds = state.selectedImageIds.filter((imageId) => !ids.has(imageId));
+      const nextSelectedImageId =
+        state.selectedImageId !== undefined && ids.has(state.selectedImageId)
+          ? undefined
+          : state.selectedImageId;
+      const nextSelectionAnchorImageId =
+        state.selectionAnchorImageId !== undefined && ids.has(state.selectionAnchorImageId)
+          ? undefined
+          : state.selectionAnchorImageId;
       return {
         images,
         profiles,
@@ -737,10 +807,11 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
         activeProfileId,
         selectedProjectId:
           state.selectedProjectId === project.id ? undefined : state.selectedProjectId,
-        selectedImageId:
-          state.selectedImageId && ids.has(state.selectedImageId)
-            ? undefined
-            : state.selectedImageId,
+        ...createImageSelection(
+          nextSelectedImageIds,
+          nextSelectedImageId,
+          nextSelectionAnchorImageId
+        ),
         previewImageId:
           state.previewImageId && ids.has(state.previewImageId)
             ? undefined
@@ -843,7 +914,7 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
       return {
         appView: "workspace",
         selectedProjectId: id,
-        selectedImageId: undefined,
+        ...createImageSelection([]),
         previewImageId: undefined,
         activeProfileId,
         showImportWizard: state.importProgress ? state.showImportWizard : false,
@@ -851,8 +922,24 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
         importReport: state.importProgress ? state.importReport : undefined
       };
     }),
-  selectImage: (id) => set({ selectedImageId: id }),
-  openImagePreview: (id) => set({ appView: "workspace", selectedImageId: id, previewImageId: id }),
+  selectImage: (id) => set(createImageSelection(id === undefined ? [] : [id], id, id)),
+  setImageSelection: (ids, activeId, anchorId) =>
+    set(createImageSelection(ids, activeId, anchorId)),
+  toggleImageSelection: (id) =>
+    set((state) => {
+      const selectedIds = new Set(state.selectedImageIds);
+      if (selectedIds.has(id)) {
+        selectedIds.delete(id);
+      } else {
+        selectedIds.add(id);
+      }
+
+      const nextIds = Array.from(selectedIds);
+      const activeId = selectedIds.has(id) ? id : nextIds.at(-1);
+      return createImageSelection(nextIds, activeId, activeId);
+    }),
+  openImagePreview: (id) =>
+    set({ appView: "workspace", previewImageId: id, ...createImageSelection([id], id, id) }),
   closeImagePreview: () => set({ previewImageId: undefined }),
   setSearch: (search) => set({ search }),
   resetTableDrafts: (profileId, annotationDrafts, instructionDrafts) =>
@@ -900,6 +987,12 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
         : [...state.tableSavedCellKeys, key]
     })),
   clearTableSavedCellMarks: () => set({ tableSavedCellKeys: [] }),
+  setHighlightCellState: (enabled) => {
+    if (typeof localStorage !== "undefined") {
+      localStorage.setItem(highlightCellStateStorageKey, String(enabled));
+    }
+    set({ highlightCellState: enabled });
+  },
   markImageAnnotating: (imageId, annotating) =>
     set((state) => ({
       annotatingImageIds: annotating

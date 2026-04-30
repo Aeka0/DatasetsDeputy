@@ -95,7 +95,7 @@ export function TitleMenuBar({
     search,
     activeProfileId,
     selectedProjectId,
-    selectedImageId,
+    selectedImageIds,
     previewImageId,
     isLoading,
     setAppView,
@@ -117,6 +117,11 @@ export function TitleMenuBar({
   const dropdownRef = useRef<HTMLDivElement>(null);
   const selectedProject = findProject(projects, selectedProjectId);
   const canRunAnnotation = isAnnotatableProject(selectedProject) && !isAnnotationRunning;
+  const selectedProjectImageIds = new Set(selectedProject?.imageIds ?? []);
+  const selectedTargetImageIds = selectedImageIds.filter((imageId) =>
+    selectedProjectImageIds.has(imageId)
+  );
+  const selectedTargetImageIdSet = new Set(selectedTargetImageIds);
 
   useEffect(() => {
     const close = (event: MouseEvent) => {
@@ -201,7 +206,7 @@ export function TitleMenuBar({
         disabled: !isAnnotationRunning,
         onSelect: () => {
           setIsAnnotationRunning(false);
-          addAppLog("Annotation run stopped by user.", "warning");
+          addAppLog("用户已停止标注任务。", "warning");
         }
       },
       { type: "separator" },
@@ -229,7 +234,7 @@ export function TitleMenuBar({
         label: t("menu.clearSavedMarks"),
         onSelect: () => {
           clearTableSavedCellMarks();
-          addAppLog("Saved cell markers cleared.");
+          addAppLog("已清理保存标记。");
         }
       }
     ],
@@ -256,7 +261,7 @@ export function TitleMenuBar({
 
   const getAnnotationTargetCount = (scope: AnnotationExecutionScope) => {
     if (scope === "selected") {
-      return selectedImageId ? 1 : 0;
+      return selectedTargetImageIds.length;
     }
     if (scope === "empty") {
       return selectedProject?.imageIds.filter((imageId) => {
@@ -275,7 +280,9 @@ export function TitleMenuBar({
     const selectedProfileId = activeProfileId ?? profiles[0]?.id;
 
     return selectedProject.imageIds
-      .filter((imageId) => (scope === "selected" ? imageId === selectedImageId : true))
+      .filter((imageId) =>
+        scope === "selected" ? selectedTargetImageIdSet.has(imageId) : true
+      )
       .map((imageId) => images.find((image) => image.id === imageId))
       .filter((image) => {
         if (!image) return false;
@@ -325,29 +332,32 @@ export function TitleMenuBar({
 
     const selectedProfileId = activeProfileId ?? profiles[0]?.id;
     const targetCount = getAnnotationTargetCount(options.scope);
-    addAppLog("Annotation run requested.");
-    addAppLog(`Dataset: ${selectedProject?.name ?? "Unknown dataset"}`);
-    addAppLog(`Scope: ${options.scope}`);
-    addAppLog(`Conflict strategy: ${options.conflictStrategy}`);
-    addAppLog(`Target images: ${targetCount}`);
-    addAppLog(`Annotation profile: ${selectedProfileId ?? "none"}`);
-    if (options.scope === "selected" && !selectedImageId) {
-      addAppLog("No image is selected. The run cannot start.", "warning");
+    const scopeLabel =
+      options.scope === "selected" ? "选中图片" : options.scope === "all" ? "所有图片" : "无标图片";
+    const conflictLabel = options.conflictStrategy === "overwrite" ? "覆盖" : "跳过";
+    addAppLog("已请求执行标注。");
+    addAppLog(`数据集：${selectedProject?.name ?? "未知数据集"}`);
+    addAppLog(`标注范围：${scopeLabel}`);
+    addAppLog(`冲突策略：${conflictLabel}`);
+    addAppLog(`目标图片：${targetCount}`);
+    addAppLog(`标注类型：${selectedProfileId ?? "无"}`);
+    if (options.scope === "selected" && selectedTargetImageIds.length === 0) {
+      addAppLog("未选中任何图片，无法开始标注。", "warning");
       setIsAnnotationRunning(false);
       return;
     } else if (targetCount === 0) {
-      addAppLog("No target images matched the requested scope.", "warning");
+      addAppLog("没有图片符合当前标注范围。", "warning");
       setIsAnnotationRunning(false);
       return;
     }
 
     if (!hasTauriRuntime()) {
-      addAppLog("Annotation worker requires the Tauri runtime.", "error");
+      addAppLog("标注任务需要在 Tauri 桌面环境中运行。", "error");
       setIsAnnotationRunning(false);
       return;
     }
     if (!selectedProfileId) {
-      addAppLog("No annotation profile is available. The run cannot start.", "error");
+      addAppLog("没有可用的标注类型，无法开始标注。", "error");
       setIsAnnotationRunning(false);
       return;
     }
@@ -356,11 +366,11 @@ export function TitleMenuBar({
       const settings = await invokeCommand<GeminiSettings>("get_gemini_settings");
       const prompt = generateAnnotationPrompt(settings);
       const targets = getAnnotationTargets(options.scope, options.conflictStrategy);
-      addAppLog(`Runnable images after conflict filtering: ${targets.length}`);
+      addAppLog(`冲突过滤后可执行图片：${targets.length}`);
 
       for (const image of targets) {
         if (!image) continue;
-        addAppLog(`Annotating: ${image.fileName}`);
+        addAppLog(`正在标注：${image.fileName}`);
         markImageAnnotating(image.id, true);
         try {
           const content = await invokeCommand<string>("generate_gemini_annotation", {
@@ -368,16 +378,16 @@ export function TitleMenuBar({
             prompt
           });
           await saveAnnotation(image.id, selectedProfileId, content);
-          addAppLog(`Saved annotation: ${image.fileName}`);
+          addAppLog(`已保存标注：${image.fileName}`);
         } finally {
           markImageAnnotating(image.id, false);
         }
       }
 
-      addAppLog(`Annotation run completed: ${targets.length} images processed.`);
+      addAppLog(`标注任务完成：已处理 ${targets.length} 张图片。`);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      addAppLog(`Annotation run failed: ${message}`, "error");
+      addAppLog(`标注任务失败：${message}`, "error");
     } finally {
       setIsAnnotationRunning(false);
     }
@@ -442,7 +452,8 @@ export function TitleMenuBar({
       {dialog === "annotationExecution" && selectedProject ? (
         <AnnotationExecutionDialog
           datasetName={selectedProject.name}
-          hasSelectedImage={Boolean(selectedImageId)}
+          hasSelectedImage={selectedTargetImageIds.length > 0}
+          selectedImageCount={selectedTargetImageIds.length}
           onClose={() => setDialog(undefined)}
           onConfirm={startAnnotation}
         />
