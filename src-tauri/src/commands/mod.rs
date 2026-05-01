@@ -4,7 +4,7 @@ use std::{
 };
 
 use serde::Serialize;
-use tauri::{AppHandle, Emitter, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_dialog::DialogExt;
 
 use crate::{
@@ -15,7 +15,9 @@ use crate::{
     files::{self, ImportPreview, ImportSummary},
     folders,
     gemini::{self, GeminiSettings},
+    model_settings::{self, ModelSettings},
     python_env::{self, PythonEnvInstallResult, PythonEnvProbeReport, PythonEnvSettings},
+    wd14_tagger,
     AppState,
 };
 
@@ -59,6 +61,52 @@ pub struct ImportProgress {
 #[serde(rename_all = "camelCase")]
 pub struct ThumbnailCacheInfo {
     pub size_bytes: u64,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LogFilesInfo {
+    pub size_bytes: u64,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ModelPathSelection {
+    pub path: String,
+    pub model_type: String,
+}
+
+#[tauri::command]
+pub fn finish_startup(app: AppHandle) -> Result<(), String> {
+    finish_startup_windows(app)
+}
+
+pub fn finish_startup_windows(app: AppHandle) -> Result<(), String> {
+    let app_for_thread = app.clone();
+    app.run_on_main_thread(move || {
+        let Some(main_window) = app_for_thread.get_webview_window("main") else {
+            tracing::error!("启动切换失败：未找到主窗口。");
+            return;
+        };
+
+        if let Err(error) = main_window.show() {
+            tracing::error!("启动切换失败：显示主窗口失败：{error}");
+            return;
+        }
+        if let Err(error) = main_window.set_focus() {
+            tracing::warn!("启动切换警告：聚焦主窗口失败：{error}");
+        }
+
+        if let Some(splash_window) = app_for_thread.get_webview_window("splash") {
+            if let Err(error) = splash_window.hide() {
+                tracing::warn!("启动切换警告：隐藏 Splash 窗口失败：{error}");
+            }
+            if let Err(error) = splash_window.close() {
+                tracing::warn!("启动切换警告：关闭 Splash 窗口失败：{error}");
+            }
+        }
+    })
+    .map_err(|error| format!("调度启动窗口切换失败：{error}"))
 }
 
 struct DatasetDatabaseRef {
@@ -123,7 +171,11 @@ fn namespace_profile(mut profile: AnnotationProfile, prefix: i64) -> AnnotationP
     profile
 }
 
-fn namespace_image(mut image: DatasetImage, prefix: i64, root_path: Option<String>) -> DatasetImage {
+fn namespace_image(
+    mut image: DatasetImage,
+    prefix: i64,
+    root_path: Option<String>,
+) -> DatasetImage {
     image.id = to_public_id(prefix, image.id);
     for annotation in &mut image.annotations {
         annotation.id = to_public_id(prefix, annotation.id);
@@ -174,6 +226,27 @@ fn directory_size(path: &Path) -> AppResult<u64> {
     }
 
     Ok(size)
+}
+
+fn remove_files_in_directory(path: &Path) -> AppResult<()> {
+    if !path.exists() {
+        return Ok(());
+    }
+
+    for entry in fs::read_dir(path)? {
+        let entry = entry?;
+        let entry_path = entry.path();
+        let metadata = entry.metadata()?;
+        if metadata.is_dir() {
+            remove_files_in_directory(&entry_path)?;
+        } else if metadata.is_file() {
+            if let Err(error) = fs::remove_file(&entry_path) {
+                tracing::warn!("清理日志文件失败 {:?}: {}", entry_path, error);
+            }
+        }
+    }
+
+    Ok(())
 }
 
 fn renamed_folder_path(folder_path: &str, new_name: &str) -> AppResult<PathBuf> {
@@ -235,9 +308,7 @@ pub async fn list_annotation_profiles(
     let dirs = state.dirs.clone();
     tauri::async_runtime::spawn_blocking(move || list_annotation_profiles_for_dirs(&dirs))
         .await
-        .map_err(|error| {
-            AppError::InvalidInput(format!("Profile listing task failed: {error}"))
-        })?
+        .map_err(|error| AppError::InvalidInput(format!("Profile listing task failed: {error}")))?
 }
 
 #[tauri::command]
@@ -274,7 +345,9 @@ pub async fn test_gemini_connection(
         Some(settings) => settings,
         None => gemini::load_settings(&state.dirs)?,
     };
-    gemini::fetch_models(&settings).await.map(|models| models.len())
+    gemini::fetch_models(&settings)
+        .await
+        .map(|models| models.len())
 }
 
 #[tauri::command]
@@ -285,6 +358,20 @@ pub async fn generate_gemini_annotation(
 ) -> AppResult<String> {
     let settings = gemini::load_settings(&state.dirs)?;
     gemini::generate_annotation(&settings, &PathBuf::from(image_path), &prompt).await
+}
+
+#[tauri::command]
+pub async fn generate_wd14_annotation(
+    state: State<'_, AppState>,
+    image_path: String,
+) -> AppResult<String> {
+    let dirs = state.dirs.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        wd14_tagger::generate_annotation(&dirs, &PathBuf::from(image_path))
+            .map(|result| result.positive_prompt)
+    })
+    .await
+    .map_err(|error| AppError::InvalidInput(format!("WD14 标注任务失败：{error}")))?
 }
 
 #[tauri::command]
@@ -301,20 +388,48 @@ pub fn save_python_env_settings(
 }
 
 #[tauri::command]
-pub async fn pick_python_env_path(
-    app: AppHandle,
-    selection_mode: Option<String>,
-) -> AppResult<String> {
+pub fn get_model_settings(state: State<'_, AppState>) -> AppResult<ModelSettings> {
+    model_settings::load_settings(&state.dirs)
+}
+
+#[tauri::command]
+pub fn save_model_settings(
+    state: State<'_, AppState>,
+    settings: ModelSettings,
+) -> AppResult<ModelSettings> {
+    model_settings::save_settings(&state.dirs, settings)
+}
+
+#[tauri::command]
+pub async fn pick_wd14_model_path(app: AppHandle) -> AppResult<ModelPathSelection> {
     let (sender, receiver) = std::sync::mpsc::channel();
-    if selection_mode.as_deref() == Some("file") {
-        app.dialog().file().pick_file(move |path| {
-            let _ = sender.send(path);
-        });
-    } else {
-        app.dialog().file().pick_folder(move |path| {
-            let _ = sender.send(path);
-        });
-    }
+    app.dialog().file().pick_folder(move |path| {
+        let _ = sender.send(path);
+    });
+
+    let Some(path) = tauri::async_runtime::spawn_blocking(move || receiver.recv())
+        .await
+        .map_err(|error| AppError::InvalidInput(format!("模型路径选择任务失败：{error}")))?
+        .map_err(|error| AppError::InvalidInput(format!("模型路径选择失败：{error}")))?
+    else {
+        return Err(AppError::DialogCancelled);
+    };
+    let path = path
+        .into_path()
+        .map_err(|_| AppError::InvalidInput("选择的模型路径不是本地路径".to_owned()))?;
+    let path = path.to_string_lossy().to_string();
+    Ok(ModelPathSelection {
+        model_type: model_settings::infer_model_type_for_path(&path),
+        path,
+    })
+}
+
+#[tauri::command]
+pub async fn pick_python_env_path(app: AppHandle) -> AppResult<String> {
+    let (sender, receiver) = std::sync::mpsc::channel();
+    app.dialog().file().pick_folder(move |path| {
+        let _ = sender.send(path);
+    });
 
     let Some(path) = tauri::async_runtime::spawn_blocking(move || receiver.recv())
         .await
@@ -326,7 +441,9 @@ pub async fn pick_python_env_path(
     let path = path
         .into_path()
         .map_err(|_| AppError::InvalidInput("选择的路径不是本地路径".to_owned()))?;
-    Ok(path.to_string_lossy().to_string())
+    Ok(python_env::resolve_external_environment_path(&path)
+        .to_string_lossy()
+        .to_string())
 }
 
 #[tauri::command]
@@ -337,17 +454,7 @@ pub async fn probe_python_env(
     let dirs = state.dirs.clone();
     tauri::async_runtime::spawn_blocking(move || python_env::probe_environment(&dirs, settings))
         .await
-        .map_err(|error| AppError::InvalidInput(format!("Python 环境检测任务失败：{error}")))?
-}
-
-#[tauri::command]
-pub async fn create_managed_python_env(
-    state: State<'_, AppState>,
-) -> AppResult<PythonEnvInstallResult> {
-    let dirs = state.dirs.clone();
-    tauri::async_runtime::spawn_blocking(move || python_env::create_managed_environment(&dirs))
-        .await
-        .map_err(|error| AppError::InvalidInput(format!("独立 Python 环境创建任务失败：{error}")))?
+        .map_err(|error| AppError::InvalidInput(format!("运行时检测任务失败：{error}")))?
 }
 
 #[tauri::command]
@@ -361,6 +468,19 @@ pub async fn install_managed_python_deps(
     })
     .await
     .map_err(|error| AppError::InvalidInput(format!("PyTorch 依赖安装任务失败：{error}")))?
+}
+
+#[tauri::command]
+pub async fn install_managed_onnx_deps(
+    state: State<'_, AppState>,
+    install_profile: Option<String>,
+) -> AppResult<PythonEnvInstallResult> {
+    let dirs = state.dirs.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        python_env::install_managed_onnx_dependencies(&dirs, install_profile)
+    })
+    .await
+    .map_err(|error| AppError::InvalidInput(format!("ONNX Runtime 依赖安装任务失败：{error}")))?
 }
 
 #[tauri::command]
@@ -430,9 +550,27 @@ pub fn clear_thumbnail_cache(state: State<'_, AppState>) -> AppResult<ThumbnailC
         cleared_paths += db.clear_thumbnail_paths()?;
     }
 
-    tracing::info!("已清空缩略图缓存，清理数据库缩略图路径 {} 条", cleared_paths);
+    tracing::info!(
+        "已清空缩略图缓存，清理数据库缩略图路径 {} 条",
+        cleared_paths
+    );
 
     Ok(ThumbnailCacheInfo { size_bytes: 0 })
+}
+
+#[tauri::command]
+pub fn get_log_files_info(state: State<'_, AppState>) -> AppResult<LogFilesInfo> {
+    Ok(LogFilesInfo {
+        size_bytes: directory_size(&state.dirs.log)?,
+    })
+}
+
+#[tauri::command]
+pub fn clear_log_files(state: State<'_, AppState>) -> AppResult<LogFilesInfo> {
+    remove_files_in_directory(&state.dirs.log)?;
+    Ok(LogFilesInfo {
+        size_bytes: directory_size(&state.dirs.log)?,
+    })
 }
 
 #[tauri::command]

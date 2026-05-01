@@ -13,14 +13,21 @@ import { useDatasetStore } from "../../stores/datasetStore";
 import type { DatasetProject } from "../../types";
 import {
   AnnotationExecutionDialog,
+  type AnnotationExecutionMode,
   type AnnotationConflictStrategy,
   type AnnotationExecutionScope
 } from "../annotation/AnnotationExecutionDialog";
 import { PromptManagementDialog } from "../annotation/PromptManagementDialog";
+import { Wd14TaggerSettingsDialog } from "../annotation/Wd14TaggerSettingsDialog";
 import { SettingsDialog } from "../settings/SettingsDialog";
 
 type MenuKey = "file" | "edit" | "annotation" | "view" | "settings" | "about";
-type DialogKey = "annotationExecution" | "promptManagement" | "settings" | "about";
+type DialogKey =
+  | "annotationExecution"
+  | "promptManagement"
+  | "wd14Settings"
+  | "settings"
+  | "about";
 
 interface MenuPosition {
   left: number;
@@ -53,6 +60,8 @@ const menuLabels: Array<{ key: MenuKey; labelKey: string }> = [
   { key: "about", labelKey: "menu.about" }
 ];
 
+const annotationCancelledError = "annotation_cancelled";
+
 function findProject(projects: DatasetProject[], id?: string): DatasetProject | undefined {
   if (!id) return undefined;
 
@@ -67,6 +76,34 @@ function findProject(projects: DatasetProject[], id?: string): DatasetProject | 
   }
 
   return undefined;
+}
+
+function findProjectPath(
+  projects: DatasetProject[],
+  id?: string,
+  trail: DatasetProject[] = []
+): DatasetProject[] | undefined {
+  if (!id) return undefined;
+
+  for (const project of projects) {
+    const nextTrail = [...trail, project];
+    if (project.id === id) {
+      return nextTrail;
+    }
+    const childPath = findProjectPath(project.children ?? [], id, nextTrail);
+    if (childPath) {
+      return childPath;
+    }
+  }
+
+  return undefined;
+}
+
+function formatProjectPath(projects: DatasetProject[], id?: string) {
+  return findProjectPath(projects, id)
+    ?.map((project) => project.name)
+    .filter(Boolean)
+    .join(" / ");
 }
 
 function isAnnotatableProject(project: DatasetProject | undefined) {
@@ -97,6 +134,8 @@ export function TitleMenuBar({
     selectedProjectId,
     selectedImageIds,
     previewImageId,
+    tableDraftProfileId,
+    tableAnnotationDrafts,
     isLoading,
     setAppView,
     addAppLog,
@@ -105,7 +144,7 @@ export function TitleMenuBar({
     exportDataset,
     load,
     closeImagePreview,
-    saveAnnotation,
+    applyGeneratedAnnotationDraft,
     markImageAnnotating,
     setSearch
   } = useDatasetStore();
@@ -115,7 +154,10 @@ export function TitleMenuBar({
   const [menuPosition, setMenuPosition] = useState<MenuPosition>();
   const containerRef = useRef<HTMLDivElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const annotationCancelRef = useRef(false);
   const selectedProject = findProject(projects, selectedProjectId);
+  const selectedProjectPathLabel =
+    formatProjectPath(projects, selectedProjectId) ?? selectedProject?.name ?? "";
   const canRunAnnotation = isAnnotatableProject(selectedProject) && !isAnnotationRunning;
   const selectedProjectImageIds = new Set(selectedProject?.imageIds ?? []);
   const selectedTargetImageIds = selectedImageIds.filter((imageId) =>
@@ -140,7 +182,6 @@ export function TitleMenuBar({
       if (event.key === "Escape") {
         setOpenMenu(undefined);
         setMenuPosition(undefined);
-        setDialog(undefined);
       }
     };
 
@@ -205,6 +246,7 @@ export function TitleMenuBar({
         label: t("menu.stopAnnotation"),
         disabled: !isAnnotationRunning,
         onSelect: () => {
+          annotationCancelRef.current = true;
           setIsAnnotationRunning(false);
           addAppLog("用户已停止标注任务。", "warning");
         }
@@ -213,6 +255,10 @@ export function TitleMenuBar({
       {
         label: t("menu.promptManagement"),
         onSelect: () => setDialog("promptManagement")
+      },
+      {
+        label: t("menu.wd14Settings"),
+        onSelect: () => setDialog("wd14Settings")
       }
     ],
     view: [
@@ -260,14 +306,27 @@ export function TitleMenuBar({
   };
 
   const getAnnotationTargetCount = (scope: AnnotationExecutionScope) => {
+    const selectedProfileId = activeProfileId ?? profiles[0]?.id;
+    const hasEffectiveAnnotation = (imageId: number) => {
+      const image = images.find((item) => item.id === imageId);
+      if (!image) return false;
+      if (tableDraftProfileId === selectedProfileId) {
+        return Boolean(tableAnnotationDrafts[imageId]?.trim());
+      }
+      if (image.sourceKind === "folder") {
+        return image.annotations.some((annotation) => annotation.content.trim());
+      }
+      return image.annotations.some(
+        (annotation) =>
+          annotation.profileId === selectedProfileId && annotation.content.trim()
+      );
+    };
+
     if (scope === "selected") {
       return selectedTargetImageIds.length;
     }
     if (scope === "empty") {
-      return selectedProject?.imageIds.filter((imageId) => {
-        const image = images.find((item) => item.id === imageId);
-        return image ? image.annotations.every((annotation) => !annotation.content.trim()) : false;
-      }).length ?? 0;
+      return selectedProject?.imageIds.filter((imageId) => !hasEffectiveAnnotation(imageId)).length ?? 0;
     }
     return selectedProject?.imageIds.length ?? 0;
   };
@@ -278,6 +337,18 @@ export function TitleMenuBar({
   ) => {
     if (!selectedProject) return [];
     const selectedProfileId = activeProfileId ?? profiles[0]?.id;
+    const hasEffectiveAnnotation = (image: (typeof images)[number]) => {
+      if (tableDraftProfileId === selectedProfileId) {
+        return Boolean(tableAnnotationDrafts[image.id]?.trim());
+      }
+      if (image.sourceKind === "folder") {
+        return image.annotations.some((annotation) => annotation.content.trim());
+      }
+      return image.annotations.some(
+        (annotation) =>
+          annotation.profileId === selectedProfileId && annotation.content.trim()
+      );
+    };
 
     return selectedProject.imageIds
       .filter((imageId) =>
@@ -287,16 +358,10 @@ export function TitleMenuBar({
       .filter((image) => {
         if (!image) return false;
         if (scope === "empty") {
-          return image.annotations.every((annotation) => !annotation.content.trim());
+          return !hasEffectiveAnnotation(image);
         }
         if (conflictStrategy === "skip") {
-          if (image.sourceKind === "folder") {
-            return image.annotations.every((annotation) => !annotation.content.trim());
-          }
-          return !image.annotations.some(
-            (annotation) =>
-              annotation.profileId === selectedProfileId && annotation.content.trim()
-          );
+          return !hasEffectiveAnnotation(image);
         }
         return true;
       });
@@ -324,10 +389,12 @@ export function TitleMenuBar({
   };
 
   const startAnnotation = async (options: {
+    mode: AnnotationExecutionMode;
     scope: AnnotationExecutionScope;
     conflictStrategy: AnnotationConflictStrategy;
   }) => {
     setDialog(undefined);
+    annotationCancelRef.current = false;
     setIsAnnotationRunning(true);
 
     const selectedProfileId = activeProfileId ?? profiles[0]?.id;
@@ -339,6 +406,11 @@ export function TitleMenuBar({
     addAppLog(`数据集：${selectedProject?.name ?? "未知数据集"}`);
     addAppLog(`标注范围：${scopeLabel}`);
     addAppLog(`冲突策略：${conflictLabel}`);
+    addAppLog(
+      `标注模式：${
+        options.mode === "gemini" ? t("annotationRun.modeGemini") : t("annotationRun.modeWd14")
+      }`
+    );
     addAppLog(`目标图片：${targetCount}`);
     addAppLog(`标注类型：${selectedProfileId ?? "无"}`);
     if (options.scope === "selected" && selectedTargetImageIds.length === 0) {
@@ -362,33 +434,56 @@ export function TitleMenuBar({
       return;
     }
 
+    const targets = getAnnotationTargets(options.scope, options.conflictStrategy);
+    addAppLog(`冲突过滤后可执行图片：${targets.length}`);
+
     try {
-      const settings = await invokeCommand<GeminiSettings>("get_gemini_settings");
-      const prompt = generateAnnotationPrompt(settings);
-      const targets = getAnnotationTargets(options.scope, options.conflictStrategy);
-      addAppLog(`冲突过滤后可执行图片：${targets.length}`);
+      const prompt =
+        options.mode === "gemini"
+          ? generateAnnotationPrompt(await invokeCommand<GeminiSettings>("get_gemini_settings"))
+          : "";
 
       for (const image of targets) {
         if (!image) continue;
+        if (annotationCancelRef.current) {
+          addAppLog("标注任务已停止。", "warning");
+          throw new Error(annotationCancelledError);
+        }
         addAppLog(`正在标注：${image.fileName}`);
         markImageAnnotating(image.id, true);
         try {
-          const content = await invokeCommand<string>("generate_gemini_annotation", {
-            imagePath: image.path,
-            prompt
-          });
-          await saveAnnotation(image.id, selectedProfileId, content);
-          addAppLog(`已保存标注：${image.fileName}`);
+          const content =
+            options.mode === "gemini"
+              ? await invokeCommand<string>("generate_gemini_annotation", {
+                  imagePath: image.path,
+                  prompt
+                })
+              : await invokeCommand<string>("generate_wd14_annotation", {
+                  imagePath: image.path
+                });
+          if (annotationCancelRef.current) {
+            addAppLog(`已丢弃停止后返回的标注结果：${image.fileName}`, "warning");
+            throw new Error(annotationCancelledError);
+          }
+          applyGeneratedAnnotationDraft(selectedProfileId, image.id, content);
+          addAppLog(`已生成临时标注：${image.fileName}`);
         } finally {
           markImageAnnotating(image.id, false);
         }
       }
 
       addAppLog(`标注任务完成：已处理 ${targets.length} 张图片。`);
+      if (annotationCancelRef.current) {
+        return;
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
+      if (message === annotationCancelledError) {
+        return;
+      }
       addAppLog(`标注任务失败：${message}`, "error");
     } finally {
+      annotationCancelRef.current = false;
       setIsAnnotationRunning(false);
     }
   };
@@ -452,6 +547,7 @@ export function TitleMenuBar({
       {dialog === "annotationExecution" && selectedProject ? (
         <AnnotationExecutionDialog
           datasetName={selectedProject.name}
+          datasetPathLabel={selectedProjectPathLabel}
           hasSelectedImage={selectedTargetImageIds.length > 0}
           selectedImageCount={selectedTargetImageIds.length}
           onClose={() => setDialog(undefined)}
@@ -460,6 +556,9 @@ export function TitleMenuBar({
       ) : null}
       {dialog === "promptManagement" ? (
         <PromptManagementDialog onClose={() => setDialog(undefined)} />
+      ) : null}
+      {dialog === "wd14Settings" ? (
+        <Wd14TaggerSettingsDialog onClose={() => setDialog(undefined)} />
       ) : null}
 
       {dialog === "about"

@@ -328,6 +328,44 @@ export function DatasetTable({ images }: { images: DatasetImage[] }) {
     }
   };
 
+  const saveCurrentImageDirtyCells = async () => {
+    if (!selectedProfileId || selectedImageId === undefined || isSaving) return;
+    const image = images.find((item) => item.id === selectedImageId);
+    if (!image) return;
+    const annotationKey = createCellKey(image.id, "annotation");
+    const instructionKey = createCellKey(image.id, "instruction");
+    if (!dirtyCells.has(annotationKey) && !dirtyCells.has(instructionKey)) return;
+
+    setIsSaving(true);
+    try {
+      if (dirtyCells.has(annotationKey)) {
+        await saveAnnotationDraft(image);
+      }
+      if (dirtyCells.has(instructionKey)) {
+        await saveInstructionDraft(image);
+      }
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  useEffect(() => {
+    const saveWithKeyboard = (event: KeyboardEvent) => {
+      if (!(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== "s") return;
+      event.preventDefault();
+      event.stopPropagation();
+
+      if (event.shiftKey) {
+        void saveDirtyCells();
+      } else {
+        void saveCurrentImageDirtyCells();
+      }
+    };
+
+    window.addEventListener("keydown", saveWithKeyboard);
+    return () => window.removeEventListener("keydown", saveWithKeyboard);
+  });
+
   const updateAnnotationDraft = (imageId: number, value: string) => {
     updateTableAnnotationDraft(imageId, value);
   };
@@ -519,7 +557,7 @@ export function DatasetTable({ images }: { images: DatasetImage[] }) {
                     spellCheck={false}
                   />
                   {isAnnotating ? (
-                    <div className="pointer-events-none absolute inset-2 flex items-center justify-center rounded-md bg-white/54">
+                    <div className="pointer-events-none absolute right-4 top-3">
                       <LoaderCircle className="h-5 w-5 animate-spin text-slate-500" />
                     </div>
                   ) : null}

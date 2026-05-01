@@ -12,7 +12,9 @@
   "app": {
     "windows": [
       {
+        "label": "main",
         "title": "Datasets Deputy",
+        "create": false,
         "width": 1360,
         "height": 860,
         "minWidth": 1120,
@@ -25,6 +27,20 @@
           "effects": ["blur"],
           "color": [246, 248, 252, 140]
         }
+      },
+      {
+        "label": "splash",
+        "title": "Datasets Deputy",
+        "url": "/splash.html",
+        "width": 1344,
+        "height": 768,
+        "decorations": false,
+        "transparent": true,
+        "shadow": false,
+        "resizable": false,
+        "center": true,
+        "alwaysOnTop": true,
+        "visible": false
       }
     ],
     "security": {
@@ -38,7 +54,7 @@
   "bundle": {
     "active": true,
     "targets": "all",
-    "icon": [],
+    "icon": ["icons/icon.ico"],
     "resources": [],
     "externalBin": [],
     "windows": {

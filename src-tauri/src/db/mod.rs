@@ -373,9 +373,10 @@ impl Database {
     }
 
     pub fn clear_thumbnail_paths(&self) -> AppResult<usize> {
-        Ok(self
-            .conn
-            .execute("UPDATE images SET thumbnail_path = NULL WHERE thumbnail_path IS NOT NULL", [])?)
+        Ok(self.conn.execute(
+            "UPDATE images SET thumbnail_path = NULL WHERE thumbnail_path IS NOT NULL",
+            [],
+        )?)
     }
 
     pub fn insert_image_if_missing(&self, image: &NewImage) -> AppResult<(i64, bool)> {

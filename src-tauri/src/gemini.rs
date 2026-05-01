@@ -11,8 +11,7 @@ use crate::{
 const SETTINGS_FILE: &str = "gemini-settings.json";
 const DEFAULT_MODEL: &str = "gemini-flash-latest";
 const DEFAULT_AVAILABLE_MODELS: [&str; 2] = ["gemini-flash-latest", "gemini-pro-latest"];
-const LEGACY_DEFAULT_AVAILABLE_MODELS: [&str; 2] =
-    ["gemini-1.5-pro-002", "gemini-1.5-flash-002"];
+const LEGACY_DEFAULT_AVAILABLE_MODELS: [&str; 2] = ["gemini-1.5-pro-002", "gemini-1.5-flash-002"];
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -196,7 +195,11 @@ pub fn save_settings(dirs: &AppDirs, mut settings: GeminiSettings) -> AppResult<
     ) {
         settings.annotation_mode = default_annotation_mode();
     }
-    if !settings.available_models.iter().any(|model| model == &settings.model) {
+    if !settings
+        .available_models
+        .iter()
+        .any(|model| model == &settings.model)
+    {
         settings.available_models.push(settings.model.clone());
     }
     settings.available_models.sort();
@@ -224,7 +227,9 @@ fn http_client(settings: &GeminiSettings, timeout_secs: u64) -> AppResult<reqwes
 
 pub async fn fetch_models(settings: &GeminiSettings) -> AppResult<Vec<String>> {
     if settings.api_key.trim().is_empty() {
-        return Err(AppError::InvalidInput("Gemini API key is required".to_owned()));
+        return Err(AppError::InvalidInput(
+            "Gemini API key is required".to_owned(),
+        ));
     }
 
     let client = http_client(settings, 20)?;
@@ -308,10 +313,14 @@ pub async fn generate_annotation(
     prompt: &str,
 ) -> AppResult<String> {
     if settings.api_key.trim().is_empty() {
-        return Err(AppError::InvalidInput("Gemini API key is required".to_owned()));
+        return Err(AppError::InvalidInput(
+            "Gemini API key is required".to_owned(),
+        ));
     }
     if prompt.trim().is_empty() {
-        return Err(AppError::InvalidInput("Annotation prompt is empty".to_owned()));
+        return Err(AppError::InvalidInput(
+            "Annotation prompt is empty".to_owned(),
+        ));
     }
 
     let image_bytes = fs::read(image_path)?;

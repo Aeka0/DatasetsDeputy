@@ -109,7 +109,7 @@ export function DetailPanel() {
               disabled={isAnnotating}
             />
             {isAnnotating ? (
-              <div className="pointer-events-none absolute inset-0 flex items-center justify-center rounded-2xl bg-white/54">
+              <div className="pointer-events-none absolute right-3 top-3">
                 <LoaderCircle className="h-5 w-5 animate-spin text-slate-500" />
               </div>
             ) : null}

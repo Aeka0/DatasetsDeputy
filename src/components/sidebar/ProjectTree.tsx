@@ -66,12 +66,12 @@ function ProjectNode({
     <div>
       <div
         className={cn(
-          "no-drag flex h-8 w-full items-stretch gap-1 rounded-md pr-2.5 text-left transition",
+          "project-tree-row no-drag flex h-8 w-full items-stretch gap-1 rounded-md pr-2.5 text-left transition",
           sidebarLabelClass,
           isImportingNode
             ? "cursor-not-allowed text-black/36"
             : isSelected
-            ? "bg-white/62 text-black"
+            ? "project-tree-row-selected bg-white/62 text-black"
             : "text-black hover:bg-slate-900/[0.045]"
         )}
         style={{ paddingLeft: `${indentation}px` }}
@@ -129,7 +129,7 @@ function ProjectNode({
           {isImportingNode ? (
             <Loader2 size={13} className="shrink-0 animate-spin text-black/40" />
           ) : (
-            <span className="shrink-0 rounded-full bg-white/72 px-1.5 py-0.5 text-[11px] leading-none text-black ring-1 ring-white/70">
+            <span className="project-tree-count shrink-0 rounded-full bg-white/72 px-1.5 py-0.5 text-[11px] leading-none text-black ring-1 ring-white/70">
               {imageCount}
             </span>
           )}
@@ -282,7 +282,7 @@ export function ProjectTree() {
     <aside className="fluent-sidebar flex h-full w-[248px] shrink-0 flex-col">
       <div className="no-drag px-3 pt-3">
         <button
-          className="flex h-8 w-full items-center justify-center gap-2 rounded-md border border-white/70 bg-white/54 px-3 text-[13px] font-medium text-black transition hover:bg-white/72 disabled:cursor-not-allowed disabled:opacity-50"
+          className="project-tree-import-button flex h-8 w-full items-center justify-center gap-2 rounded-md border border-white/70 bg-white/54 px-3 text-[13px] font-medium text-black transition hover:bg-white/72 disabled:cursor-not-allowed disabled:opacity-50"
           onClick={openImportWizard}
           disabled={isLoading}
         >

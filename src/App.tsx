@@ -15,12 +15,12 @@ import { ProjectTree } from "./components/sidebar/ProjectTree";
 import { TitleMenuBar } from "./components/window/TitleMenuBar";
 import { WindowControls } from "./components/window/WindowControls";
 import { useDatasetStore } from "./stores/datasetStore";
-import { hasTauriRuntime } from "./lib/tauri";
+import { hasTauriRuntime, invokeCommand } from "./lib/tauri";
+
+const STARTUP_PRELOAD_TIMEOUT_MS = 8000;
 
 export default function App() {
   const [isProjectTreeCollapsed, setIsProjectTreeCollapsed] = useState(false);
-  const load = useDatasetStore((state) => state.load);
-  const initImportEvents = useDatasetStore((state) => state.initImportEvents);
   const appView = useDatasetStore((state) => state.appView);
   const selectedProjectId = useDatasetStore((state) => state.selectedProjectId);
   const previewImageId = useDatasetStore((state) => state.previewImageId);
@@ -30,9 +30,22 @@ export default function App() {
   const showImportWizard = useDatasetStore((state) => state.showImportWizard);
 
   useEffect(() => {
-    void initImportEvents();
-    void load();
-  }, [initImportEvents, load]);
+    if (!hasTauriRuntime()) return;
+
+    const store = useDatasetStore.getState();
+    const preload = Promise.all([store.initImportEvents(), store.load()]).catch((error) => {
+      console.error("启动预加载失败，仍然显示主窗口：", error);
+    });
+    const timeout = new Promise<void>((resolve) =>
+      window.setTimeout(resolve, STARTUP_PRELOAD_TIMEOUT_MS)
+    );
+
+    void Promise.race([preload, timeout])
+      .then(() => invokeCommand<void>("finish_startup"))
+      .catch((error) => {
+        console.error("显示主窗口失败：", error);
+      });
+  }, []);
 
   useEffect(() => {
     const blockNativeContextMenu = (event: globalThis.MouseEvent) => {

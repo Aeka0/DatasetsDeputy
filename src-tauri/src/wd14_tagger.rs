@@ -1,0 +1,426 @@
+use std::{
+    fs,
+    io::Write,
+    path::{Path, PathBuf},
+    process::Command,
+    time::{SystemTime, UNIX_EPOCH},
+};
+
+use image::imageops::FilterType;
+use serde::Deserialize;
+
+use crate::{
+    app_dirs::AppDirs,
+    errors::{AppError, AppResult},
+    model_settings::{self, Wd14TaggerSettings},
+    python_env,
+};
+
+const INPUT_SIZE: u32 = 448;
+
+const INFERENCE_SCRIPT: &str = r#"
+import json
+import os
+import sys
+
+import numpy as np
+
+payload = json.loads(sys.argv[1])
+model_dir = payload["modelDir"]
+model_type = payload["modelType"]
+input_path = payload["inputPath"]
+tag_count = int(payload["tagCount"])
+
+def first_file(extensions):
+    matches = []
+    for root, _dirs, files in os.walk(model_dir):
+        for name in files:
+            if os.path.splitext(name)[1].lower() in extensions:
+                matches.append(os.path.join(root, name))
+    matches.sort(key=lambda value: value.lower())
+    if not matches:
+        return None
+    return matches[0]
+
+def as_numpy(value):
+    if isinstance(value, dict):
+        values = list(value.values())
+        if not values:
+            raise RuntimeError("model returned an empty dict")
+        value = values[0]
+    elif isinstance(value, (list, tuple)):
+        if not value:
+            raise RuntimeError("model returned an empty sequence")
+        value = value[0]
+    if hasattr(value, "detach"):
+        value = value.detach().cpu().numpy()
+    return np.asarray(value, dtype=np.float32).reshape(-1)
+
+def select_scores(outputs):
+    best = None
+    best_length = -1
+    for output in outputs:
+        candidate = np.asarray(output, dtype=np.float32).reshape(-1)
+        if candidate.size == tag_count:
+            return candidate
+        if candidate.size > best_length:
+            best = candidate
+            best_length = candidate.size
+    if best is None or best.size == 0:
+        raise RuntimeError("model did not return a tensor output")
+    return best
+
+input_nchw = np.fromfile(input_path, dtype=np.float32).reshape(1, 3, 448, 448)
+
+if model_type == "onnx":
+    import onnxruntime as ort
+
+    model_path = first_file({".onnx"})
+    if model_path is None:
+        raise FileNotFoundError("No ONNX model file was found in the WD14 model folder.")
+
+    available = set(ort.get_available_providers())
+    providers = [
+        provider
+        for provider in ("DmlExecutionProvider", "CUDAExecutionProvider", "CPUExecutionProvider")
+        if provider in available
+    ]
+    if not providers:
+        providers = ["CPUExecutionProvider"]
+
+    session = ort.InferenceSession(model_path, providers=providers)
+    input_meta = session.get_inputs()[0]
+    shape = input_meta.shape
+    model_input = input_nchw
+    if len(shape) == 4 and shape[-1] == 3:
+        model_input = np.transpose(input_nchw, (0, 2, 3, 1))
+
+    outputs = session.run(None, {input_meta.name: model_input})
+    scores = select_scores(outputs)
+    print(json.dumps({"scores": scores.tolist(), "provider": session.get_providers()[0]}, ensure_ascii=False))
+elif model_type == "pytorch":
+    import torch
+
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    tensor = torch.from_numpy(input_nchw).to(device)
+
+    if os.path.isfile(os.path.join(model_dir, "config.json")):
+        try:
+            from transformers import AutoModelForImageClassification
+        except Exception as exc:
+            raise RuntimeError(
+                "This PyTorch WD14 folder looks like a Hugging Face model, but transformers is not installed."
+            ) from exc
+        model = AutoModelForImageClassification.from_pretrained(model_dir).to(device)
+        model.eval()
+        with torch.no_grad():
+            output = model(pixel_values=tensor)
+        scores = as_numpy(getattr(output, "logits", output))
+    else:
+        model_path = first_file({".pt", ".pth"})
+        if model_path is None:
+            raise FileNotFoundError("No TorchScript .pt/.pth model file was found in the WD14 model folder.")
+        try:
+            model = torch.jit.load(model_path, map_location=device)
+        except Exception as exc:
+            raise RuntimeError(
+                "PyTorch WD14 inference currently supports TorchScript .pt/.pth files or Hugging Face folders."
+            ) from exc
+        model.eval()
+        with torch.no_grad():
+            scores = as_numpy(model(tensor))
+
+    print(json.dumps({"scores": scores.tolist(), "provider": str(device)}, ensure_ascii=False))
+else:
+    raise RuntimeError("Unknown WD14 model type. Select a folder containing ONNX or PyTorch weights.")
+"#;
+
+#[derive(Debug)]
+struct TagDefinition {
+    index: usize,
+    name: String,
+    category: i32,
+    intellectual_properties: Vec<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct InferencePayload {
+    scores: Vec<f32>,
+    provider: Option<String>,
+}
+
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Wd14TaggerResult {
+    pub positive_prompt: String,
+    pub execution_provider: String,
+}
+
+pub fn generate_annotation(dirs: &AppDirs, image_path: &Path) -> AppResult<Wd14TaggerResult> {
+    let model_settings = model_settings::load_settings(dirs)?;
+    let tagger_settings = model_settings.wd14_tagger;
+    let model_dir = resolve_model_dir(&tagger_settings)?;
+    let tags = load_tag_definitions(&model_dir)?;
+    let input_path = write_preprocessed_input(dirs, image_path)?;
+
+    let result = run_python_inference(dirs, &tagger_settings, &model_dir, &input_path, tags.len());
+    let _ = fs::remove_file(&input_path);
+
+    let payload = result?;
+    let positive_prompt = build_prompt(&payload.scores, &tags, &tagger_settings)?;
+    Ok(Wd14TaggerResult {
+        positive_prompt,
+        execution_provider: payload.provider.unwrap_or(tagger_settings.model_type),
+    })
+}
+
+fn resolve_model_dir(settings: &Wd14TaggerSettings) -> AppResult<PathBuf> {
+    if settings.model_path.trim().is_empty() {
+        return Err(AppError::InvalidInput("WD14 模型文件夹尚未设置".to_owned()));
+    }
+
+    let path = PathBuf::from(settings.model_path.trim());
+    if path.is_dir() {
+        return Ok(path);
+    }
+    if path.is_file() {
+        return path.parent().map(Path::to_path_buf).ok_or_else(|| {
+            AppError::InvalidInput("无法从 WD14 模型文件解析模型文件夹".to_owned())
+        });
+    }
+    Err(AppError::InvalidInput(format!(
+        "WD14 模型文件夹不存在：{}",
+        settings.model_path
+    )))
+}
+
+fn write_preprocessed_input(dirs: &AppDirs, image_path: &Path) -> AppResult<PathBuf> {
+    let image = image::open(image_path)?;
+    let resized = image
+        .resize_exact(INPUT_SIZE, INPUT_SIZE, FilterType::CatmullRom)
+        .to_rgb8();
+    let plane_size = (INPUT_SIZE * INPUT_SIZE) as usize;
+    let mut data = vec![0f32; plane_size * 3];
+    for (index, pixel) in resized.pixels().enumerate() {
+        data[index] = normalize_channel(pixel[0]);
+        data[plane_size + index] = normalize_channel(pixel[1]);
+        data[plane_size * 2 + index] = normalize_channel(pixel[2]);
+    }
+
+    fs::create_dir_all(&dirs.temp)?;
+    let timestamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|value| value.as_nanos())
+        .unwrap_or_default();
+    let input_path = dirs
+        .temp
+        .join(format!("wd14-input-{}-{timestamp}.f32", std::process::id()));
+    let mut file = fs::File::create(&input_path)?;
+    for value in data {
+        file.write_all(&value.to_le_bytes())?;
+    }
+    Ok(input_path)
+}
+
+fn normalize_channel(value: u8) -> f32 {
+    (value as f32 / 255.0 - 0.5) / 0.5
+}
+
+fn run_python_inference(
+    dirs: &AppDirs,
+    settings: &Wd14TaggerSettings,
+    model_dir: &Path,
+    input_path: &Path,
+    tag_count: usize,
+) -> AppResult<InferencePayload> {
+    let python_path = python_env::resolve_configured_python_path(dirs)?.ok_or_else(|| {
+        AppError::InvalidInput("未找到可用 Python 运行时，请先在本地文件/环境中配置或安装运行时".to_owned())
+    })?;
+    let payload = serde_json::json!({
+        "modelDir": model_dir,
+        "modelType": settings.model_type,
+        "inputPath": input_path,
+        "tagCount": tag_count,
+    });
+    let output = Command::new(&python_path)
+        .arg("-c")
+        .arg(INFERENCE_SCRIPT)
+        .arg(payload.to_string())
+        .env("PYTHONIOENCODING", "utf-8")
+        .output()?;
+    let stdout = String::from_utf8_lossy(&output.stdout).trim().to_owned();
+    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_owned();
+    if !output.status.success() {
+        return Err(AppError::InvalidInput(if stderr.is_empty() {
+            "WD14 推理执行失败".to_owned()
+        } else {
+            stderr
+        }));
+    }
+    serde_json::from_str(&stdout)
+        .map_err(|error| AppError::InvalidInput(format!("WD14 推理结果解析失败：{error}")))
+}
+
+fn load_tag_definitions(model_dir: &Path) -> AppResult<Vec<TagDefinition>> {
+    let csv_path = model_dir.join("selected_tags.csv");
+    if !csv_path.is_file() {
+        return Err(AppError::InvalidInput(
+            "WD14 模型文件夹中未找到 selected_tags.csv".to_owned(),
+        ));
+    }
+
+    let content = fs::read_to_string(csv_path)?;
+    let mut tags = Vec::new();
+    for line in content.lines().skip(1).filter(|line| !line.trim().is_empty()) {
+        let fields = parse_csv_line(line);
+        if fields.len() < 6 {
+            continue;
+        }
+        let index = fields[0].parse::<usize>().map_err(|error| {
+            AppError::InvalidInput(format!("selected_tags.csv 标签索引解析失败：{error}"))
+        })?;
+        let category = fields[3].parse::<i32>().map_err(|error| {
+            AppError::InvalidInput(format!("selected_tags.csv 标签分类解析失败：{error}"))
+        })?;
+        tags.push(TagDefinition {
+            index,
+            name: fields[2].clone(),
+            category,
+            intellectual_properties: parse_ip_tags(&fields[5]),
+        });
+    }
+
+    tags.sort_by_key(|tag| tag.index);
+    for (expected, tag) in tags.iter().enumerate() {
+        if tag.index != expected {
+            return Err(AppError::InvalidInput(
+                "selected_tags.csv 标签索引必须从 0 连续排列".to_owned(),
+            ));
+        }
+    }
+    if tags.is_empty() {
+        return Err(AppError::InvalidInput(
+            "selected_tags.csv 中没有可用标签".to_owned(),
+        ));
+    }
+    Ok(tags)
+}
+
+fn build_prompt(
+    scores: &[f32],
+    tags: &[TagDefinition],
+    settings: &Wd14TaggerSettings,
+) -> AppResult<String> {
+    if scores.len() < tags.len() {
+        return Err(AppError::InvalidInput(format!(
+            "WD14 输出标签数量不足：{} / {}",
+            scores.len(),
+            tags.len()
+        )));
+    }
+
+    let probabilities = if scores.iter().all(|value| (0.0..=1.0).contains(value)) {
+        scores.to_vec()
+    } else {
+        scores
+            .iter()
+            .map(|value| 1.0 / (1.0 + (-value).exp()))
+            .collect::<Vec<_>>()
+    };
+
+    let mut general = Vec::new();
+    let mut character = Vec::new();
+    let mut copyright = Vec::<(String, f32)>::new();
+
+    for tag in tags {
+        let score = probabilities[tag.index];
+        if tag.category == 0 {
+            if score >= settings.general_threshold as f32 {
+                general.push((format_tag(&tag.name, settings), score));
+            }
+        } else if tag.category == 4 && score >= settings.character_threshold as f32 {
+            character.push((format_tag(&tag.name, settings), score));
+            for ip in &tag.intellectual_properties {
+                upsert_max_score(&mut copyright, format_tag(ip, settings), score);
+            }
+        }
+    }
+
+    general.sort_by(|left, right| right.1.total_cmp(&left.1));
+    character.sort_by(|left, right| right.1.total_cmp(&left.1));
+    copyright.sort_by(|left, right| right.1.total_cmp(&left.1));
+
+    let mut prompt_parts = Vec::new();
+    if settings.add_character_tags {
+        prompt_parts.extend(character.into_iter().map(|tag| tag.0));
+    }
+    if settings.add_copyright_tags {
+        prompt_parts.extend(copyright.into_iter().map(|tag| tag.0));
+    }
+    prompt_parts.extend(general.into_iter().map(|tag| tag.0));
+
+    let mut unique_parts = Vec::new();
+    for part in prompt_parts {
+        if !unique_parts
+            .iter()
+            .any(|existing: &String| existing.eq_ignore_ascii_case(&part))
+        {
+            unique_parts.push(part);
+        }
+    }
+
+    if unique_parts.is_empty() {
+        return Err(AppError::InvalidInput(
+            "WD14 没有输出超过当前阈值的标签".to_owned(),
+        ));
+    }
+    Ok(unique_parts.join(", "))
+}
+
+fn upsert_max_score(items: &mut Vec<(String, f32)>, name: String, score: f32) {
+    if let Some((_, current_score)) = items
+        .iter_mut()
+        .find(|(existing, _)| existing.eq_ignore_ascii_case(&name))
+    {
+        *current_score = current_score.max(score);
+        return;
+    }
+    items.push((name, score));
+}
+
+fn format_tag(raw: &str, settings: &Wd14TaggerSettings) -> String {
+    if settings.replace_underscores_with_spaces {
+        raw.replace('_', " ")
+    } else {
+        raw.to_owned()
+    }
+}
+
+fn parse_csv_line(line: &str) -> Vec<String> {
+    let mut fields = Vec::new();
+    let mut field = String::new();
+    let mut chars = line.chars().peekable();
+    let mut in_quotes = false;
+
+    while let Some(character) = chars.next() {
+        if character == '"' {
+            if in_quotes && chars.peek() == Some(&'"') {
+                field.push('"');
+                let _ = chars.next();
+            } else {
+                in_quotes = !in_quotes;
+            }
+        } else if character == ',' && !in_quotes {
+            fields.push(field);
+            field = String::new();
+        } else {
+            field.push(character);
+        }
+    }
+    fields.push(field);
+    fields
+}
+
+fn parse_ip_tags(raw: &str) -> Vec<String> {
+    serde_json::from_str(raw).unwrap_or_default()
+}

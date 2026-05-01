@@ -43,6 +43,18 @@ function Resolve-CommandPath {
     throw "Required command not found: $($Candidates -join ', ')"
 }
 
+function Invoke-Checked {
+    param(
+        [string]$FilePath,
+        [string[]]$Arguments = @()
+    )
+
+    & $FilePath @Arguments
+    if ($LASTEXITCODE -ne 0) {
+        throw "Command failed with exit code $LASTEXITCODE`: $FilePath $($Arguments -join ' ')"
+    }
+}
+
 function New-CleanDirectory {
     param([string]$Path)
     if (Test-Path $Path) {
@@ -57,6 +69,71 @@ function New-ReleaseLayout {
     New-CleanDirectory $Path
     foreach ($dir in @("model", "config", "datasets", "runtime", "app", "log", "temp")) {
         New-Item -ItemType Directory -Force -Path (Join-Path $Path $dir) | Out-Null
+    }
+}
+
+function Stop-ReleaseProcesses {
+    $roots = @(
+        [IO.Path]::GetFullPath($ReleaseRoot).TrimEnd('\'),
+        [IO.Path]::GetFullPath((Join-Path $TauriDir "target\release")).TrimEnd('\')
+    )
+
+    $processes = Get-CimInstance Win32_Process |
+        Where-Object {
+            $path = $_.ExecutablePath
+            if (-not $path) {
+                $false
+            }
+            else {
+                $matchesReleaseRoot = $false
+                foreach ($root in $roots) {
+                    if ($path.StartsWith($root, [StringComparison]::OrdinalIgnoreCase)) {
+                        $matchesReleaseRoot = $true
+                        break
+                    }
+                }
+
+                $matchesReleaseRoot
+            }
+        }
+
+    foreach ($process in $processes) {
+        Write-Host "Stopping running process: $($process.Name) ($($process.ProcessId))"
+        Stop-Process -Id $process.ProcessId -Force -ErrorAction SilentlyContinue
+    }
+}
+
+function Wait-FileUnlocked {
+    param(
+        [string]$Path,
+        [int]$TimeoutSeconds = 15
+    )
+
+    $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+    while ((Get-Date) -lt $deadline) {
+        if (-not (Test-Path $Path)) {
+            return
+        }
+
+        try {
+            $stream = [IO.File]::Open($Path, [IO.FileMode]::Open, [IO.FileAccess]::ReadWrite, [IO.FileShare]::None)
+            $stream.Close()
+            return
+        }
+        catch {
+            Start-Sleep -Milliseconds 250
+        }
+    }
+
+    throw "File is still locked after $TimeoutSeconds seconds: $Path"
+}
+
+function Remove-FileIfExists {
+    param([string]$Path)
+
+    if (Test-Path $Path) {
+        Wait-FileUnlocked $Path
+        Remove-Item $Path -Force
     }
 }
 
@@ -98,8 +175,13 @@ Write-Host "Cargo: $(& $CargoCmd -V)"
 
 if ($Install -or -not (Test-Path (Join-Path $ProjectRoot "node_modules"))) {
     Write-Step "Installing npm dependencies"
-    & $NpmCmd install
+    Invoke-Checked $NpmCmd @("install")
 }
+
+Write-Step "Stopping running release executables"
+Stop-ReleaseProcesses
+Wait-FileUnlocked $ExeSource
+Wait-FileUnlocked $ExeTarget
 
 if ($Clean) {
     Write-Step "Cleaning previous build outputs"
@@ -114,22 +196,29 @@ if ($Clean) {
     }
 }
 
+Write-Step "Removing stale executable"
+Remove-FileIfExists $ExeSource
+
 Write-Step "Building frontend"
-& $NpmCmd run build
+Invoke-Checked $NpmCmd @("run", "build")
 
 Write-Step "Checking Rust project"
 Push-Location $TauriDir
-& $CargoCmd check
-& $CargoCmd clippy -- -D warnings
-Pop-Location
+try {
+    Invoke-Checked $CargoCmd @("check")
+    Invoke-Checked $CargoCmd @("clippy", "--", "-D", "warnings")
+}
+finally {
+    Pop-Location
+}
 
 if ($Bundle) {
     Write-Step "Building Tauri bundles"
-    & $NpmCmd run tauri:build
+    Invoke-Checked $NpmCmd @("run", "tauri:build")
 }
 else {
     Write-Step "Building Tauri executable"
-    & $NpxCmd tauri build --no-bundle
+    Invoke-Checked $NpxCmd @("tauri", "build", "--no-bundle")
 }
 
 if (-not (Test-Path $ExeSource)) {
@@ -139,6 +228,15 @@ if (-not (Test-Path $ExeSource)) {
 Write-Step "Assembling clean release layout"
 New-ReleaseLayout $ReleaseRoot
 Copy-Item $ExeSource $ExeTarget -Force
+
+$SourceExeInfo = Get-Item $ExeSource
+$TargetExeInfo = Get-Item $ExeTarget
+if ($SourceExeInfo.Length -ne $TargetExeInfo.Length) {
+    throw "Published executable size mismatch. Source: $($SourceExeInfo.Length), Target: $($TargetExeInfo.Length)"
+}
+if ($TargetExeInfo.LastWriteTime -lt $SourceExeInfo.LastWriteTime.AddSeconds(-2)) {
+    throw "Published executable appears stale. Source: $($SourceExeInfo.LastWriteTime), Target: $($TargetExeInfo.LastWriteTime)"
+}
 
 $BuildInfo = [ordered]@{
     product = "Datasets Deputy"

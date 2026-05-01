@@ -88,12 +88,14 @@ fn folder_thumbnail_hash(path: &Path, metadata: Option<&fs::Metadata>) -> String
     format!("folder-{:x}", hasher.finalize())
 }
 
-fn cached_folder_thumbnail_path(dirs: &AppDirs, path: &Path, metadata: Option<&fs::Metadata>) -> Option<PathBuf> {
+fn cached_folder_thumbnail_path(
+    dirs: &AppDirs,
+    path: &Path,
+    metadata: Option<&fs::Metadata>,
+) -> Option<PathBuf> {
     let thumbnail_dir = files::default_thumbnail_dir(&dirs.root).join("folders");
-    let thumbnail_path = thumbnail_dir.join(format!(
-        "{}.webp",
-        folder_thumbnail_hash(path, metadata)
-    ));
+    let thumbnail_path =
+        thumbnail_dir.join(format!("{}.webp", folder_thumbnail_hash(path, metadata)));
     thumbnail_path.is_file().then_some(thumbnail_path)
 }
 
@@ -138,7 +140,9 @@ pub fn add_folder_dataset(dirs: &AppDirs, folder: &Path) -> AppResult<()> {
         .any(|path| path.eq_ignore_ascii_case(&normalized))
     {
         registry.folders.push(normalized);
-        registry.folders.sort_by_key(|path| path.to_ascii_lowercase());
+        registry
+            .folders
+            .sort_by_key(|path| path.to_ascii_lowercase());
         write_registry(dirs, &registry)?;
     }
 
@@ -146,7 +150,10 @@ pub fn add_folder_dataset(dirs: &AppDirs, folder: &Path) -> AppResult<()> {
 }
 
 pub fn remove_folder_dataset(dirs: &AppDirs, folder_path: &str) -> AppResult<usize> {
-    let normalized = folder_path.replace('\\', "/").trim_end_matches('/').to_owned();
+    let normalized = folder_path
+        .replace('\\', "/")
+        .trim_end_matches('/')
+        .to_owned();
     let mut registry = read_registry(dirs)?;
     let original_count = registry.folders.len();
     registry
@@ -181,7 +188,12 @@ pub fn list_folder_images(dirs: &AppDirs) -> AppResult<Vec<DatasetImage>> {
     let registry = read_registry(dirs)?;
     let mut images = Vec::new();
 
-    for root in registry.folders.iter().map(PathBuf::from).filter(|path| path.is_dir()) {
+    for root in registry
+        .folders
+        .iter()
+        .map(PathBuf::from)
+        .filter(|path| path.is_dir())
+    {
         let profile_id = folder_profile_id(&root);
         let root_path = normalize_path(&root);
         let dataset_id = dataset_id(&root);

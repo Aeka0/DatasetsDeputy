@@ -100,14 +100,12 @@ export function PromptManagementDialog({ onClose }: PromptManagementDialogProps)
   return createPortal(
     <div
       className="no-drag fixed inset-0 z-50 flex items-center justify-center bg-slate-950/18 px-5"
-      onClick={onClose}
     >
       <section
         className="flex h-[600px] w-full max-w-[960px] flex-col overflow-hidden rounded-lg border border-slate-200 bg-white shadow-[0_24px_72px_rgba(15,23,42,0.22)]"
         role="dialog"
         aria-modal="true"
         aria-labelledby="prompt-management-title"
-        onClick={(event) => event.stopPropagation()}
       >
         <header className="flex h-14 shrink-0 items-center justify-between border-b border-slate-200 px-5">
           <div className="min-w-0">

@@ -143,7 +143,6 @@ textarea {
 
 .glass-input.dataset-cell-dirty {
   border-color: #f59e0b;
-  background: #fffbeb;
 }
 
 .glass-input.dataset-cell-dirty:focus {
@@ -153,7 +152,6 @@ textarea {
 
 .glass-input.dataset-cell-saved {
   border-color: #10b981;
-  background: #ecfdf5;
 }
 
 .glass-input.dataset-cell-saved:focus {
@@ -182,6 +180,22 @@ textarea {
 
 .fluent-sidebar {
   background: transparent;
+}
+
+.sidebar-nav-button {
+  border: 0;
+  background: transparent;
+  color: rgba(31, 35, 40, 0.68);
+}
+
+.sidebar-nav-button:hover {
+  background: rgba(31, 35, 40, 0.055);
+  color: rgba(31, 35, 40, 0.9);
+}
+
+.sidebar-nav-button-active {
+  background: rgba(31, 35, 40, 0.075);
+  color: #1f2328;
 }
 
 .fluent-control-button {
@@ -223,6 +237,10 @@ textarea {
 
 .app-dropdown-item {
   border-radius: var(--app-radius-md);
+}
+
+.app-dropdown-item:disabled {
+  color: rgba(100, 116, 139, 0.72);
 }
 
 .table-column-resizer::after {
@@ -370,9 +388,6 @@ html[data-theme="dark"] .glass-input:focus {
 
 html[data-theme="dark"] .glass-input.dataset-cell-dirty {
   border-color: #d97706;
-  background: rgba(120, 53, 15, 0.38);
-  color: #fde68a;
-  caret-color: #fde68a;
 }
 
 html[data-theme="dark"] .glass-input.dataset-cell-dirty:focus {
@@ -382,9 +397,6 @@ html[data-theme="dark"] .glass-input.dataset-cell-dirty:focus {
 
 html[data-theme="dark"] .glass-input.dataset-cell-saved {
   border-color: #059669;
-  background: rgba(6, 78, 59, 0.4);
-  color: #a7f3d0;
-  caret-color: #a7f3d0;
 }
 
 html[data-theme="dark"] .glass-input.dataset-cell-saved:focus {
@@ -398,7 +410,55 @@ html[data-theme="dark"] .shadow-xl {
 }
 
 html[data-theme="dark"] .fluent-sidebar [aria-expanded] svg {
-  color: #ffffff;
+  color: rgba(232, 232, 232, 0.72);
+}
+
+html[data-theme="dark"] .sidebar-nav-button {
+  color: rgba(232, 232, 232, 0.72);
+}
+
+html[data-theme="dark"] .sidebar-nav-button:hover {
+  background: rgba(255, 255, 255, 0.065);
+  color: rgba(245, 245, 245, 0.92);
+}
+
+html[data-theme="dark"] .sidebar-nav-button-active {
+  background: rgba(255, 255, 255, 0.085);
+  color: rgba(245, 245, 245, 0.96);
+}
+
+html[data-theme="dark"] .project-tree-import-button {
+  border-color: rgba(255, 255, 255, 0.08);
+  background-color: rgba(255, 255, 255, 0.055);
+  color: rgba(232, 232, 232, 0.88);
+}
+
+html[data-theme="dark"] .project-tree-import-button:hover {
+  border-color: rgba(255, 255, 255, 0.12);
+  background-color: rgba(255, 255, 255, 0.085);
+}
+
+html[data-theme="dark"] .project-tree-row {
+  color: rgba(232, 232, 232, 0.82);
+}
+
+html[data-theme="dark"] .project-tree-row svg {
+  color: rgba(232, 232, 232, 0.72);
+}
+
+html[data-theme="dark"] .project-tree-row-selected {
+  background-color: rgba(255, 255, 255, 0.075);
+  color: rgba(245, 245, 245, 0.92);
+}
+
+html[data-theme="dark"] .project-tree-row-selected svg {
+  color: rgba(245, 245, 245, 0.86);
+}
+
+html[data-theme="dark"] .project-tree-count {
+  background-color: rgba(255, 255, 255, 0.09);
+  color: rgba(232, 232, 232, 0.78);
+  --tw-ring-color: rgba(255, 255, 255, 0.08);
 }
 
 html[data-theme="dark"] .title-menu-button {
@@ -424,6 +484,15 @@ html[data-theme="dark"] .app-dropdown-backdrop {
 
 html[data-theme="dark"] .app-dropdown-separator {
   background-color: rgba(255, 255, 255, 0.08);
+}
+
+html[data-theme="dark"] .app-dropdown-item:disabled {
+  color: rgba(232, 232, 232, 0.34);
+}
+
+html[data-theme="dark"] .app-dropdown-item:disabled:hover {
+  background-color: transparent;
+  color: rgba(232, 232, 232, 0.34);
 }
 
 html[data-theme="dark"] .table-column-resizer::after {
@@ -468,3 +537,4 @@ html[data-theme="dark"] ::-webkit-scrollbar-thumb:hover {
   border: 3px solid transparent;
   background-clip: content-box;
 }
+

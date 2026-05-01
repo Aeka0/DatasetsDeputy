@@ -39,7 +39,7 @@ export function AppSidebar() {
           return (
             <button
               key={item.key}
-              className="no-drag flex w-full items-center gap-3 rounded-2xl px-3 py-3 text-left text-sm text-white/72 transition hover:bg-white/[0.08] hover:text-white"
+              className="sidebar-nav-button no-drag flex w-full items-center gap-3 rounded-2xl px-3 py-3 text-left text-sm transition"
             >
               <Icon size={18} />
               {t(item.key)}
