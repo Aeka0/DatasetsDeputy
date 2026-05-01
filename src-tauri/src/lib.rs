@@ -12,6 +12,7 @@ mod thumbnail;
 mod wd14_tagger;
 #[cfg(target_os = "windows")]
 mod window_region;
+mod window_rendering;
 
 use tauri::{Manager, WebviewWindowBuilder};
 #[cfg(target_os = "windows")]
@@ -48,9 +49,9 @@ pub fn run() {
         .setup(|app| {
             let dirs = app_dirs::ensure_release_dirs(app.handle())?;
             app_dirs::init_logging(&dirs)?;
-            tracing::info!("Application directories initialized");
+            tracing::info!("应用目录初始化完成。");
 
-            app.manage(AppState { dirs });
+            app.manage(AppState { dirs: dirs.clone() });
 
             #[cfg(target_os = "windows")]
             {
@@ -64,6 +65,11 @@ pub fn run() {
             }
 
             let app_handle = app.handle().clone();
+            let window_rendering_settings = window_rendering::load_settings(&dirs);
+            tracing::info!(
+                "启动窗口渲染模式：{}",
+                window_rendering_settings.mode.as_str()
+            );
             let main_window_config = app
                 .config()
                 .app
@@ -82,6 +88,11 @@ pub fn run() {
                     tracing::error!("启动失败：未找到主窗口配置。");
                     return;
                 };
+
+                let main_window_config = window_rendering::apply_to_main_window_config(
+                    main_window_config,
+                    &window_rendering_settings,
+                );
 
                 tracing::info!("创建主窗口。");
                 match WebviewWindowBuilder::from_config(&app_handle, &main_window_config)
@@ -127,6 +138,8 @@ pub fn run() {
             commands::save_python_env_settings,
             commands::get_model_settings,
             commands::save_model_settings,
+            commands::get_window_rendering_settings,
+            commands::save_window_rendering_settings,
             commands::pick_wd14_model_path,
             commands::pick_python_env_path,
             commands::probe_python_env,

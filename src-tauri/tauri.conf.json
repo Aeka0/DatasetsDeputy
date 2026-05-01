@@ -22,11 +22,7 @@
         "decorations": false,
         "transparent": true,
         "shadow": false,
-        "resizable": true,
-        "windowEffects": {
-          "effects": ["blur"],
-          "color": [246, 248, 252, 140]
-        }
+        "resizable": true
       },
       {
         "label": "splash",

@@ -1,13 +1,20 @@
 export type ThemePreference = "system" | "light" | "dark";
 export type ResolvedTheme = "light" | "dark";
+export type WindowRenderMode = "blur" | "acrylic";
+
+export interface WindowRenderingSettings {
+  mode: WindowRenderMode;
+}
 
 const themeStorageKey = "datasets-deputy.theme";
 const bottomOpacityStorageKey = "datasets-deputy.bottom-opacity";
 const topOpacityStorageKey = "datasets-deputy.top-opacity";
 const themePreferenceChangedEvent = "datasets-deputy:theme-preference-changed";
 const uiOpacityChangedEvent = "datasets-deputy:ui-opacity-changed";
+const windowRenderModeChangedEvent = "datasets-deputy:window-render-mode-changed";
 const defaultBottomOpacity = 85;
 const defaultTopOpacity = 95;
+const defaultWindowRenderMode: WindowRenderMode = "blur";
 const minBottomUiOpacity = 70;
 const minTopUiOpacity = 30;
 const maxUiOpacity = 100;
@@ -38,6 +45,7 @@ export function applyTheme(preference = getThemePreference()) {
   document.documentElement.dataset.theme = resolvedTheme;
   document.documentElement.style.colorScheme = resolvedTheme;
   applyUiOpacity();
+  applyWindowRenderMode();
 }
 
 export function setThemePreference(preference: ThemePreference) {
@@ -72,6 +80,30 @@ export function watchThemePreference(callback: (preference: ThemePreference) => 
 
   window.addEventListener(themePreferenceChangedEvent, handler);
   return () => window.removeEventListener(themePreferenceChangedEvent, handler);
+}
+
+export function getWindowRenderMode() {
+  return defaultWindowRenderMode;
+}
+
+export function applyWindowRenderMode(mode = getWindowRenderMode()) {
+  if (typeof document === "undefined") return;
+
+  document.documentElement.dataset.windowRenderMode = mode;
+}
+
+export function setWindowRenderMode(mode: WindowRenderMode) {
+  applyWindowRenderMode(mode);
+  window.dispatchEvent(new CustomEvent(windowRenderModeChangedEvent, { detail: mode }));
+}
+
+export function watchWindowRenderMode(callback: (mode: WindowRenderMode) => void) {
+  const handler = (event: Event) => {
+    callback((event as CustomEvent<WindowRenderMode>).detail);
+  };
+
+  window.addEventListener(windowRenderModeChangedEvent, handler);
+  return () => window.removeEventListener(windowRenderModeChangedEvent, handler);
 }
 
 function clampUiOpacity(value: number, minOpacity: number) {

@@ -178,6 +178,17 @@ textarea {
   background: var(--app-surface-bg);
 }
 
+html[data-window-render-mode="acrylic"] .fluent-chrome,
+html[data-window-render-mode="acrylic"] .fluent-titlebar {
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+html[data-window-render-mode="acrylic"] .fluent-chrome,
+html[data-window-render-mode="acrylic"] .fluent-titlebar {
+  background: var(--app-chrome-bg);
+}
+
 .fluent-sidebar {
   background: transparent;
 }

@@ -18,6 +18,7 @@ use crate::{
     model_settings::{self, ModelSettings},
     python_env::{self, PythonEnvInstallResult, PythonEnvProbeReport, PythonEnvSettings},
     wd14_tagger,
+    window_rendering::{self, WindowRenderingSettings},
     AppState,
 };
 
@@ -398,6 +399,21 @@ pub fn save_model_settings(
     settings: ModelSettings,
 ) -> AppResult<ModelSettings> {
     model_settings::save_settings(&state.dirs, settings)
+}
+
+#[tauri::command]
+pub fn get_window_rendering_settings(
+    state: State<'_, AppState>,
+) -> AppResult<WindowRenderingSettings> {
+    Ok(window_rendering::load_settings(&state.dirs))
+}
+
+#[tauri::command]
+pub fn save_window_rendering_settings(
+    state: State<'_, AppState>,
+    settings: WindowRenderingSettings,
+) -> AppResult<WindowRenderingSettings> {
+    window_rendering::save_settings(&state.dirs, settings)
 }
 
 #[tauri::command]

@@ -16,6 +16,7 @@ import { TitleMenuBar } from "./components/window/TitleMenuBar";
 import { WindowControls } from "./components/window/WindowControls";
 import { useDatasetStore } from "./stores/datasetStore";
 import { hasTauriRuntime, invokeCommand } from "./lib/tauri";
+import { setWindowRenderMode, type WindowRenderingSettings } from "./lib/theme";
 
 const STARTUP_PRELOAD_TIMEOUT_MS = 8000;
 
@@ -33,9 +34,17 @@ export default function App() {
     if (!hasTauriRuntime()) return;
 
     const store = useDatasetStore.getState();
-    const preload = Promise.all([store.initImportEvents(), store.load()]).catch((error) => {
-      console.error("启动预加载失败，仍然显示主窗口：", error);
-    });
+    const loadWindowRendering = invokeCommand<WindowRenderingSettings>(
+      "get_window_rendering_settings"
+    )
+      .then((settings) => setWindowRenderMode(settings.mode))
+      .catch((error) => {
+        console.error("读取窗口渲染模式失败，使用默认显示模式：", error);
+      });
+    const preload = Promise.all([loadWindowRendering, store.initImportEvents(), store.load()])
+      .catch((error) => {
+        console.error("启动预加载失败，仍然显示主窗口：", error);
+      });
     const timeout = new Promise<void>((resolve) =>
       window.setTimeout(resolve, STARTUP_PRELOAD_TIMEOUT_MS)
     );
