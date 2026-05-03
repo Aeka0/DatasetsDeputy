@@ -227,7 +227,11 @@ html[data-window-render-mode="acrylic"] .fluent-titlebar {
 .app-dropdown-menu {
   isolation: isolate;
   overflow: hidden;
-  background: rgba(255, 255, 255, 0.62);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.42), rgba(255, 255, 255, 0.2)),
+    rgba(255, 255, 255, 0.44);
+  backdrop-filter: blur(32px) saturate(1.45);
+  -webkit-backdrop-filter: blur(32px) saturate(1.45);
   box-shadow:
     0 10px 24px rgba(15, 23, 42, 0.12),
     0 2px 8px rgba(15, 23, 42, 0.08);
@@ -236,18 +240,21 @@ html[data-window-render-mode="acrylic"] .fluent-titlebar {
 .app-dropdown-backdrop {
   position: absolute;
   inset: 0;
-  z-index: -1;
+  z-index: 0;
   border-radius: inherit;
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.42), rgba(255, 255, 255, 0.2)),
-    rgba(255, 255, 255, 0.44);
-  backdrop-filter: blur(32px) saturate(1.45);
-  -webkit-backdrop-filter: blur(32px) saturate(1.45);
+  background: transparent;
   pointer-events: none;
 }
 
 .app-dropdown-item {
+  position: relative;
+  z-index: 1;
   border-radius: var(--app-radius-md);
+}
+
+.app-dropdown-separator {
+  position: relative;
+  z-index: 1;
 }
 
 .app-dropdown-item:disabled {
@@ -481,16 +488,16 @@ html[data-theme="dark"] .title-menu-button:hover {
 }
 
 html[data-theme="dark"] .app-dropdown-menu {
-  background: rgba(36, 36, 36, 0.56);
+  background:
+    linear-gradient(180deg, rgba(58, 58, 58, 0.34), rgba(22, 22, 22, 0.2)),
+    rgba(32, 32, 32, 0.42);
   box-shadow:
     0 12px 28px rgba(0, 0, 0, 0.32),
     0 2px 10px rgba(0, 0, 0, 0.2);
 }
 
 html[data-theme="dark"] .app-dropdown-backdrop {
-  background:
-    linear-gradient(180deg, rgba(58, 58, 58, 0.34), rgba(22, 22, 22, 0.2)),
-    rgba(32, 32, 32, 0.42);
+  background: transparent;
 }
 
 html[data-theme="dark"] .app-dropdown-separator {

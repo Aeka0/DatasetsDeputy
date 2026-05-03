@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 
+import { formatAppError } from "../../lib/errors";
 import { hasTauriRuntime, invokeCommand } from "../../lib/tauri";
 import { Button } from "../ui/Button";
 
@@ -55,7 +56,7 @@ export function Wd14TaggerSettingsDialog({ onClose }: Wd14TaggerSettingsDialogPr
           }
         });
       })
-      .catch((error) => setMessage(String(error)));
+      .catch((error) => setMessage(formatAppError(error)));
   }, []);
 
   const patchWd14Settings = (patch: Partial<Wd14TaggerSettings>) => {
@@ -79,7 +80,7 @@ export function Wd14TaggerSettingsDialog({ onClose }: Wd14TaggerSettingsDialogPr
       await invokeCommand<ModelSettings>("save_model_settings", { settings });
       onClose();
     } catch (error) {
-      const text = error instanceof Error ? error.message : String(error);
+      const text = formatAppError(error);
       setMessage(t("wd14Settings.saveFailed", { message: text }));
     }
   };

@@ -15,6 +15,7 @@ import { useTranslation } from "react-i18next";
 
 import i18next from "../../i18n";
 import { cn } from "../../lib/cn";
+import { formatAppError } from "../../lib/errors";
 import { hasTauriRuntime, invokeCommand } from "../../lib/tauri";
 import {
   getBottomUiOpacity,
@@ -367,7 +368,7 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
         setGeminiSettings(settings);
         setHasLoadedGeminiSettings(true);
       })
-      .catch((error) => setGeminiMessage(String(error)));
+      .catch((error) => setGeminiMessage(formatAppError(error)));
   }, []);
   useEffect(() => {
     if (!hasTauriRuntime()) return;
@@ -377,7 +378,7 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
         setPythonEnvSettings(settings);
         setHasLoadedPythonEnvSettings(true);
       })
-      .catch((error) => setPythonEnvMessage(String(error)));
+      .catch((error) => setPythonEnvMessage(formatAppError(error)));
   }, []);
   useEffect(() => {
     if (!hasTauriRuntime()) return;
@@ -387,7 +388,7 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
         setModelSettings(settings);
         setHasLoadedModelSettings(true);
       })
-      .catch((error) => setModelSettingsMessage(String(error)));
+      .catch((error) => setModelSettingsMessage(formatAppError(error)));
   }, []);
   useEffect(() => {
     if (!hasTauriRuntime() || !hasLoadedGeminiSettings) return;
@@ -396,7 +397,7 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
       void invokeCommand<GeminiSettings>("save_gemini_settings", {
         settings: geminiSettings
       }).catch((error) => {
-        const message = error instanceof Error ? error.message : String(error);
+        const message = formatAppError(error);
         setGeminiMessage(t("settings.geminiActionFailed", { message }));
       });
     }, 500);
@@ -411,7 +412,7 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
         settings: pythonEnvSettings
       })
         .catch((error) => {
-          const message = error instanceof Error ? error.message : String(error);
+          const message = formatAppError(error);
           setPythonEnvMessage(t("settings.pythonEnvActionFailed", { message }));
         });
     }, 500);
@@ -431,7 +432,7 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
           }
         })
         .catch((error) => {
-          const message = error instanceof Error ? error.message : String(error);
+          const message = formatAppError(error);
           setModelSettingsMessage(t("settings.modelSettingsActionFailed", { message }));
         });
     }, 500);
@@ -507,7 +508,7 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
       });
       setGeminiMessage(t("settings.geminiConnectionOk", { count }));
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
+      const message = formatAppError(error);
       setGeminiMessage(t("settings.geminiActionFailed", { message }));
     } finally {
       setIsGeminiBusy(false);
@@ -526,7 +527,7 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
     } catch (error) {
       const payload = error as { code?: string; message?: string };
       if (payload.code !== "dialog_cancelled") {
-        const message = error instanceof Error ? error.message : String(payload.message ?? error);
+        const message = formatAppError(error);
         setPythonEnvMessage(t("settings.pythonEnvActionFailed", { message }));
       }
     } finally {
@@ -563,7 +564,7 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
     } catch (error) {
       const payload = error as { code?: string; message?: string };
       if (payload.code !== "dialog_cancelled") {
-        const message = error instanceof Error ? error.message : String(payload.message ?? error);
+        const message = formatAppError(error);
         setModelSettingsMessage(t("settings.modelSettingsActionFailed", { message }));
       }
     } finally {
@@ -589,7 +590,7 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
             })
       );
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
+      const message = formatAppError(error);
       setPythonEnvMessage(t("settings.pythonEnvActionFailed", { message }));
     } finally {
       setIsPythonEnvBusy(false);
@@ -630,7 +631,7 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
         });
       }
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
+      const message = formatAppError(error);
       setPythonEnvMessage(t("settings.pythonEnvActionFailed", { message }));
     } finally {
       setIsPythonEnvBusy(false);
@@ -671,7 +672,7 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
         });
       }
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
+      const message = formatAppError(error);
       setPythonEnvMessage(t("settings.pythonEnvActionFailed", { message }));
     } finally {
       setIsPythonEnvBusy(false);
@@ -691,7 +692,7 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
       setThumbnailCacheInfo(thumbnailInfo);
       setLogFilesInfo(logInfo);
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
+      const message = formatAppError(error);
       setLocalFilesMessage(t("settings.tempFilesActionFailed", { message }));
     } finally {
       setIsTemporaryFilesBusy(false);
@@ -709,7 +710,7 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
       await refreshImages();
       setLocalFilesMessage(t("settings.thumbnailCacheCleared"));
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
+      const message = formatAppError(error);
       setLocalFilesMessage(t("settings.tempFilesActionFailed", { message }));
     } finally {
       setIsTemporaryFilesBusy(false);
@@ -726,7 +727,7 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
       setLogFilesInfo(info);
       setLocalFilesMessage(t("settings.logFilesCleared"));
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
+      const message = formatAppError(error);
       setLocalFilesMessage(t("settings.tempFilesActionFailed", { message }));
     } finally {
       setIsTemporaryFilesBusy(false);

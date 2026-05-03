@@ -3,6 +3,7 @@ import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import i18next from "i18next";
 import { create } from "zustand";
 
+import { formatAppError } from "../lib/errors";
 import { hasTauriRuntime, invokeCommand } from "../lib/tauri";
 import type {
   AnnotationProfile,
@@ -619,7 +620,7 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
     } catch (error) {
       const payload = error as { code?: string };
       if (payload.code !== "dialog_cancelled") {
-        get().addAppLog(`文件夹导入准备失败：${String(error)}`, "error");
+        get().addAppLog(`文件夹导入准备失败：${formatAppError(error)}`, "error");
         throw error;
       }
       get().addAppLog("用户已取消文件夹导入准备。", "warning");
@@ -681,7 +682,7 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
       const payload = error as { code?: string };
       set({ importProgress: undefined, pendingImportKind: undefined });
       if (payload.code !== "dialog_cancelled") {
-        get().addAppLog(`工作文件夹挂载失败：${String(error)}`, "error");
+        get().addAppLog(`工作文件夹挂载失败：${formatAppError(error)}`, "error");
         throw error;
       }
       get().addAppLog("用户已取消工作文件夹挂载。", "warning");
@@ -719,7 +720,7 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
       });
     } catch (error) {
       set({ isLoading: false, importProgress: undefined, pendingImportKind: undefined });
-      get().addAppLog(`已准备的导入失败：${String(error)}`, "error");
+      get().addAppLog(`已准备的导入失败：${formatAppError(error)}`, "error");
       throw error;
     }
   },

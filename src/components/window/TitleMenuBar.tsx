@@ -7,10 +7,11 @@ import {
   generateAnnotationPrompt,
   type AnnotationPromptSettings
 } from "../../lib/annotationPrompt";
+import { formatAppError } from "../../lib/errors";
 import { hasTauriRuntime } from "../../lib/tauri";
 import { invokeCommand } from "../../lib/tauri";
 import { useDatasetStore } from "../../stores/datasetStore";
-import type { DatasetProject } from "../../types";
+import type { DatasetImage, DatasetProject } from "../../types";
 import {
   AnnotationExecutionDialog,
   type AnnotationExecutionMode,
@@ -115,6 +116,37 @@ function isAnnotatableProject(project: DatasetProject | undefined) {
   );
 }
 
+function getImageInstruction(
+  image: DatasetImage,
+  profileId: number,
+  tableDraftProfileId: number | undefined,
+  tableInstructionDrafts: Record<number, string>
+) {
+  if (
+    tableDraftProfileId === profileId &&
+    Object.prototype.hasOwnProperty.call(tableInstructionDrafts, image.id)
+  ) {
+    return tableInstructionDrafts[image.id].trim();
+  }
+
+  return (
+    image.annotations
+      .find((annotation) => annotation.profileId === profileId)
+      ?.instruction.trim() ?? ""
+  );
+}
+
+function buildGeminiPrompt(basePrompt: string, imageInstruction: string) {
+  const prompt = basePrompt.trim();
+  const instruction = imageInstruction.trim();
+
+  if (!instruction) {
+    return prompt;
+  }
+
+  return prompt ? `${prompt}\n\nAdditional instruction for this image: ${instruction}` : instruction;
+}
+
 interface TitleMenuBarProps {
   isProjectTreeCollapsed: boolean;
   onToggleProjectTree: () => void;
@@ -136,6 +168,7 @@ export function TitleMenuBar({
     previewImageId,
     tableDraftProfileId,
     tableAnnotationDrafts,
+    tableInstructionDrafts,
     isLoading,
     setAppView,
     addAppLog,
@@ -456,7 +489,15 @@ export function TitleMenuBar({
             options.mode === "gemini"
               ? await invokeCommand<string>("generate_gemini_annotation", {
                   imagePath: image.path,
-                  prompt
+                  prompt: buildGeminiPrompt(
+                    prompt,
+                    getImageInstruction(
+                      image,
+                      selectedProfileId,
+                      tableDraftProfileId,
+                      tableInstructionDrafts
+                    )
+                  )
                 })
               : await invokeCommand<string>("generate_wd14_annotation", {
                   imagePath: image.path
@@ -477,7 +518,7 @@ export function TitleMenuBar({
         return;
       }
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
+      const message = formatAppError(error);
       if (message === annotationCancelledError) {
         return;
       }

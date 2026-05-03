@@ -9,6 +9,7 @@ import {
   type AnnotationPromptMode,
   type AnnotationPromptSettings
 } from "../../lib/annotationPrompt";
+import { formatAppError } from "../../lib/errors";
 import { hasTauriRuntime, invokeCommand } from "../../lib/tauri";
 import { Button } from "../ui/Button";
 
@@ -76,7 +77,7 @@ export function PromptManagementDialog({ onClose }: PromptManagementDialogProps)
         setSettings({ ...fallbackSettings, ...loadedSettings });
         setHasLoaded(true);
       })
-      .catch((error) => setMessage(String(error)));
+      .catch((error) => setMessage(formatAppError(error)));
   }, []);
 
   useEffect(() => {
@@ -84,7 +85,7 @@ export function PromptManagementDialog({ onClose }: PromptManagementDialogProps)
 
     const saveTimer = window.setTimeout(() => {
       void invokeCommand<GeminiSettings>("save_gemini_settings", { settings }).catch((error) => {
-        const text = error instanceof Error ? error.message : String(error);
+        const text = formatAppError(error);
         setMessage(t("annotationPrompt.saveFailed", { message: text }));
       });
     }, 500);
