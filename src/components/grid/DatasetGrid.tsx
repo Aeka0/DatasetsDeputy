@@ -23,12 +23,11 @@ export function DatasetGrid({
   const openImagePreview = useDatasetStore((state) => state.openImagePreview);
   const parentRef = useRef<HTMLDivElement>(null);
   const [containerWidth, setContainerWidth] = useState(0);
-  const datasetAnnotationTypeCount = useMemo(
-    () =>
-      new Set(images.flatMap((image) => image.annotations.map((annotation) => annotation.profileId)))
-        .size,
-    [images]
-  );
+  const profiles = useDatasetStore((state) => state.profiles);
+  const datasetAnnotationTypeCount = useMemo(() => {
+    const datasetIds = new Set(images.map((image) => image.datasetId).filter(Boolean));
+    return profiles.filter((profile) => profile.datasetId !== undefined && datasetIds.has(profile.datasetId)).length;
+  }, [images, profiles]);
   const isFolderMode = images.length > 0 && images.every((image) => image.sourceKind === "folder");
   const columnCount = useMemo(() => {
     if (containerWidth <= 0) return 1;

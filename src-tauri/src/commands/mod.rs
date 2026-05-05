@@ -35,6 +35,13 @@ pub struct ImportFailure {
 
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct ImportWarning {
+    pub file_path: String,
+    pub message: String,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ImportReport {
     pub root_name: Option<String>,
     pub root_path: Option<String>,
@@ -42,6 +49,7 @@ pub struct ImportReport {
     pub success_with_annotations: usize,
     pub failed: usize,
     pub failures: Vec<ImportFailure>,
+    pub warnings: Vec<ImportWarning>,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -1203,11 +1211,7 @@ pub async fn import_images_to_folder(
                                 }
                             }
                         }
-                        if result.inserted {
-                            summary.imported += 1;
-                        } else {
-                            summary.skipped += 1;
-                        }
+                        summary.imported += 1;
                     }
                     Err(_) => {
                         summary.failed += 1;
@@ -1388,6 +1392,7 @@ pub fn start_import_folder(
                             file_path: database_path.to_string_lossy().to_string(),
                             reason: error.to_string(),
                         }],
+                        warnings: Vec::new(),
                     }),
                 });
                 return;
@@ -1419,6 +1424,7 @@ pub fn start_import_folder(
         let mut success_without_annotations = 0;
         let mut success_with_annotations = 0;
         let mut failures = Vec::new();
+        let mut warnings = Vec::new();
 
         emit_progress(ImportProgress {
             phase: "importing".to_owned(),
@@ -1444,11 +1450,14 @@ pub fn start_import_folder(
                 import_profile_id,
             ) {
                 Ok(result) => {
-                    if result.inserted {
-                        summary.imported += 1;
-                    } else {
-                        summary.skipped += 1;
+                    if let Some(warning_message) = result.format_warning {
+                        warnings.push(ImportWarning {
+                            file_path: path.to_string_lossy().to_string(),
+                            message: warning_message,
+                        });
                     }
+
+                    summary.imported += 1;
 
                     if result.has_annotation {
                         success_with_annotations += 1;
@@ -1509,6 +1518,7 @@ pub fn start_import_folder(
                 success_with_annotations,
                 failed: summary.failed,
                 failures,
+                warnings,
             }),
         });
     });

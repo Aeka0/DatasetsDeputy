@@ -1,4 +1,4 @@
-import { CheckCircle2, FileWarning, Search } from "lucide-react";
+import { AlertTriangle, CheckCircle2, FileWarning, Search } from "lucide-react";
 
 import { useDatasetStore } from "../../stores/datasetStore";
 
@@ -7,6 +7,7 @@ const copy = {
   successWithoutAnnotations: "\u6210\u529f\uff08\u65e0\u6807\u6ce8\uff09",
   successWithAnnotations: "\u6210\u529f\uff08\u6709\u6807\u6ce8\uff09",
   failed: "\u5931\u8d25",
+  warnings: "\u683c\u5f0f\u8b66\u544a\uff08\u5df2\u6b63\u5e38\u5bfc\u5165\uff09",
   failedFiles: "\u5931\u8d25\u7684\u6587\u4ef6\u548c\u539f\u56e0",
   noFailures: "\u6ca1\u6709\u5931\u8d25\u6587\u4ef6",
   browseDataset: "\u6d4f\u89c8\u6570\u636e\u96c6"
@@ -54,6 +55,26 @@ export function ImportReportView() {
             <div className="mt-1 leading-5 text-slate-500">{copy.failed}</div>
           </div>
         </section>
+
+        {report.warnings.length > 0 ? (
+          <section className="mt-5">
+            <div className="mb-2 flex items-center gap-2 font-medium leading-5 text-amber-700">
+              <AlertTriangle size={16} />
+              {copy.warnings}
+            </div>
+            <div className="max-h-48 overflow-auto rounded-md border border-amber-200 bg-amber-50">
+              {report.warnings.map((warning) => (
+                <div
+                  key={`${warning.filePath}:${warning.message}`}
+                  className="border-b border-amber-100 px-3 py-2 last:border-b-0"
+                >
+                  <div className="truncate leading-5 text-slate-800">{warning.filePath}</div>
+                  <div className="mt-1 leading-5 text-amber-700">{warning.message}</div>
+                </div>
+              ))}
+            </div>
+          </section>
+        ) : null}
 
         <section className="mt-5">
           <div className="mb-2 flex items-center gap-2 font-medium leading-5 text-slate-700">

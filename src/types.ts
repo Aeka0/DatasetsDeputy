@@ -73,6 +73,11 @@ export interface ImportFailure {
   reason: string;
 }
 
+export interface ImportWarning {
+  filePath: string;
+  message: string;
+}
+
 export interface ImportReport {
   rootName?: string;
   rootPath?: string;
@@ -80,6 +85,7 @@ export interface ImportReport {
   successWithAnnotations: number;
   failed: number;
   failures: ImportFailure[];
+  warnings: ImportWarning[];
 }
 
 export interface ImportProgress extends ImportSummary {

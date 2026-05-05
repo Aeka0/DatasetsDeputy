@@ -25,8 +25,8 @@ pub struct ImportSummary {
 
 pub struct ImportImageResult {
     pub image_id: i64,
-    pub inserted: bool,
     pub has_annotation: bool,
+    pub format_warning: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -97,7 +97,7 @@ pub fn import_image(
     let image_source_path = storage_path.as_deref().unwrap_or(path);
     let thumbnail = thumbnail::create_thumbnail(image_source_path, thumbnail_dir, &hash)?;
 
-    let (image_id, inserted) = db.insert_image_if_missing(&NewImage {
+    let image_id = db.insert_image(&NewImage {
         path: path.to_path_buf(),
         storage_path,
         thumbnail_path: Some(thumbnail.path),
@@ -119,8 +119,8 @@ pub fn import_image(
 
     Ok(ImportImageResult {
         image_id,
-        inserted,
         has_annotation,
+        format_warning: thumbnail.format_warning,
     })
 }
 

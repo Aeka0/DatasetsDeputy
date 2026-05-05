@@ -481,20 +481,7 @@ impl Database {
         )?)
     }
 
-    pub fn insert_image_if_missing(&self, image: &NewImage) -> AppResult<(i64, bool)> {
-        let exists: Option<i64> = self
-            .conn
-            .query_row(
-                "SELECT id FROM images WHERE file_hash = ?1 OR path = ?2",
-                params![image.file_hash, image.path.to_string_lossy()],
-                |row| row.get(0),
-            )
-            .optional()?;
-
-        if let Some(id) = exists {
-            return Ok((id, false));
-        }
-
+    pub fn insert_image(&self, image: &NewImage) -> AppResult<i64> {
         let now = Utc::now().to_rfc3339();
         let file_name = image
             .path
@@ -526,7 +513,7 @@ impl Database {
             ],
         )?;
 
-        Ok((self.conn.last_insert_rowid(), true))
+        Ok(self.conn.last_insert_rowid())
     }
 
     pub fn update_image_source_metadata(

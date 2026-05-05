@@ -24,13 +24,12 @@ export function DetailPanel() {
     () => images.find((image) => image.id === previewImageId),
     [images, previewImageId]
   );
-  const availableProfileIds = useMemo(
-    () => new Set(selectedImage?.annotations.map((annotation) => annotation.profileId) ?? []),
-    [selectedImage]
-  );
   const availableProfiles = useMemo(
-    () => profiles.filter((profile) => availableProfileIds.has(profile.id)),
-    [availableProfileIds, profiles]
+    () =>
+      selectedImage?.datasetId
+        ? profiles.filter((profile) => profile.datasetId === selectedImage.datasetId)
+        : [],
+    [selectedImage?.datasetId, profiles]
   );
   const isFolderImage = selectedImage?.sourceKind === "folder";
   const selectedProfileId = availableProfiles.some((profile) => profile.id === activeProfileId)

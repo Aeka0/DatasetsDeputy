@@ -556,3 +556,17 @@ html[data-theme="dark"] ::-webkit-scrollbar-thumb:hover {
   background-clip: content-box;
 }
 
+html[data-theme="dark"] .bg-amber-50 {
+  background-color: rgba(120, 80, 0, 0.15);
+}
+
+html[data-theme="dark"] .border-amber-200,
+html[data-theme="dark"] .border-amber-100 {
+  border-color: rgba(180, 130, 30, 0.2);
+}
+
+html[data-theme="dark"] .text-amber-700,
+html[data-theme="dark"] .text-amber-600 {
+  color: #e0a840;
+}
+

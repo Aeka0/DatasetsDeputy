@@ -135,13 +135,13 @@ export function DatasetTable({
   const [columnWidths, setColumnWidths] = useState(loadColumnWidths);
   const isFolderMode = images.length > 0 && images.every((image) => image.sourceKind === "folder");
   const selectedImageIdSet = useMemo(() => new Set(selectedImageIds), [selectedImageIds]);
-  const availableProfileIds = useMemo(
-    () => new Set(images.flatMap((image) => image.annotations.map((annotation) => annotation.profileId))),
+  const visibleDatasetIds = useMemo(
+    () => new Set(images.map((image) => image.datasetId).filter(Boolean)),
     [images]
   );
   const availableProfiles = useMemo(
-    () => profiles.filter((profile) => availableProfileIds.has(profile.id)),
-    [availableProfileIds, profiles]
+    () => profiles.filter((profile) => profile.datasetId !== undefined && visibleDatasetIds.has(profile.datasetId)),
+    [profiles, visibleDatasetIds]
   );
   const selectedProfileId = availableProfiles.some((profile) => profile.id === activeProfileId)
     ? activeProfileId
