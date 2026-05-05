@@ -156,6 +156,21 @@ function getPathName(path: string, fallback: string) {
   return normalized.split("/").filter(Boolean).at(-1) ?? fallback;
 }
 
+function replacePathFileName(path: string, fileName: string) {
+  const directory = getDirectory(path);
+  return directory ? `${directory}/${fileName}` : fileName;
+}
+
+function getRenamedImageFileName(image: DatasetImage, name: string) {
+  const trimmedName = name.trim();
+  if (/\.[^./\\]+$/.test(trimmedName)) {
+    return trimmedName;
+  }
+
+  const extension = image.fileName.match(/\.([^./\\]+)$/)?.[1];
+  return extension ? `${trimmedName}.${extension}` : trimmedName;
+}
+
 function renamePathPrefix(path: string, oldPrefix: string, newPrefix: string) {
   const normalizedPath = normalizePath(path);
   const normalizedOldPrefix = normalizePath(oldPrefix);
@@ -383,6 +398,8 @@ interface DatasetState {
   removeDataset: (project: DatasetProject) => Promise<void>;
   renameDatasetFolder: (project: DatasetProject, name: string) => Promise<void>;
   createDatasetSubfolder: (project: DatasetProject, name: string) => Promise<void>;
+  renameDatasetImage: (image: DatasetImage, name: string) => Promise<void>;
+  deleteDatasetImage: (image: DatasetImage) => Promise<void>;
   openExportDialog: () => void;
   closeExportDialog: () => void;
   prepareExportDataset: (request: ExportDatasetRequest) => Promise<ExportPreview | undefined>;
@@ -1129,6 +1146,86 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
       await get().refreshImages();
       return;
     }
+  },
+  renameDatasetImage: async (image, name) => {
+    const trimmedName = name.trim();
+    if (!trimmedName || trimmedName === image.fileName) {
+      return;
+    }
+    if (/[\\/]/.test(trimmedName)) {
+      throw new Error("Image name cannot contain path separators.");
+    }
+
+    const nextFileName = getRenamedImageFileName(image, trimmedName);
+    const nextPath = replacePathFileName(image.path, nextFileName);
+
+    if (hasTauriRuntime()) {
+      await invokeCommand<string>("rename_dataset_image", {
+        imageId: image.id,
+        imagePath: image.path,
+        sourceKind: image.sourceKind,
+        newName: nextFileName
+      });
+      await get().refreshImages();
+      return;
+    }
+
+    set((state) => {
+      const images = state.images.map((item) =>
+        item.id === image.id
+          ? {
+              ...item,
+              fileName: nextFileName,
+              path: nextPath,
+              updatedAt: new Date().toISOString()
+            }
+          : item
+      );
+      return {
+        images,
+        projects: createProjectTree(images)
+      };
+    });
+  },
+  deleteDatasetImage: async (image) => {
+    if (hasTauriRuntime()) {
+      await invokeCommand<number>("delete_dataset_image", {
+        imageId: image.id,
+        imagePath: image.path,
+        sourceKind: image.sourceKind
+      });
+      const profiles = await invokeCommand<AnnotationProfile[]>("list_annotation_profiles");
+      set({ profiles });
+      await get().refreshImages();
+      return;
+    }
+
+    set((state) => {
+      const images = state.images.filter((item) => item.id !== image.id);
+      const usedProfileIds = new Set(
+        images.flatMap((item) => item.annotations.map((annotation) => annotation.profileId))
+      );
+      const profiles = state.profiles.filter((profile) => usedProfileIds.has(profile.id));
+      const selectedImageIds = state.selectedImageIds.filter((imageId) => imageId !== image.id);
+      const activeProfileId = profiles.some((profile) => profile.id === state.activeProfileId)
+        ? state.activeProfileId
+        : profiles[0]?.id;
+
+      return {
+        images,
+        profiles,
+        projects: createProjectTree(images),
+        activeProfileId,
+        ...createImageSelection(
+          selectedImageIds,
+          state.selectedImageId === image.id ? selectedImageIds.at(-1) : state.selectedImageId,
+          state.selectionAnchorImageId === image.id
+            ? selectedImageIds.at(-1)
+            : state.selectionAnchorImageId
+        ),
+        previewImageId: state.previewImageId === image.id ? undefined : state.previewImageId
+      };
+    });
   },
   openExportDialog: () => {
     get().addAppLog("已打开导出设置。");

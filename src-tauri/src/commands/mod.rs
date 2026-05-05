@@ -83,6 +83,32 @@ pub struct ProblemItemCheckSummary {
 
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct FolderImageImportPreview {
+    pub target_folder_path: String,
+    pub image_paths: Vec<String>,
+    pub image_count: usize,
+    pub annotation_count: usize,
+    pub instruction_count: usize,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FolderImageImportSummary {
+    pub imported: usize,
+    pub skipped: usize,
+    pub failed: usize,
+    pub annotation_count: usize,
+    pub instruction_count: usize,
+}
+
+struct ImageImportTarget {
+    target: Option<PathBuf>,
+    source_kind: String,
+    database_prefix: Option<i64>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ModelPathSelection {
     pub path: String,
     pub model_type: String,
@@ -238,6 +264,127 @@ fn normalize_database_source_kind(value: Option<String>) -> AppResult<String> {
     }
 }
 
+fn validate_child_target(root: &Path, folder_path: &str) -> AppResult<PathBuf> {
+    let target = PathBuf::from(folder_path);
+    if !target.is_dir() {
+        return Err(AppError::InvalidInput(format!(
+            "Target folder does not exist: {folder_path}"
+        )));
+    }
+
+    let normalized_root = normalize_path(&root.to_string_lossy());
+    let normalized_target = normalize_path(&target.to_string_lossy());
+    let child_prefix = format!("{normalized_root}/");
+    if normalized_target == normalized_root || !normalized_target.starts_with(&child_prefix) {
+        return Err(AppError::InvalidInput(
+            "Images can only be imported into a dataset subfolder".to_owned(),
+        ));
+    }
+
+    Ok(target)
+}
+
+fn validate_image_import_target(
+    dirs: &app_dirs::AppDirs,
+    dataset_id: &str,
+    folder_path: &str,
+) -> AppResult<ImageImportTarget> {
+    if let Some(root_path) = dataset_id
+        .strip_prefix("folder:")
+        .filter(|value| !value.is_empty())
+    {
+        return Ok(ImageImportTarget {
+            target: Some(validate_child_target(
+                &PathBuf::from(root_path),
+                folder_path,
+            )?),
+            source_kind: "folder".to_owned(),
+            database_prefix: None,
+        });
+    }
+
+    let (dataset_kind, prefix_value) =
+        if let Some(prefix_value) = dataset_id.strip_prefix("database:") {
+            ("database", prefix_value)
+        } else if let Some(prefix_value) = dataset_id.strip_prefix("asset:") {
+            ("asset", prefix_value)
+        } else {
+            return Err(AppError::InvalidInput(format!(
+                "Unsupported image import dataset id: {dataset_id}"
+            )));
+        };
+    if prefix_value.is_empty() {
+        return Err(AppError::InvalidInput(format!(
+            "Invalid database dataset id: {dataset_id}"
+        )));
+    }
+    let prefix = prefix_value.parse::<i64>().map_err(|_| {
+        AppError::InvalidInput(format!("Invalid database dataset id: {dataset_id}"))
+    })?;
+    let (db, _) = open_database_by_prefix(dirs, prefix)?;
+    let source_kind = db.dataset_source_kind()?;
+    if source_kind != dataset_kind {
+        return Err(AppError::InvalidInput(format!(
+            "Dataset type mismatch: expected {dataset_kind}, got {source_kind}"
+        )));
+    }
+
+    Ok(ImageImportTarget {
+        target: None,
+        source_kind,
+        database_prefix: Some(prefix),
+    })
+}
+
+fn source_annotation_path(image_path: &Path) -> PathBuf {
+    image_path.with_extension("txt")
+}
+
+fn source_instruction_path(image_path: &Path) -> PathBuf {
+    let stem = image_path
+        .file_stem()
+        .and_then(|value| value.to_str())
+        .unwrap_or("image");
+    image_path.with_file_name(format!("{stem}.inst.txt"))
+}
+
+fn has_non_empty_text(path: &Path) -> bool {
+    path.is_file()
+        && fs::read_to_string(path)
+            .map(|content| !content.trim().is_empty())
+            .unwrap_or(false)
+}
+
+fn selected_image_import_preview(
+    target_folder_path: String,
+    paths: Vec<PathBuf>,
+) -> FolderImageImportPreview {
+    let mut image_paths = paths
+        .into_iter()
+        .filter(|path| path.is_file() && files::is_supported_image(path))
+        .map(|path| path.to_string_lossy().to_string())
+        .collect::<Vec<_>>();
+    image_paths.sort_by_key(|path| path.to_ascii_lowercase());
+    image_paths.dedup_by(|left, right| left.eq_ignore_ascii_case(right));
+
+    let annotation_count = image_paths
+        .iter()
+        .filter(|path| has_non_empty_text(&source_annotation_path(Path::new(path))))
+        .count();
+    let instruction_count = image_paths
+        .iter()
+        .filter(|path| has_non_empty_text(&source_instruction_path(Path::new(path))))
+        .count();
+
+    FolderImageImportPreview {
+        target_folder_path,
+        image_count: image_paths.len(),
+        annotation_count,
+        instruction_count,
+        image_paths,
+    }
+}
+
 fn sqlite_sidecar_paths(path: &Path) -> [PathBuf; 3] {
     [
         path.to_path_buf(),
@@ -296,6 +443,95 @@ fn export_relative_path(path: &Path, root_path: Option<&str>) -> PathBuf {
             .map(PathBuf::from)
             .unwrap_or_else(|| PathBuf::from("image"))
     })
+}
+
+fn common_parent_path(paths: &[PathBuf]) -> Option<PathBuf> {
+    let mut parents = paths.iter().filter_map(|path| path.parent()).map(|path| {
+        path.components()
+            .map(|component| component.as_os_str().to_os_string())
+            .collect::<Vec<_>>()
+    });
+    let mut common = parents.next()?;
+
+    for parent in parents {
+        let mut end = common.len().min(parent.len());
+        for index in 0..end {
+            let left = common[index].to_string_lossy().to_ascii_lowercase();
+            let right = parent[index].to_string_lossy().to_ascii_lowercase();
+            if left != right {
+                end = index;
+                break;
+            }
+        }
+        common.truncate(end);
+    }
+
+    if common.is_empty() {
+        return None;
+    }
+
+    let mut path = PathBuf::new();
+    for part in common {
+        path.push(part);
+    }
+    Some(path)
+}
+
+fn deduplicate_relative_path(path: PathBuf, used_paths: &mut HashSet<String>) -> PathBuf {
+    let normalized = path
+        .to_string_lossy()
+        .replace('\\', "/")
+        .to_ascii_lowercase();
+    if used_paths.insert(normalized) {
+        return path;
+    }
+
+    let parent = path.parent().map(Path::to_path_buf).unwrap_or_default();
+    let stem = path
+        .file_stem()
+        .and_then(|value| value.to_str())
+        .filter(|value| !value.is_empty())
+        .unwrap_or("image");
+    let extension = path.extension().and_then(|value| value.to_str());
+
+    for index in 2.. {
+        let file_name = match extension {
+            Some(extension) if !extension.is_empty() => {
+                format!("{stem} ({index}).{extension}")
+            }
+            _ => format!("{stem} ({index})"),
+        };
+        let candidate = parent.join(file_name);
+        let normalized = candidate
+            .to_string_lossy()
+            .replace('\\', "/")
+            .to_ascii_lowercase();
+        if used_paths.insert(normalized) {
+            return candidate;
+        }
+    }
+
+    unreachable!("relative path de-duplication loop should always return")
+}
+
+fn export_relative_path_for_database_image(
+    original_path: &Path,
+    common_parent: Option<&Path>,
+    used_paths: &mut HashSet<String>,
+) -> PathBuf {
+    let relative = common_parent
+        .and_then(|root| original_path.strip_prefix(root).ok())
+        .filter(|relative| {
+            !relative.as_os_str().is_empty()
+                && relative
+                    .components()
+                    .all(|component| matches!(component, Component::Normal(_) | Component::CurDir))
+        })
+        .map(Path::to_path_buf)
+        .or_else(|| original_path.file_name().map(PathBuf::from))
+        .unwrap_or_else(|| PathBuf::from("image"));
+
+    deduplicate_relative_path(relative, used_paths)
 }
 
 fn source_size(path: &Path, fallback: Option<i64>) -> AppResult<u64> {
@@ -827,6 +1063,207 @@ pub async fn mount_folder_dataset(app: AppHandle, state: State<'_, AppState>) ->
 }
 
 #[tauri::command]
+pub async fn prepare_folder_image_import(
+    state: State<'_, AppState>,
+    app: AppHandle,
+    dataset_id: String,
+    target_folder_path: String,
+) -> AppResult<FolderImageImportPreview> {
+    let import_target =
+        validate_image_import_target(&state.dirs, &dataset_id, &target_folder_path)?;
+    let target_folder_path = import_target
+        .target
+        .as_ref()
+        .map(|target| target.to_string_lossy().to_string())
+        .unwrap_or(target_folder_path);
+    let (sender, receiver) = std::sync::mpsc::channel();
+    app.dialog()
+        .file()
+        .add_filter("Images", &["jpg", "jpeg", "png", "webp", "bmp", "gif"])
+        .pick_files(move |files| {
+            let _ = sender.send(files);
+        });
+
+    let Some(files) = tauri::async_runtime::spawn_blocking(move || receiver.recv())
+        .await
+        .map_err(|error| AppError::InvalidInput(format!("File picker task failed: {error}")))?
+        .map_err(|error| AppError::InvalidInput(format!("File picker failed: {error}")))?
+    else {
+        return Err(AppError::DialogCancelled);
+    };
+
+    let paths = files
+        .into_iter()
+        .filter_map(|file| file.into_path().ok())
+        .collect::<Vec<_>>();
+
+    tauri::async_runtime::spawn_blocking(move || {
+        selected_image_import_preview(target_folder_path, paths)
+    })
+    .await
+    .map_err(|error| AppError::InvalidInput(format!("Image import preview task failed: {error}")))
+}
+
+#[tauri::command]
+pub async fn import_images_to_folder(
+    state: State<'_, AppState>,
+    dataset_id: String,
+    target_folder_path: String,
+    image_paths: Vec<String>,
+    profile_id: Option<i64>,
+) -> AppResult<FolderImageImportSummary> {
+    let import_target =
+        validate_image_import_target(&state.dirs, &dataset_id, &target_folder_path)?;
+    let has_sidecars = image_paths.iter().any(|path| {
+        let path = Path::new(path);
+        has_non_empty_text(&source_annotation_path(path))
+            || has_non_empty_text(&source_instruction_path(path))
+    });
+    if has_sidecars && profile_id.is_none() {
+        return Err(AppError::InvalidInput(
+            "Annotation type is required for importing sidecar text".to_owned(),
+        ));
+    }
+
+    let dirs = state.dirs.clone();
+
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut summary = FolderImageImportSummary {
+            imported: 0,
+            skipped: 0,
+            failed: 0,
+            annotation_count: 0,
+            instruction_count: 0,
+        };
+        let mut database = match import_target.database_prefix {
+            Some(prefix) => Some(open_database_by_prefix(&dirs, prefix)?.0),
+            None => None,
+        };
+        let local_profile_id = match profile_id {
+            Some(public_profile_id) => match import_target.database_prefix {
+                Some(prefix) => {
+                    let (profile_prefix, local_profile_id) = split_public_id(public_profile_id)?;
+                    if profile_prefix != prefix {
+                        return Err(AppError::InvalidInput(
+                            "Annotation type does not belong to the selected dataset".to_owned(),
+                        ));
+                    }
+                    Some(local_profile_id)
+                }
+                None => Some(public_profile_id),
+            },
+            None => None,
+        };
+
+        if let Some(target) = import_target.target.as_ref() {
+            fs::create_dir_all(target)?;
+        }
+        let thumbnail_dir = files::default_thumbnail_dir(&dirs.root);
+        let asset_dir = dirs.datasets.join("assets");
+        for source in image_paths {
+            let source_path = PathBuf::from(&source);
+            if !source_path.is_file() || !files::is_supported_image(&source_path) {
+                summary.failed += 1;
+                continue;
+            }
+
+            let source_annotation = source_annotation_path(&source_path);
+            let source_instruction = source_instruction_path(&source_path);
+            if let Some(db) = database.as_mut() {
+                let import_asset_dir =
+                    (import_target.source_kind == "asset").then_some(asset_dir.as_path());
+                match files::import_image(db, &source_path, &thumbnail_dir, import_asset_dir, None)
+                {
+                    Ok(result) => {
+                        if let (Some(profile_id), true) =
+                            (local_profile_id, has_non_empty_text(&source_annotation))
+                        {
+                            if let Ok(content) = fs::read_to_string(&source_annotation) {
+                                if db
+                                    .save_imported_annotation_if_empty(
+                                        result.image_id,
+                                        profile_id,
+                                        &content,
+                                    )
+                                    .unwrap_or(false)
+                                {
+                                    summary.annotation_count += 1;
+                                }
+                            }
+                        }
+                        if let (Some(profile_id), true) =
+                            (local_profile_id, has_non_empty_text(&source_instruction))
+                        {
+                            if let Ok(instruction) = fs::read_to_string(&source_instruction) {
+                                if db
+                                    .upsert_instruction(result.image_id, profile_id, instruction)
+                                    .is_ok()
+                                {
+                                    summary.instruction_count += 1;
+                                }
+                            }
+                        }
+                        if result.inserted {
+                            summary.imported += 1;
+                        } else {
+                            summary.skipped += 1;
+                        }
+                    }
+                    Err(_) => {
+                        summary.failed += 1;
+                    }
+                }
+            } else {
+                let Some(target) = import_target.target.as_ref() else {
+                    summary.failed += 1;
+                    continue;
+                };
+                let Some(file_name) = source_path.file_name() else {
+                    summary.failed += 1;
+                    continue;
+                };
+                let target_image_path = target.join(file_name);
+                if target_image_path.exists() {
+                    summary.skipped += 1;
+                    continue;
+                }
+
+                if fs::copy(&source_path, &target_image_path).is_err() {
+                    summary.failed += 1;
+                    continue;
+                }
+
+                if has_non_empty_text(&source_annotation)
+                    && fs::copy(
+                        &source_annotation,
+                        source_annotation_path(&target_image_path),
+                    )
+                    .is_ok()
+                {
+                    summary.annotation_count += 1;
+                }
+
+                if has_non_empty_text(&source_instruction)
+                    && fs::copy(
+                        &source_instruction,
+                        source_instruction_path(&target_image_path),
+                    )
+                    .is_ok()
+                {
+                    summary.instruction_count += 1;
+                }
+
+                summary.imported += 1;
+            }
+        }
+
+        Ok(summary)
+    })
+    .await
+    .map_err(|error| AppError::InvalidInput(format!("Folder image import task failed: {error}")))?
+}
+
+#[tauri::command]
 pub fn get_thumbnail_cache_info(state: State<'_, AppState>) -> AppResult<ThumbnailCacheInfo> {
     let thumbnail_dir = files::default_thumbnail_dir(&state.dirs.root);
     Ok(ThumbnailCacheInfo {
@@ -1087,6 +1524,39 @@ pub fn save_folder_annotation(image_path: String, content: String) -> AppResult<
 #[tauri::command]
 pub fn save_folder_instruction(image_path: String, instruction: String) -> AppResult<()> {
     folders::save_folder_instruction(&image_path, &instruction)
+}
+
+#[tauri::command]
+pub fn rename_dataset_image(
+    state: State<'_, AppState>,
+    image_id: i64,
+    image_path: String,
+    source_kind: Option<String>,
+    new_name: String,
+) -> AppResult<String> {
+    if source_kind.as_deref() == Some("folder") || image_id < 0 {
+        return folders::rename_folder_image(&image_path, &new_name);
+    }
+
+    let (prefix, local_image_id) = split_public_id(image_id)?;
+    let (mut db, _) = open_database_by_prefix(&state.dirs, prefix)?;
+    db.rename_image(local_image_id, &new_name)
+}
+
+#[tauri::command]
+pub fn delete_dataset_image(
+    state: State<'_, AppState>,
+    image_id: i64,
+    image_path: String,
+    source_kind: Option<String>,
+) -> AppResult<usize> {
+    if source_kind.as_deref() == Some("folder") || image_id < 0 {
+        return folders::delete_folder_image(&image_path);
+    }
+
+    let (prefix, local_image_id) = split_public_id(image_id)?;
+    let (mut db, _) = open_database_by_prefix(&state.dirs, prefix)?;
+    db.delete_image(local_image_id)
 }
 
 #[tauri::command]
@@ -1384,7 +1854,7 @@ pub fn start_export_dataset(app: AppHandle, request: ExportDatasetRequest) -> Ap
             }
         };
 
-        if let Err(error) = export::export_dataset(prepared, &emit_progress) {
+        if let Err(error) = export::export_dataset(prepared, emit_progress) {
             emit_progress(export::ExportProgress {
                 phase: "failed".to_owned(),
                 processed: 0,
@@ -1434,7 +1904,6 @@ fn prepare_export(
                 AppError::InvalidInput(format!("Dataset database not found: {prefix}"))
             })?;
         let db = open_database(&db_ref.path)?;
-        let root_path = db.dataset_root_path()?;
         let profile_id = request.profile_id.ok_or_else(|| {
             AppError::InvalidInput("Database export requires an annotation type".to_owned())
         })?;
@@ -1448,14 +1917,24 @@ fn prepare_export(
         let output_dir = request
             .output_dir
             .join(output_folder_name_from_path(&db_ref.path));
-        let items = db
+        let selected_images = db
             .list_images()?
             .into_iter()
-            .filter_map(|image| {
+            .filter(|image| {
                 let public_id = to_public_id(prefix, image.id);
-                if !image_ids.is_empty() && !image_ids.contains(&public_id) {
-                    return None;
-                }
+                image_ids.is_empty() || image_ids.contains(&public_id)
+            })
+            .collect::<Vec<_>>();
+        let original_paths = selected_images
+            .iter()
+            .map(|image| PathBuf::from(&image.path))
+            .collect::<Vec<_>>();
+        let common_parent = common_parent_path(&original_paths);
+        let mut used_relative_paths = HashSet::new();
+        let items = selected_images
+            .into_iter()
+            .map(|image| {
+                let original_path = PathBuf::from(&image.path);
 
                 let source_path = image
                     .storage_path
@@ -1468,23 +1947,22 @@ fn prepare_export(
                     .find(|annotation| annotation.profile_id == local_profile_id)
                     .map(|annotation| annotation.content.clone())
                     .unwrap_or_default();
-                let relative_path =
-                    export_relative_path(Path::new(&image.path), root_path.as_deref());
-                Some(
-                    source_size(&source_path, image.file_size).map(|source_size_bytes| {
-                        ExportItem {
-                            source_path,
-                            relative_path,
-                            annotation_content,
-                            source_size_bytes,
-                        }
-                    }),
-                )
+                let relative_path = export_relative_path_for_database_image(
+                    &original_path,
+                    common_parent.as_deref(),
+                    &mut used_relative_paths,
+                );
+                source_size(&source_path, image.file_size).map(|source_size_bytes| ExportItem {
+                    source_path,
+                    relative_path,
+                    annotation_content,
+                    source_size_bytes,
+                })
             })
             .collect::<AppResult<Vec<_>>>()?;
         let estimated_size_bytes = items
             .iter()
-            .map(|item| item.source_size_bytes + item.annotation_content.as_bytes().len() as u64)
+            .map(|item| item.source_size_bytes + item.annotation_content.len() as u64)
             .sum();
 
         return Ok(PreparedExport {
@@ -1528,7 +2006,7 @@ fn prepare_export(
             .collect::<AppResult<Vec<_>>>()?;
         let estimated_size_bytes = items
             .iter()
-            .map(|item| item.source_size_bytes + item.annotation_content.as_bytes().len() as u64)
+            .map(|item| item.source_size_bytes + item.annotation_content.len() as u64)
             .sum();
 
         return Ok(PreparedExport {

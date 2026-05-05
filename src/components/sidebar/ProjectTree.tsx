@@ -639,7 +639,9 @@ export function ProjectTree() {
             </p>
             <div className="mt-3 rounded-md bg-slate-50 px-3 py-2 text-[12px] leading-5 text-slate-600">
               <div className="truncate font-medium text-slate-900">{pendingRemoval.name}</div>
-              <div className="truncate">{pendingRemoval.path}</div>
+              {pendingRemoval.sourceKind === "folder" ? (
+                <div className="truncate">{pendingRemoval.path}</div>
+              ) : null}
             </div>
             <div className="mt-5 flex justify-end gap-2">
               <button

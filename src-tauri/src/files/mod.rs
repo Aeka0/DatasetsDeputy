@@ -24,6 +24,7 @@ pub struct ImportSummary {
 }
 
 pub struct ImportImageResult {
+    pub image_id: i64,
     pub inserted: bool,
     pub has_annotation: bool,
 }
@@ -117,6 +118,7 @@ pub fn import_image(
     }
 
     Ok(ImportImageResult {
+        image_id,
         inserted,
         has_annotation,
     })
@@ -158,7 +160,7 @@ pub fn hash_file(path: &Path) -> AppResult<String> {
     Ok(format!("{:x}", hasher.finalize()))
 }
 
-fn is_supported_image(path: &Path) -> bool {
+pub fn is_supported_image(path: &Path) -> bool {
     let Some(extension) = path.extension().and_then(|value| value.to_str()) else {
         return false;
     };

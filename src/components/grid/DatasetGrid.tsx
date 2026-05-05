@@ -1,5 +1,6 @@
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { CircleAlert, Files, ImageIcon } from "lucide-react";
+import type { MouseEvent as ReactMouseEvent } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -11,7 +12,13 @@ const minCardWidth = 150;
 const gridGap = 12;
 const cardTextHeight = 52;
 
-export function DatasetGrid({ images }: { images: DatasetImage[] }) {
+export function DatasetGrid({
+  images,
+  onImageContextMenu
+}: {
+  images: DatasetImage[];
+  onImageContextMenu?: (image: DatasetImage, event: ReactMouseEvent<HTMLElement>) => void;
+}) {
   const { t } = useTranslation();
   const openImagePreview = useDatasetStore((state) => state.openImagePreview);
   const parentRef = useRef<HTMLDivElement>(null);
@@ -87,6 +94,7 @@ export function DatasetGrid({ images }: { images: DatasetImage[] }) {
                   key={image.id}
                   className="no-drag group min-w-0 overflow-hidden rounded-lg border border-slate-200 bg-white p-1.5 text-left transition hover:border-slate-300 hover:bg-slate-50"
                   onClick={() => openImagePreview(image.id)}
+                  onContextMenu={(event) => onImageContextMenu?.(image, event)}
                 >
                   <div className="flex aspect-square items-center justify-center overflow-hidden rounded-md bg-slate-100">
                     {image.sourceMissing ? (

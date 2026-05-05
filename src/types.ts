@@ -93,6 +93,22 @@ export interface ImportProgress extends ImportSummary {
   report?: ImportReport;
 }
 
+export interface FolderImageImportPreview {
+  targetFolderPath: string;
+  imagePaths: string[];
+  imageCount: number;
+  annotationCount: number;
+  instructionCount: number;
+}
+
+export interface FolderImageImportSummary {
+  imported: number;
+  skipped: number;
+  failed: number;
+  annotationCount: number;
+  instructionCount: number;
+}
+
 export interface ProblemItemCheckSummary {
   checked: number;
   updated: number;

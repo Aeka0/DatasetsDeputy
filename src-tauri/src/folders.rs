@@ -333,3 +333,79 @@ pub fn save_folder_instruction(image_path: &str, instruction: &str) -> AppResult
     }
     write_sidecar(instruction_path(&path), instruction)
 }
+
+fn renamed_image_path(path: &Path, new_name: &str) -> AppResult<PathBuf> {
+    let new_name = new_name.trim();
+    if new_name.is_empty() || new_name.contains('/') || new_name.contains('\\') {
+        return Err(AppError::InvalidInput(
+            "Image name cannot be empty or contain path separators".to_owned(),
+        ));
+    }
+
+    let file_name = if Path::new(new_name).extension().is_some() {
+        new_name.to_owned()
+    } else if let Some(extension) = path.extension().and_then(|value| value.to_str()) {
+        format!("{new_name}.{extension}")
+    } else {
+        new_name.to_owned()
+    };
+
+    Ok(path
+        .parent()
+        .map(|parent| parent.join(&file_name))
+        .unwrap_or_else(|| PathBuf::from(file_name)))
+}
+
+pub fn rename_folder_image(image_path: &str, new_name: &str) -> AppResult<String> {
+    let old_path = PathBuf::from(image_path);
+    let new_path = renamed_image_path(&old_path, new_name)?;
+    let old_annotation_path = annotation_path(&old_path);
+    let old_instruction_path = instruction_path(&old_path);
+    let new_annotation_path = annotation_path(&new_path);
+    let new_instruction_path = instruction_path(&new_path);
+
+    if old_path.is_file() && new_path.exists() && old_path != new_path {
+        return Err(AppError::InvalidInput(format!(
+            "Target image already exists: {}",
+            new_path.to_string_lossy()
+        )));
+    }
+    if old_annotation_path != new_annotation_path && new_annotation_path.exists() {
+        return Err(AppError::InvalidInput(format!(
+            "Target annotation already exists: {}",
+            new_annotation_path.to_string_lossy()
+        )));
+    }
+    if old_instruction_path != new_instruction_path && new_instruction_path.exists() {
+        return Err(AppError::InvalidInput(format!(
+            "Target instruction already exists: {}",
+            new_instruction_path.to_string_lossy()
+        )));
+    }
+
+    if old_path.is_file() && old_path != new_path {
+        fs::rename(&old_path, &new_path)?;
+    }
+    if old_annotation_path.is_file() && old_annotation_path != new_annotation_path {
+        fs::rename(old_annotation_path, new_annotation_path)?;
+    }
+    if old_instruction_path.is_file() && old_instruction_path != new_instruction_path {
+        fs::rename(old_instruction_path, new_instruction_path)?;
+    }
+
+    Ok(new_path.to_string_lossy().to_string())
+}
+
+pub fn delete_folder_image(image_path: &str) -> AppResult<usize> {
+    let path = PathBuf::from(image_path);
+    let mut deleted = 0;
+
+    for target in [path.clone(), annotation_path(&path), instruction_path(&path)] {
+        if target.is_file() {
+            fs::remove_file(target)?;
+            deleted += 1;
+        }
+    }
+
+    Ok(deleted)
+}

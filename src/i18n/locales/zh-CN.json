@@ -38,7 +38,7 @@
     "executeAnnotation": "执行标注",
     "stopAnnotation": "停止标注",
     "importDataset": "导入数据集",
-    "exportTxt": "导出 TXT 标注",
+    "exportTxt": "导出数据集",
     "refresh": "刷新数据",
     "exit": "退出",
     "backToGrid": "返回数据集",
@@ -121,6 +121,20 @@
   },
   "grid": {
     "annotationCount": "份标注"
+  },
+  "itemMenu": {
+    "rename": "重命名",
+    "delete": "删除",
+    "renameTitle": "重命名条目",
+    "nameLabel": "文件名或数据名",
+    "renaming": "正在重命名...",
+    "deleteTitle": "删除条目？",
+    "deleteDescription": "将同时删除该条目的图片、标注和指令。此操作不可撤销。",
+    "deleteDescriptionPrefix": "将同时删除该条目的",
+    "deleteDescriptionScope": "图片、标注和指令",
+    "deleteDescriptionSuffix": "。此操作不可撤销。",
+    "confirmDelete": "确认删除",
+    "deleting": "正在删除..."
   },
   "settings": {
     "title": "设置",

@@ -1,5 +1,5 @@
 import { open } from "@tauri-apps/plugin-dialog";
-import { FolderOpen, X } from "lucide-react";
+import { Check, ChevronDown, FolderOpen, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
@@ -7,7 +7,6 @@ import { useTranslation } from "react-i18next";
 import { formatAppError } from "../../lib/errors";
 import { useDatasetStore } from "../../stores/datasetStore";
 import type { DatasetProject, ExportDatasetRequest } from "../../types";
-import { Button } from "../ui/Button";
 
 function findProject(projects: DatasetProject[], id?: string): DatasetProject | undefined {
   if (!id) return undefined;
@@ -19,6 +18,24 @@ function findProject(projects: DatasetProject[], id?: string): DatasetProject | 
   }
 
   return undefined;
+}
+
+function findProjectTrail(
+  projects: DatasetProject[],
+  projectId: string | undefined,
+  parents: DatasetProject[] = []
+): DatasetProject[] {
+  if (!projectId) return [];
+
+  for (const project of projects) {
+    const trail = [...parents, project];
+    if (project.id === projectId) return trail;
+
+    const childTrail = findProjectTrail(project.children ?? [], projectId, trail);
+    if (childTrail.length) return childTrail;
+  }
+
+  return [];
 }
 
 function firstExportableProject(projects: DatasetProject[]): DatasetProject | undefined {
@@ -48,6 +65,16 @@ function formatBytes(bytes?: number) {
   return `${(bytes / 1024 / 1024 / 1024).toFixed(2)} GB`;
 }
 
+function getDatasetScopeLabel(
+  project: DatasetProject | undefined,
+  trail: DatasetProject[],
+  fallback: string
+) {
+  if (!project) return fallback;
+  if (project.sourceKind === "folder") return project.path;
+  return trail.length > 1 ? trail.map((item) => item.name).join("/") : project.name;
+}
+
 export function ExportDialog() {
   const { t } = useTranslation();
   const {
@@ -63,6 +90,7 @@ export function ExportDialog() {
   } = useDatasetStore();
   const [outputDir, setOutputDir] = useState("");
   const [selectedProfileId, setSelectedProfileId] = useState<number>();
+  const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const [error, setError] = useState("");
 
   const selectedProject = useMemo(() => {
@@ -77,6 +105,10 @@ export function ExportDialog() {
     }
     return firstExportableProject(projects);
   }, [projects, selectedProjectId]);
+  const selectedProjectTrail = useMemo(
+    () => findProjectTrail(projects, selectedProject?.id),
+    [projects, selectedProject?.id]
+  );
   const isFolderDataset = selectedProject?.sourceKind === "folder";
   const availableProfiles = useMemo(
     () =>
@@ -86,6 +118,7 @@ export function ExportDialog() {
     [profiles, selectedProject?.datasetId]
   );
   const isExporting = Boolean(exportProgress && !exportProgress.done);
+  const selectedProfile = availableProfiles.find((profile) => profile.id === selectedProfileId);
   const progressPercent =
     exportProgress && exportProgress.total > 0
       ? Math.round((exportProgress.processed / exportProgress.total) * 100)
@@ -161,24 +194,24 @@ export function ExportDialog() {
         aria-modal="true"
       >
         <header className="flex h-14 shrink-0 items-center justify-between gap-3 border-b border-slate-200 px-5">
-          <div className="min-w-0">
-            <h2 className="m-0 text-[15px] font-semibold text-slate-950">
+          <div className="flex min-w-0 flex-1 items-center gap-3">
+            <h2 className="m-0 shrink-0 text-[15px] font-semibold text-slate-950">
               {t("export.title")}
             </h2>
-            <div className="truncate text-[12px] text-slate-500">
-              {selectedProject?.name ?? t("export.noDataset")}
+            <div className="min-w-0 flex-1 truncate rounded-md border border-slate-200 bg-slate-50 px-2.5 py-1.5 font-mono text-[12px] leading-4 text-slate-600">
+              {getDatasetScopeLabel(selectedProject, selectedProjectTrail, t("export.noDataset"))}
             </div>
           </div>
-          <Button
+          <button
             type="button"
-            variant="icon"
+            className="no-drag inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-slate-500 transition hover:bg-slate-100 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-45"
             aria-label={t("menu.close")}
             title={t("menu.close")}
             disabled={isExporting}
             onClick={closeExportDialog}
           >
             <X className="h-4 w-4" strokeWidth={2} aria-hidden="true" />
-          </Button>
+          </button>
         </header>
 
         <div className="space-y-3 bg-slate-50/42 p-5">
@@ -203,22 +236,45 @@ export function ExportDialog() {
               <div className="text-[13px] font-semibold text-slate-900">
                 {t("export.profile")}
               </div>
-              <select
-                className="glass-input h-8 px-2.5 text-[13px] disabled:text-slate-400"
-                disabled={isFolderDataset || isExporting}
-                value={isFolderDataset ? "folder-txt" : selectedProfileId ?? ""}
-                onChange={(event) => setSelectedProfileId(Number(event.target.value))}
-              >
-                {isFolderDataset ? (
-                  <option value="folder-txt">{t("export.folderProfile")}</option>
-                ) : (
-                  availableProfiles.map((profile) => (
-                    <option key={profile.id} value={profile.id}>
-                      {profile.name}
-                    </option>
-                  ))
-                )}
-              </select>
+              <div className="relative">
+                <button
+                  type="button"
+                  className="glass-input no-drag flex h-8 w-full items-center gap-2 px-2.5 text-left text-[13px] disabled:cursor-not-allowed disabled:text-slate-400"
+                  disabled={isFolderDataset || isExporting}
+                  onClick={() => setProfileMenuOpen((open) => !open)}
+                >
+                  <span className="min-w-0 flex-1 truncate">
+                    {isFolderDataset
+                      ? t("export.folderProfile")
+                      : selectedProfile?.name ?? "-"}
+                  </span>
+                  <ChevronDown size={14} className="shrink-0 text-slate-400" />
+                </button>
+                {profileMenuOpen && !isFolderDataset ? (
+                  <div className="app-dropdown-menu no-drag absolute left-0 top-9 z-[70] w-full rounded-lg py-2">
+                    <div className="app-dropdown-backdrop" />
+                    {availableProfiles.map((profile) => {
+                      const isSelected = profile.id === selectedProfileId;
+                      return (
+                        <button
+                          key={profile.id}
+                          type="button"
+                          className="app-dropdown-item flex h-9 w-full items-center gap-2 px-3.5 text-left text-[13px] font-medium text-slate-700 transition hover:bg-slate-100"
+                          onClick={() => {
+                            setSelectedProfileId(profile.id);
+                            setProfileMenuOpen(false);
+                          }}
+                        >
+                          <span className="flex w-4 shrink-0 justify-center">
+                            {isSelected ? <Check size={14} /> : null}
+                          </span>
+                          <span className="min-w-0 flex-1 truncate">{profile.name}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                ) : null}
+              </div>
             </div>
           </section>
 

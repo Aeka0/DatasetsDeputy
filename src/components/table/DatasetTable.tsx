@@ -1,6 +1,7 @@
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { Check, ChevronDown, CircleAlert, ImageIcon, LoaderCircle, Save } from "lucide-react";
+import { Check, ChevronDown, CircleAlert, ImageIcon, LoaderCircle, Plus, Save } from "lucide-react";
 import type {
+  KeyboardEvent as ReactKeyboardEvent,
   MouseEvent as ReactMouseEvent,
   PointerEvent as ReactPointerEvent
 } from "react";
@@ -87,7 +88,13 @@ function createInstructionDraftMap(images: DatasetImage[], profileId: number) {
   );
 }
 
-export function DatasetTable({ images }: { images: DatasetImage[] }) {
+export function DatasetTable({
+  images,
+  onImageContextMenu
+}: {
+  images: DatasetImage[];
+  onImageContextMenu?: (image: DatasetImage, event: ReactMouseEvent<HTMLElement>) => void;
+}) {
   const { t } = useTranslation();
   const {
     profiles,
@@ -111,15 +118,19 @@ export function DatasetTable({ images }: { images: DatasetImage[] }) {
     updateTableAnnotationDraft,
     updateTableInstructionDraft,
     markTableCellSaved,
+    createAnnotationProfile,
     saveAnnotationChanges
   } = useDatasetStore();
   const parentRef = useRef<HTMLDivElement>(null);
   const headerScrollRef = useRef<HTMLDivElement>(null);
   const profileButtonRef = useRef<HTMLButtonElement>(null);
   const profileMenuRef = useRef<HTMLDivElement>(null);
-  const [instructionMode, setInstructionMode] = useState(false);
+  const cellTextareaRefs = useRef(new Map<string, HTMLTextAreaElement>());
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const [profileMenuPosition, setProfileMenuPosition] = useState({ left: 0, top: 0 });
+  const [isCreatingProfile, setIsCreatingProfile] = useState(false);
+  const [newProfileName, setNewProfileName] = useState("");
+  const [createProfileError, setCreateProfileError] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [columnWidths, setColumnWidths] = useState(loadColumnWidths);
   const isFolderMode = images.length > 0 && images.every((image) => image.sourceKind === "folder");
@@ -170,10 +181,12 @@ export function DatasetTable({ images }: { images: DatasetImage[] }) {
         return;
       }
       setProfileMenuOpen(false);
+      setIsCreatingProfile(false);
     };
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         setProfileMenuOpen(false);
+        setIsCreatingProfile(false);
       }
     };
 
@@ -256,12 +269,9 @@ export function DatasetTable({ images }: { images: DatasetImage[] }) {
     selectImage(imageId);
   };
 
-  const gridTemplateColumns = instructionMode
-    ? `${columnWidths.filename}px ${columnWidths.preview}px ${columnWidths.annotation}px ${columnWidths.instruction}px`
-    : `${columnWidths.filename}px ${columnWidths.preview}px ${columnWidths.annotation}px`;
-  const tableWidth = instructionMode
-    ? columnWidths.filename + columnWidths.preview + columnWidths.annotation + columnWidths.instruction
-    : columnWidths.filename + columnWidths.preview + columnWidths.annotation;
+  const gridTemplateColumns = `${columnWidths.filename}px ${columnWidths.preview}px ${columnWidths.annotation}px ${columnWidths.instruction}px`;
+  const tableWidth =
+    columnWidths.filename + columnWidths.preview + columnWidths.annotation + columnWidths.instruction;
 
   const virtualizer = useVirtualizer({
     count: images.length,
@@ -380,6 +390,81 @@ export function DatasetTable({ images }: { images: DatasetImage[] }) {
     updateTableInstructionDraft(imageId, value);
   };
 
+  const trimmedNewProfileName = newProfileName.trim();
+  const normalizedNewProfileName = trimmedNewProfileName.toLocaleLowerCase();
+  const targetDatasetId = images[0]?.datasetId;
+  const newProfileNameExists = profiles.some(
+    (profile) =>
+      profile.datasetId === targetDatasetId &&
+      profile.name.trim().toLocaleLowerCase() === normalizedNewProfileName
+  );
+  const newProfileError = newProfileNameExists
+    ? t("image.profileNameExists")
+    : createProfileError;
+
+  const startCreatingProfile = () => {
+    setIsCreatingProfile(true);
+    setNewProfileName("");
+    setCreateProfileError("");
+  };
+
+  const createProfile = async () => {
+    if (!trimmedNewProfileName || newProfileNameExists) return;
+
+    try {
+      const profileId = await createAnnotationProfile(trimmedNewProfileName);
+      if (!profileId) return;
+
+      setActiveProfile(profileId);
+      setProfileMenuOpen(false);
+      setIsCreatingProfile(false);
+      setNewProfileName("");
+      setCreateProfileError("");
+    } catch (error) {
+      setCreateProfileError(error instanceof Error ? error.message : t("image.createTypeFailed"));
+    }
+  };
+
+  const focusCellTextarea = (imageId: number, kind: CellKind) => {
+    const key = createCellKey(imageId, kind);
+    const focus = () => {
+      const textarea = cellTextareaRefs.current.get(key);
+      if (!textarea) return false;
+
+      textarea.focus();
+      textarea.select();
+      return true;
+    };
+
+    if (focus()) return;
+
+    window.requestAnimationFrame(() => {
+      if (focus()) return;
+      window.requestAnimationFrame(focus);
+    });
+  };
+
+  const moveFocusToAdjacentRow = (
+    imageId: number,
+    kind: CellKind,
+    event: ReactKeyboardEvent<HTMLTextAreaElement>
+  ) => {
+    if (event.key !== "Tab" || event.ctrlKey || event.metaKey || event.altKey) return;
+
+    const currentIndex = images.findIndex((image) => image.id === imageId);
+    if (currentIndex === -1) return;
+
+    const nextIndex = event.shiftKey ? currentIndex - 1 : currentIndex + 1;
+    if (nextIndex < 0 || nextIndex >= images.length) return;
+
+    event.preventDefault();
+    event.stopPropagation();
+
+    const nextImage = images[nextIndex];
+    virtualizer.scrollToIndex(nextIndex, { align: "auto" });
+    focusCellTextarea(nextImage.id, kind);
+  };
+
   const getCellStateClass = (imageId: number, kind: CellKind) => {
     if (!highlightCellState) {
       return "";
@@ -438,14 +523,6 @@ export function DatasetTable({ images }: { images: DatasetImage[] }) {
             <Save size={14} />
             <span>{isSaving ? t("table.saving") : t("table.saveChanges")}</span>
           </button>
-          <label className="no-drag flex items-center gap-2 text-[13px] text-slate-600">
-            <input
-              type="checkbox"
-              checked={instructionMode}
-              onChange={(event) => setInstructionMode(event.target.checked)}
-            />
-            <span>{t("table.instructionMode")}</span>
-          </label>
         </div>
       </div>
 
@@ -477,6 +554,7 @@ export function DatasetTable({ images }: { images: DatasetImage[] }) {
                     top: rect.bottom + 6
                   });
                   setProfileMenuOpen((open) => !open);
+                  setIsCreatingProfile(false);
                 }}
               >
                 <span>{t("table.annotationData")}</span>
@@ -489,12 +567,10 @@ export function DatasetTable({ images }: { images: DatasetImage[] }) {
 
             {renderResizeHandle("annotation")}
           </div>
-          {instructionMode ? (
-            <div className="relative px-2">
-              {t("table.instruction")}
-              {renderResizeHandle("instruction")}
-            </div>
-          ) : null}
+          <div className="relative px-2">
+            {t("table.instruction")}
+            {renderResizeHandle("instruction")}
+          </div>
         </div>
       </div>
 
@@ -521,6 +597,7 @@ export function DatasetTable({ images }: { images: DatasetImage[] }) {
                   height: `${virtualRow.size}px`,
                   transform: `translateY(${virtualRow.start}px)`
                 }}
+                onContextMenu={(event) => onImageContextMenu?.(image, event)}
               >
                 <button
                   className="no-drag min-w-0 px-2 text-left text-[13px] font-medium leading-5 text-slate-900"
@@ -555,8 +632,17 @@ export function DatasetTable({ images }: { images: DatasetImage[] }) {
 
                 <div className="relative px-2">
                   <textarea
+                    ref={(node) => {
+                      const key = createCellKey(image.id, "annotation");
+                      if (node) {
+                        cellTextareaRefs.current.set(key, node);
+                      } else {
+                        cellTextareaRefs.current.delete(key);
+                      }
+                    }}
                     value={annotationDrafts[image.id] ?? ""}
                     onChange={(event) => updateAnnotationDraft(image.id, event.target.value)}
+                    onKeyDown={(event) => moveFocusToAdjacentRow(image.id, "annotation", event)}
                     className={cn(
                       "glass-input h-[100px] w-full resize-none rounded-md p-2 text-[13px] leading-5 disabled:cursor-wait disabled:opacity-80",
                       getCellStateClass(image.id, "annotation")
@@ -571,19 +657,26 @@ export function DatasetTable({ images }: { images: DatasetImage[] }) {
                   ) : null}
                 </div>
 
-                {instructionMode ? (
-                  <div className="px-2">
-                    <textarea
-                      value={instructionDrafts[image.id] ?? ""}
-                      onChange={(event) => updateInstructionDraft(image.id, event.target.value)}
-                      className={cn(
-                        "glass-input h-[100px] w-full resize-none rounded-md p-2 text-[13px] leading-5",
-                        getCellStateClass(image.id, "instruction")
-                      )}
-                      spellCheck={false}
-                    />
-                  </div>
-                ) : null}
+                <div className="px-2">
+                  <textarea
+                    ref={(node) => {
+                      const key = createCellKey(image.id, "instruction");
+                      if (node) {
+                        cellTextareaRefs.current.set(key, node);
+                      } else {
+                        cellTextareaRefs.current.delete(key);
+                      }
+                    }}
+                    value={instructionDrafts[image.id] ?? ""}
+                    onChange={(event) => updateInstructionDraft(image.id, event.target.value)}
+                    onKeyDown={(event) => moveFocusToAdjacentRow(image.id, "instruction", event)}
+                    className={cn(
+                      "glass-input h-[100px] w-full resize-none rounded-md p-2 text-[13px] leading-5",
+                      getCellStateClass(image.id, "instruction")
+                    )}
+                    spellCheck={false}
+                  />
+                </div>
               </div>
             );
           })}
@@ -611,6 +704,7 @@ export function DatasetTable({ images }: { images: DatasetImage[] }) {
                 onClick={() => {
                   setActiveProfile(profile.id);
                   setProfileMenuOpen(false);
+                  setIsCreatingProfile(false);
                 }}
               >
                 <span className="flex w-4 shrink-0 justify-center">
@@ -620,6 +714,57 @@ export function DatasetTable({ images }: { images: DatasetImage[] }) {
               </button>
             );
           })}
+          <div className="my-1 border-t border-slate-100" />
+          {isCreatingProfile ? (
+            <div className="px-3 py-2">
+              <label className="mb-1 block text-[12px] font-medium text-slate-600">
+                {t("image.newTypeName")}
+              </label>
+              <input
+                value={newProfileName}
+                onChange={(event) => {
+                  setNewProfileName(event.target.value);
+                  setCreateProfileError("");
+                }}
+                className="glass-input h-8 w-full px-2 text-[13px]"
+                autoFocus
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    event.preventDefault();
+                    void createProfile();
+                  }
+                }}
+              />
+              {newProfileError ? (
+                <div className="mt-1 text-[12px] text-red-600">{newProfileError}</div>
+              ) : null}
+              <div className="mt-2 flex gap-2">
+                <button
+                  className="no-drag inline-flex h-8 flex-1 items-center justify-center rounded-md border border-slate-900 bg-slate-900 px-2 text-[12px] font-medium text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+                  onClick={() => void createProfile()}
+                  disabled={!trimmedNewProfileName || newProfileNameExists}
+                >
+                  {t("image.createType")}
+                </button>
+                <button
+                  className="no-drag inline-flex h-8 items-center justify-center rounded-md border border-slate-200 bg-white px-2 text-[12px] text-slate-600 transition hover:bg-slate-50"
+                  onClick={() => setIsCreatingProfile(false)}
+                >
+                  {t("actions.cancel")}
+                </button>
+              </div>
+            </div>
+          ) : (
+            <button
+              className="app-dropdown-item flex h-9 w-full items-center gap-2 px-3.5 text-left text-[13px] font-medium text-slate-600 transition hover:bg-slate-100"
+              onClick={startCreatingProfile}
+            >
+              <span className="flex w-4 shrink-0 justify-center">
+                <Plus size={14} />
+              </span>
+              <span className="min-w-0 flex-1 truncate">{t("image.newAnnotation")}</span>
+            </button>
+          )}
         </div>,
           document.body
         )

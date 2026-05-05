@@ -560,6 +560,52 @@ impl Database {
         Ok(())
     }
 
+    pub fn rename_image(&mut self, image_id: i64, new_name: &str) -> AppResult<String> {
+        let new_name = new_name.trim();
+        if new_name.is_empty() || new_name.contains('/') || new_name.contains('\\') {
+            return Err(crate::errors::AppError::InvalidInput(
+                "Image name cannot be empty or contain path separators".to_owned(),
+            ));
+        }
+
+        let old_path: String = self.conn.query_row(
+            "SELECT path FROM images WHERE id = ?1",
+            params![image_id],
+            |row| row.get(0),
+        )?;
+        let old_path_buf = PathBuf::from(&old_path);
+        let new_path = old_path_buf
+            .parent()
+            .map(|parent| parent.join(new_name))
+            .unwrap_or_else(|| PathBuf::from(new_name));
+        let new_path_string = new_path.to_string_lossy().to_string();
+        let now = Utc::now().to_rfc3339();
+
+        self.conn.execute(
+            "UPDATE images SET path = ?1, file_name = ?2, updated_at = ?3 WHERE id = ?4",
+            params![new_path_string, new_name, now, image_id],
+        )?;
+
+        Ok(new_path.to_string_lossy().to_string())
+    }
+
+    pub fn delete_image(&mut self, image_id: i64) -> AppResult<usize> {
+        let tx = self.conn.transaction()?;
+        let deleted = tx.execute("DELETE FROM images WHERE id = ?1", params![image_id])?;
+        tx.execute(
+            r#"DELETE FROM annotation_profiles
+               WHERE NOT EXISTS (
+                   SELECT 1
+                   FROM annotations
+                   WHERE annotations.profile_id = annotation_profiles.id
+               )"#,
+            [],
+        )?;
+        tx.commit()?;
+
+        Ok(deleted)
+    }
+
     pub fn delete_images_under_path(&mut self, folder_path: &str) -> AppResult<usize> {
         let normalized_path = normalize_dataset_path(folder_path);
         let child_pattern = format!("{normalized_path}/%");

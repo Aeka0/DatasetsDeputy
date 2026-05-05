@@ -57,7 +57,7 @@ pub struct ExportItem {
 pub fn estimate_export(items: &[ExportItem], output_dir: &Path) -> ExportPreview {
     let estimated_size_bytes = items
         .iter()
-        .map(|item| item.source_size_bytes + item.annotation_content.as_bytes().len() as u64)
+        .map(|item| item.source_size_bytes + item.annotation_content.len() as u64)
         .sum();
     let annotation_count = items
         .iter()
@@ -160,5 +160,5 @@ fn export_item(output_dir: &Path, item: &ExportItem) -> AppResult<u64> {
     let annotation_path = target_image_path.with_extension("txt");
     fs::write(&annotation_path, &item.annotation_content)?;
 
-    Ok(copied_size + item.annotation_content.as_bytes().len() as u64)
+    Ok(copied_size + item.annotation_content.len() as u64)
 }

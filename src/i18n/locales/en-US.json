@@ -38,7 +38,7 @@
     "executeAnnotation": "Run annotation",
     "stopAnnotation": "Stop annotation",
     "importDataset": "Import dataset",
-    "exportTxt": "Export TXT annotations",
+    "exportTxt": "Export dataset",
     "refresh": "Refresh data",
     "exit": "Exit",
     "backToGrid": "Back to dataset",
@@ -121,6 +121,20 @@
   },
   "grid": {
     "annotationCount": "annotations"
+  },
+  "itemMenu": {
+    "rename": "Rename",
+    "delete": "Delete",
+    "renameTitle": "Rename item",
+    "nameLabel": "File or data name",
+    "renaming": "Renaming...",
+    "deleteTitle": "Delete item?",
+    "deleteDescription": "This deletes the item's image, annotation, and instruction together. This cannot be undone.",
+    "deleteDescriptionPrefix": "This deletes ",
+    "deleteDescriptionScope": "the item's image, annotation, and instruction",
+    "deleteDescriptionSuffix": " together. This cannot be undone.",
+    "confirmDelete": "Delete",
+    "deleting": "Deleting..."
   },
   "settings": {
     "title": "Settings",
