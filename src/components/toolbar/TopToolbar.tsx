@@ -14,7 +14,7 @@ export function TopToolbar() {
     activeProfileId,
     isLoading,
     openImportWizard,
-    exportDataset,
+    openExportDialog,
     setSearch,
     setActiveProfile
   } = useDatasetStore();
@@ -57,7 +57,7 @@ export function TopToolbar() {
         <Plus size={16} />
         {t("actions.newProfile")}
       </Button>
-      <Button onClick={() => void exportDataset("txt_per_image")}>
+      <Button onClick={openExportDialog} disabled={images.length === 0 || isLoading}>
         <Download size={16} />
         {t("actions.export")}
       </Button>

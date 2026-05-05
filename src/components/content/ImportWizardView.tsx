@@ -1,16 +1,18 @@
-import { ArrowLeft, Database, FolderOpen } from "lucide-react";
+import { ArrowLeft, Database, DatabaseZap, Folders } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import { useDatasetStore } from "../../stores/datasetStore";
 
 export function ImportWizardView() {
   const { t } = useTranslation();
+  const importAssetDatabase = useDatasetStore((state) => state.importAssetDatabase);
   const importFolder = useDatasetStore((state) => state.importFolder);
   const mountFolder = useDatasetStore((state) => state.mountFolder);
   const closeImportWizard = useDatasetStore((state) => state.closeImportWizard);
   const isLoading = useDatasetStore((state) => state.isLoading);
 
-  const databasePoints = t("importWizard.databasePoints", { returnObjects: true }) as string[];
+  const assetDatabasePoints = t("importWizard.assetDatabasePoints", { returnObjects: true }) as string[];
+  const databasePoints = t("importWizard.dynamicDatabasePoints", { returnObjects: true }) as string[];
   const folderPoints = t("importWizard.folderPoints", { returnObjects: true }) as string[];
 
   return (
@@ -23,14 +25,36 @@ export function ImportWizardView() {
         <ArrowLeft size={15} />
         {t("actions.back")}
       </button>
-      <div className="mx-auto flex min-h-0 w-full max-w-[960px] flex-col">
+      <div className="mx-auto flex min-h-0 w-full max-w-[1120px] flex-col">
         <header className="shrink-0 pb-8 text-center">
           <h1 className="m-0 text-[26px] font-normal leading-9 text-slate-950">
             {t("importWizard.title")}
           </h1>
         </header>
 
-        <div className="grid min-h-0 grid-cols-[minmax(0,1fr)_1px_minmax(0,1fr)] grid-rows-[auto_1fr_auto] gap-x-5 gap-y-5 overflow-auto">
+        <div className="grid min-h-0 grid-cols-3 grid-rows-[auto_1fr_auto] gap-5 overflow-auto">
+          <button
+            type="button"
+            className="no-drag group row-span-3 grid min-w-0 grid-rows-subgrid content-start rounded-md bg-transparent px-5 py-8 text-left transition-[background-color,transform] duration-500 ease-in-out hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-300 disabled:cursor-not-allowed disabled:opacity-50"
+            disabled={isLoading}
+            onClick={() => void importAssetDatabase()}
+          >
+            <div className="flex items-center gap-3 self-start">
+              <Database size={24} className="text-slate-900 transition group-hover:scale-105" />
+              <h2 className="m-0 text-[19px] font-normal leading-7 text-slate-950">
+                {t("importWizard.assetDatabase")}
+              </h2>
+            </div>
+            <p className="self-start text-[14px] leading-7 text-slate-600">
+              {t("importWizard.assetDatabaseDescription")}
+            </p>
+            <ul className="list-disc space-y-2 pl-5 text-[13px] leading-6 text-slate-500 marker:text-slate-400 self-start">
+              {assetDatabasePoints.map((item, index) => (
+                <li key={`importWizard-asset-db-${index}`}>{item}</li>
+              ))}
+            </ul>
+          </button>
+
           <button
             type="button"
             className="no-drag group row-span-3 grid min-w-0 grid-rows-subgrid content-start rounded-md bg-transparent px-5 py-8 text-left transition-[background-color,transform] duration-500 ease-in-out hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-300 disabled:cursor-not-allowed disabled:opacity-50"
@@ -38,13 +62,13 @@ export function ImportWizardView() {
             onClick={() => void importFolder()}
           >
             <div className="flex items-center gap-3 self-start">
-              <Database size={24} className="text-slate-900 transition group-hover:scale-105" />
+              <DatabaseZap size={24} className="text-slate-900 transition group-hover:scale-105" />
               <h2 className="m-0 text-[19px] font-normal leading-7 text-slate-950">
-                {t("importWizard.database")}
+                {t("importWizard.dynamicDatabase")}
               </h2>
             </div>
             <p className="self-start text-[14px] leading-7 text-slate-600">
-              {t("importWizard.databaseDescription")}
+              {t("importWizard.dynamicDatabaseDescription")}
             </p>
             <ul className="list-disc space-y-2 pl-5 text-[13px] leading-6 text-slate-500 marker:text-slate-400 self-start">
               {databasePoints.map((item, index) => (
@@ -53,8 +77,6 @@ export function ImportWizardView() {
             </ul>
           </button>
 
-          <div className="row-span-3 w-px self-stretch" style={{ backgroundColor: "var(--app-border)" }} aria-hidden />
-
           <button
             type="button"
             className="no-drag group row-span-3 grid min-w-0 grid-rows-subgrid content-start rounded-md bg-transparent px-5 py-8 text-left transition-[background-color,transform] duration-500 ease-in-out hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-300 disabled:cursor-not-allowed disabled:opacity-50"
@@ -62,7 +84,7 @@ export function ImportWizardView() {
             onClick={() => void mountFolder()}
           >
             <div className="flex items-center gap-3 self-start">
-              <FolderOpen size={24} className="text-slate-900 transition group-hover:scale-105" />
+              <Folders size={24} className="text-slate-900 transition group-hover:scale-105" />
               <h2 className="m-0 text-[19px] font-normal leading-7 text-slate-950">
                 {t("importWizard.folder")}
               </h2>

@@ -1,4 +1,7 @@
-use std::path::{Path, PathBuf};
+use std::{
+    collections::HashMap,
+    path::{Path, PathBuf},
+};
 
 use chrono::Utc;
 use rusqlite::{params, Connection, OptionalExtension};
@@ -11,10 +14,6 @@ use crate::errors::AppResult;
 pub struct AnnotationProfile {
     pub id: i64,
     pub name: String,
-    pub format_type: String,
-    pub source_type: String,
-    pub description: Option<String>,
-    pub model_info: Option<String>,
     pub source_kind: Option<String>,
     pub dataset_id: Option<String>,
 }
@@ -38,11 +37,13 @@ pub struct DatasetImage {
     pub id: i64,
     pub path: String,
     pub file_name: String,
+    pub storage_path: Option<String>,
     pub thumbnail_path: Option<String>,
     pub width: Option<u32>,
     pub height: Option<u32>,
     pub file_size: Option<i64>,
     pub file_hash: Option<String>,
+    pub source_missing: bool,
     pub imported_at: String,
     pub updated_at: String,
     pub annotations: Vec<Annotation>,
@@ -53,11 +54,27 @@ pub struct DatasetImage {
 
 pub struct NewImage {
     pub path: PathBuf,
+    pub storage_path: Option<PathBuf>,
     pub thumbnail_path: Option<PathBuf>,
     pub width: Option<u32>,
     pub height: Option<u32>,
     pub file_size: Option<i64>,
     pub file_hash: String,
+}
+
+pub struct ImageSourceMetadata {
+    pub file_size: i64,
+    pub file_hash: String,
+    pub thumbnail_path: Option<PathBuf>,
+    pub width: Option<u32>,
+    pub height: Option<u32>,
+}
+
+pub struct AnnotationChange {
+    pub image_id: i64,
+    pub profile_id: i64,
+    pub content: Option<String>,
+    pub instruction: Option<String>,
 }
 
 pub struct Database {
@@ -83,6 +100,7 @@ impl Database {
               id INTEGER PRIMARY KEY AUTOINCREMENT,
               path TEXT NOT NULL UNIQUE,
               file_name TEXT NOT NULL,
+              storage_path TEXT,
               thumbnail_path TEXT,
               width INTEGER,
               height INTEGER,
@@ -94,11 +112,7 @@ impl Database {
 
             CREATE TABLE IF NOT EXISTS annotation_profiles (
               id INTEGER PRIMARY KEY AUTOINCREMENT,
-              name TEXT NOT NULL,
-              format_type TEXT NOT NULL,
-              source_type TEXT NOT NULL,
-              description TEXT,
-              model_info TEXT
+              name TEXT NOT NULL COLLATE NOCASE UNIQUE
             );
 
             CREATE TABLE IF NOT EXISTS annotations (
@@ -113,14 +127,6 @@ impl Database {
               UNIQUE(image_id, profile_id)
             );
 
-            CREATE TABLE IF NOT EXISTS export_presets (
-              id INTEGER PRIMARY KEY AUTOINCREMENT,
-              name TEXT NOT NULL,
-              profile_ids TEXT NOT NULL,
-              format TEXT NOT NULL,
-              filter_rules TEXT
-            );
-
             CREATE TABLE IF NOT EXISTS dataset_metadata (
               key TEXT PRIMARY KEY,
               value TEXT NOT NULL
@@ -130,10 +136,51 @@ impl Database {
             CREATE INDEX IF NOT EXISTS idx_annotations_profile ON annotations(profile_id);
             "#,
         )?;
+        self.ensure_images_storage_path_column()?;
+        self.drop_annotation_profile_legacy_columns()?;
         Ok(())
     }
 
-    pub fn set_dataset_metadata(&mut self, root_name: &str, root_path: &str) -> AppResult<()> {
+    fn ensure_images_storage_path_column(&self) -> AppResult<()> {
+        let mut stmt = self.conn.prepare("PRAGMA table_info(images)")?;
+        let columns = stmt
+            .query_map([], |row| row.get::<_, String>(1))?
+            .collect::<Result<Vec<_>, _>>()?;
+
+        if !columns.iter().any(|existing| existing == "storage_path") {
+            self.conn
+                .execute("ALTER TABLE images ADD COLUMN storage_path TEXT", [])?;
+        }
+
+        Ok(())
+    }
+
+    fn drop_annotation_profile_legacy_columns(&self) -> AppResult<()> {
+        let mut stmt = self
+            .conn
+            .prepare("PRAGMA table_info(annotation_profiles)")?;
+        let columns = stmt
+            .query_map([], |row| row.get::<_, String>(1))?
+            .collect::<Result<Vec<_>, _>>()?;
+
+        for column in ["format_type", "source_type", "description", "model_info"] {
+            if columns.iter().any(|existing| existing == column) {
+                self.conn.execute(
+                    &format!("ALTER TABLE annotation_profiles DROP COLUMN {column}"),
+                    [],
+                )?;
+            }
+        }
+
+        Ok(())
+    }
+
+    pub fn set_dataset_metadata(
+        &mut self,
+        root_name: &str,
+        root_path: &str,
+        source_kind: &str,
+    ) -> AppResult<()> {
         let tx = self.conn.transaction()?;
         tx.execute(
             "INSERT INTO dataset_metadata (key, value) VALUES ('root_name', ?1)
@@ -144,6 +191,11 @@ impl Database {
             "INSERT INTO dataset_metadata (key, value) VALUES ('root_path', ?1)
              ON CONFLICT(key) DO UPDATE SET value = excluded.value",
             params![root_path],
+        )?;
+        tx.execute(
+            "INSERT INTO dataset_metadata (key, value) VALUES ('source_kind', ?1)
+             ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            params![source_kind],
         )?;
         tx.commit()?;
         Ok(())
@@ -230,18 +282,26 @@ impl Database {
             .map_err(Into::into)
     }
 
+    pub fn dataset_source_kind(&self) -> AppResult<String> {
+        Ok(self
+            .conn
+            .query_row(
+                "SELECT value FROM dataset_metadata WHERE key = 'source_kind'",
+                [],
+                |row| row.get(0),
+            )
+            .optional()?
+            .unwrap_or_else(|| "database".to_owned()))
+    }
+
     pub fn list_annotation_profiles(&self) -> AppResult<Vec<AnnotationProfile>> {
-        let mut stmt = self.conn.prepare(
-            "SELECT id, name, format_type, source_type, description, model_info FROM annotation_profiles ORDER BY id",
-        )?;
+        let mut stmt = self
+            .conn
+            .prepare("SELECT id, name FROM annotation_profiles ORDER BY id")?;
         let rows = stmt.query_map([], |row| {
             Ok(AnnotationProfile {
                 id: row.get(0)?,
                 name: row.get(1)?,
-                format_type: row.get(2)?,
-                source_type: row.get(3)?,
-                description: row.get(4)?,
-                model_info: row.get(5)?,
                 source_kind: None,
                 dataset_id: None,
             })
@@ -261,8 +321,7 @@ impl Database {
         let existing: Option<i64> = self
             .conn
             .query_row(
-                "SELECT id FROM annotation_profiles
-                 WHERE name = ?1 AND source_type = 'imported'",
+                "SELECT id FROM annotation_profiles WHERE name = ?1 COLLATE NOCASE",
                 params![name],
                 |row| row.get(0),
             )
@@ -273,8 +332,7 @@ impl Database {
         }
 
         self.conn.execute(
-            "INSERT INTO annotation_profiles (name, format_type, source_type, description)
-             VALUES (?1, 'structured', 'imported', 'Imported dataset annotation')",
+            "INSERT INTO annotation_profiles (name) VALUES (?1)",
             params![name],
         )?;
 
@@ -293,11 +351,25 @@ impl Database {
             ));
         }
 
+        let existing: Option<i64> = self
+            .conn
+            .query_row(
+                "SELECT id FROM annotation_profiles WHERE name = ?1 COLLATE NOCASE",
+                params![name],
+                |row| row.get(0),
+            )
+            .optional()?;
+
+        if existing.is_some() {
+            return Err(crate::errors::AppError::InvalidInput(
+                "Annotation profile name already exists".to_owned(),
+            ));
+        }
+
         let tx = self.conn.transaction()?;
         let now = Utc::now().to_rfc3339();
         tx.execute(
-            "INSERT INTO annotation_profiles (name, format_type, source_type, description)
-             VALUES (?1, 'structured', 'manual', 'Dataset-wide annotation')",
+            "INSERT INTO annotation_profiles (name) VALUES (?1)",
             params![name],
         )?;
         let profile_id = tx.last_insert_rowid();
@@ -316,7 +388,7 @@ impl Database {
 
     pub fn list_images(&self) -> AppResult<Vec<DatasetImage>> {
         let mut stmt = self.conn.prepare(
-            "SELECT id, path, file_name, thumbnail_path, width, height, file_size, file_hash, imported_at, updated_at
+            "SELECT id, path, file_name, storage_path, thumbnail_path, width, height, file_size, file_hash, imported_at, updated_at
              FROM images
              ORDER BY replace(path, '\', '/') COLLATE NOCASE ASC, id ASC",
         )?;
@@ -327,21 +399,24 @@ impl Database {
                 row.get::<_, String>(1)?,
                 row.get::<_, String>(2)?,
                 row.get::<_, Option<String>>(3)?,
-                row.get::<_, Option<u32>>(4)?,
+                row.get::<_, Option<String>>(4)?,
                 row.get::<_, Option<u32>>(5)?,
-                row.get::<_, Option<i64>>(6)?,
-                row.get::<_, Option<String>>(7)?,
-                row.get::<_, String>(8)?,
+                row.get::<_, Option<u32>>(6)?,
+                row.get::<_, Option<i64>>(7)?,
+                row.get::<_, Option<String>>(8)?,
                 row.get::<_, String>(9)?,
+                row.get::<_, String>(10)?,
             ))
         })?;
 
         let mut images = Vec::new();
+        let mut image_index_by_id = HashMap::new();
         for image in image_rows {
             let (
                 id,
                 path,
                 file_name,
+                storage_path,
                 thumbnail_path,
                 width,
                 height,
@@ -350,23 +425,50 @@ impl Database {
                 imported_at,
                 updated_at,
             ) = image?;
-            let annotations = self.list_annotations_for_image(id)?;
+            image_index_by_id.insert(id, images.len());
             images.push(DatasetImage {
                 id,
                 path,
                 file_name,
+                storage_path,
                 thumbnail_path,
                 width,
                 height,
                 file_size,
                 file_hash,
+                source_missing: false,
                 imported_at,
                 updated_at,
-                annotations,
+                annotations: Vec::new(),
                 source_kind: None,
                 dataset_id: None,
                 root_path: None,
             });
+        }
+
+        let mut annotation_stmt = self.conn.prepare(
+            "SELECT id, image_id, profile_id, content, instruction, confidence, created_at, updated_at
+             FROM annotations
+             ORDER BY image_id, profile_id",
+        )?;
+        let annotation_rows = annotation_stmt.query_map([], |row| {
+            Ok(Annotation {
+                id: row.get(0)?,
+                image_id: row.get(1)?,
+                profile_id: row.get(2)?,
+                content: row.get(3)?,
+                instruction: row.get(4)?,
+                confidence: row.get(5)?,
+                created_at: row.get(6)?,
+                updated_at: row.get(7)?,
+            })
+        })?;
+
+        for annotation in annotation_rows {
+            let annotation = annotation?;
+            if let Some(index) = image_index_by_id.get(&annotation.image_id) {
+                images[*index].annotations.push(annotation);
+            }
         }
 
         Ok(images)
@@ -402,11 +504,15 @@ impl Database {
             .to_owned();
 
         self.conn.execute(
-            "INSERT INTO images (path, file_name, thumbnail_path, width, height, file_size, file_hash, imported_at, updated_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+            "INSERT INTO images (path, file_name, storage_path, thumbnail_path, width, height, file_size, file_hash, imported_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
             params![
                 image.path.to_string_lossy(),
                 file_name,
+                image
+                    .storage_path
+                    .as_ref()
+                    .map(|path| path.to_string_lossy().to_string()),
                 image
                     .thumbnail_path
                     .as_ref()
@@ -421,6 +527,37 @@ impl Database {
         )?;
 
         Ok((self.conn.last_insert_rowid(), true))
+    }
+
+    pub fn update_image_source_metadata(
+        &mut self,
+        image_id: i64,
+        metadata: &ImageSourceMetadata,
+    ) -> AppResult<()> {
+        let now = Utc::now().to_rfc3339();
+        self.conn.execute(
+            "UPDATE images
+             SET thumbnail_path = ?1,
+                 width = ?2,
+                 height = ?3,
+                 file_size = ?4,
+                 file_hash = ?5,
+                 updated_at = ?6
+             WHERE id = ?7",
+            params![
+                metadata
+                    .thumbnail_path
+                    .as_ref()
+                    .map(|path| path.to_string_lossy().to_string()),
+                metadata.width,
+                metadata.height,
+                metadata.file_size,
+                metadata.file_hash,
+                now,
+                image_id
+            ],
+        )?;
+        Ok(())
     }
 
     pub fn delete_images_under_path(&mut self, folder_path: &str) -> AppResult<usize> {
@@ -491,6 +628,55 @@ impl Database {
             "UPDATE images SET updated_at = ?1 WHERE id = ?2",
             params![now, image_id],
         )?;
+        tx.commit()?;
+        Ok(())
+    }
+
+    pub fn upsert_annotation_changes(&mut self, changes: Vec<AnnotationChange>) -> AppResult<()> {
+        if changes.is_empty() {
+            return Ok(());
+        }
+
+        let tx = self.conn.transaction()?;
+        let now = Utc::now().to_rfc3339();
+        {
+            let mut content_stmt = tx.prepare(
+                "INSERT INTO annotations (image_id, profile_id, content, created_at, updated_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5)
+                 ON CONFLICT(image_id, profile_id)
+                 DO UPDATE SET content = excluded.content, updated_at = excluded.updated_at",
+            )?;
+            let mut instruction_stmt = tx.prepare(
+                "INSERT INTO annotations (image_id, profile_id, content, instruction, created_at, updated_at)
+                 VALUES (?1, ?2, '', ?3, ?4, ?5)
+                 ON CONFLICT(image_id, profile_id)
+                 DO UPDATE SET instruction = excluded.instruction, updated_at = excluded.updated_at",
+            )?;
+            let mut image_stmt = tx.prepare("UPDATE images SET updated_at = ?1 WHERE id = ?2")?;
+
+            for change in changes {
+                if let Some(content) = change.content {
+                    content_stmt.execute(params![
+                        change.image_id,
+                        change.profile_id,
+                        content,
+                        now,
+                        now
+                    ])?;
+                }
+                if let Some(instruction) = change.instruction {
+                    instruction_stmt.execute(params![
+                        change.image_id,
+                        change.profile_id,
+                        instruction,
+                        now,
+                        now
+                    ])?;
+                }
+                image_stmt.execute(params![now, change.image_id])?;
+            }
+        }
+
         tx.commit()?;
         Ok(())
     }
@@ -568,29 +754,6 @@ impl Database {
         )?;
         tx.commit()?;
         Ok(true)
-    }
-
-    fn list_annotations_for_image(&self, image_id: i64) -> AppResult<Vec<Annotation>> {
-        let mut stmt = self.conn.prepare(
-            "SELECT id, image_id, profile_id, content, instruction, confidence, created_at, updated_at
-             FROM annotations
-             WHERE image_id = ?1
-             ORDER BY profile_id",
-        )?;
-        let rows = stmt.query_map(params![image_id], |row| {
-            Ok(Annotation {
-                id: row.get(0)?,
-                image_id: row.get(1)?,
-                profile_id: row.get(2)?,
-                content: row.get(3)?,
-                instruction: row.get(4)?,
-                confidence: row.get(5)?,
-                created_at: row.get(6)?,
-                updated_at: row.get(7)?,
-            })
-        })?;
-
-        rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
     }
 }
 

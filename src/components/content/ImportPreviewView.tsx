@@ -4,7 +4,8 @@ import { useDatasetStore } from "../../stores/datasetStore";
 
 const copy = {
   back: "\u8fd4\u56de",
-  title: "\u5bfc\u5165\u6570\u636e\u5e93",
+  assetTitle: "\u5bfc\u5165\u8d44\u4ea7\u6570\u636e\u5e93",
+  dynamicTitle: "\u5bfc\u5165\u52a8\u6001\u94fe\u63a5\u6570\u636e\u5e93",
   folderPath: "\u6587\u4ef6\u5939\u8def\u5f84\uff1a",
   imageCount: "\u5f20\u56fe\u7247",
   imageFolderCount: "\u4e2a\u542b\u6709\u56fe\u7247\u7684\u5b50\u6587\u4ef6\u5939",
@@ -19,6 +20,7 @@ const copy = {
 
 export function ImportPreviewView() {
   const preview = useDatasetStore((state) => state.importPreview);
+  const preparedImportKind = useDatasetStore((state) => state.preparedImportKind);
   const annotationType = useDatasetStore((state) => state.annotationType);
   const isLoading = useDatasetStore((state) => state.isLoading);
   const setAnnotationType = useDatasetStore((state) => state.setAnnotationType);
@@ -50,7 +52,9 @@ export function ImportPreviewView() {
           </button>
           <div className="h-5 w-px bg-slate-200" aria-hidden />
           <FolderOpen size={18} className="text-slate-600" />
-          <h2 className="m-0 text-[15px] font-semibold leading-6 text-slate-950">{copy.title}</h2>
+          <h2 className="m-0 text-[15px] font-semibold leading-6 text-slate-950">
+            {preparedImportKind === "asset" ? copy.assetTitle : copy.dynamicTitle}
+          </h2>
         </div>
 
         <div className="mt-4 space-y-5">

@@ -84,14 +84,21 @@ pub fn import_image(
     db: &mut Database,
     path: &Path,
     thumbnail_dir: &Path,
+    asset_dir: Option<&Path>,
     import_profile_id: Option<i64>,
 ) -> AppResult<ImportImageResult> {
     let hash = hash_file(path)?;
     let metadata = std::fs::metadata(path)?;
-    let thumbnail = thumbnail::create_thumbnail(path, thumbnail_dir, &hash)?;
+    let storage_path = match asset_dir {
+        Some(asset_dir) => Some(copy_to_managed_asset_store(path, asset_dir, &hash)?),
+        None => None,
+    };
+    let image_source_path = storage_path.as_deref().unwrap_or(path);
+    let thumbnail = thumbnail::create_thumbnail(image_source_path, thumbnail_dir, &hash)?;
 
     let (image_id, inserted) = db.insert_image_if_missing(&NewImage {
         path: path.to_path_buf(),
+        storage_path,
         thumbnail_path: Some(thumbnail.path),
         width: Some(thumbnail.width),
         height: Some(thumbnail.height),
@@ -115,7 +122,27 @@ pub fn import_image(
     })
 }
 
-fn hash_file(path: &Path) -> AppResult<String> {
+fn copy_to_managed_asset_store(path: &Path, asset_dir: &Path, hash: &str) -> AppResult<PathBuf> {
+    let extension = path
+        .extension()
+        .and_then(|value| value.to_str())
+        .map(|value| value.to_ascii_lowercase())
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| "bin".to_owned());
+    let shard_a = &hash[..2];
+    let shard_b = &hash[2..4];
+    let target_dir = asset_dir.join("sha256").join(shard_a).join(shard_b);
+    fs::create_dir_all(&target_dir)?;
+    let target_path = target_dir.join(format!("{hash}.{extension}"));
+
+    if !target_path.is_file() {
+        fs::copy(path, &target_path)?;
+    }
+
+    Ok(target_path)
+}
+
+pub fn hash_file(path: &Path) -> AppResult<String> {
     let mut file = File::open(path)?;
     let mut hasher = Sha256::new();
     let mut buffer = [0_u8; 8192];

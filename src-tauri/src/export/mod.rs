@@ -3,80 +3,162 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
-use crate::{db::DatasetImage, errors::AppResult};
+use crate::errors::AppResult;
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct ExportRequest {
+pub struct ExportDatasetRequest {
     pub output_dir: PathBuf,
-    pub format: ExportFormat,
-    pub profile_ids: Vec<i64>,
+    pub dataset_id: String,
+    pub image_ids: Vec<i64>,
+    pub profile_id: Option<i64>,
 }
 
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum ExportFormat {
-    TxtPerImage,
-    Jsonl,
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExportPreview {
+    pub output_dir: String,
+    pub estimated_size_bytes: u64,
+    pub image_count: usize,
+    pub annotation_count: usize,
 }
 
-pub fn export_dataset(images: &[DatasetImage], request: ExportRequest) -> AppResult<usize> {
-    fs::create_dir_all(&request.output_dir)?;
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExportProgress {
+    pub phase: String,
+    pub processed: usize,
+    pub total: usize,
+    pub exported: usize,
+    pub failed: usize,
+    pub current_path: Option<String>,
+    pub output_dir: Option<String>,
+    pub estimated_size_bytes: u64,
+    pub written_size_bytes: u64,
+    pub done: bool,
+    pub error: Option<String>,
+}
 
-    match request.format {
-        ExportFormat::TxtPerImage => export_txt_per_image(images, &request.output_dir),
-        ExportFormat::Jsonl => export_jsonl(images, &request.output_dir, &request.profile_ids),
+pub struct PreparedExport {
+    pub output_dir: PathBuf,
+    pub items: Vec<ExportItem>,
+    pub estimated_size_bytes: u64,
+}
+
+pub struct ExportItem {
+    pub source_path: PathBuf,
+    pub relative_path: PathBuf,
+    pub annotation_content: String,
+    pub source_size_bytes: u64,
+}
+
+pub fn estimate_export(items: &[ExportItem], output_dir: &Path) -> ExportPreview {
+    let estimated_size_bytes = items
+        .iter()
+        .map(|item| item.source_size_bytes + item.annotation_content.as_bytes().len() as u64)
+        .sum();
+    let annotation_count = items
+        .iter()
+        .filter(|item| !item.annotation_content.trim().is_empty())
+        .count();
+
+    ExportPreview {
+        output_dir: output_dir.to_string_lossy().to_string(),
+        estimated_size_bytes,
+        image_count: items.len(),
+        annotation_count,
     }
 }
 
-fn export_txt_per_image(images: &[DatasetImage], output_dir: &Path) -> AppResult<usize> {
-    for image in images {
-        let stem = Path::new(&image.file_name)
-            .file_stem()
-            .and_then(|value| value.to_str())
-            .unwrap_or("annotation");
-        let content = image
-            .annotations
-            .iter()
-            .find(|annotation| !annotation.content.trim().is_empty())
-            .map(|annotation| annotation.content.clone())
-            .unwrap_or_default();
-        fs::write(output_dir.join(format!("{stem}.txt")), content)?;
-    }
-
-    tracing::info!("TXT export finished: {} files written", images.len());
-    Ok(images.len())
-}
-
-fn export_jsonl(
-    images: &[DatasetImage],
-    output_dir: &Path,
-    profile_ids: &[i64],
+pub fn export_dataset(
+    prepared: PreparedExport,
+    emit_progress: impl Fn(ExportProgress),
 ) -> AppResult<usize> {
-    let mut lines = Vec::with_capacity(images.len());
+    fs::create_dir_all(&prepared.output_dir)?;
 
-    for image in images {
-        let annotations = image
-            .annotations
-            .iter()
-            .filter(|annotation| {
-                profile_ids.is_empty() || profile_ids.contains(&annotation.profile_id)
-            })
-            .collect::<Vec<_>>();
+    let total = prepared.items.len();
+    emit_progress(ExportProgress {
+        phase: "exporting".to_owned(),
+        processed: 0,
+        total,
+        exported: 0,
+        failed: 0,
+        current_path: None,
+        output_dir: Some(prepared.output_dir.to_string_lossy().to_string()),
+        estimated_size_bytes: prepared.estimated_size_bytes,
+        written_size_bytes: 0,
+        done: false,
+        error: None,
+    });
 
-        lines.push(
-            serde_json::json!({
-                "path": image.path,
-                "fileName": image.file_name,
-                "annotations": annotations
-            })
-            .to_string(),
-        );
+    let mut exported = 0;
+    let mut failed = 0;
+    let mut written_size_bytes = 0;
+
+    for (index, item) in prepared.items.iter().enumerate() {
+        let result = export_item(&prepared.output_dir, item).map(|written| {
+            written_size_bytes += written;
+            exported += 1;
+        });
+
+        if let Err(error) = result {
+            failed += 1;
+            tracing::warn!("导出图片失败：{:?}：{}", item.source_path, error);
+        }
+
+        emit_progress(ExportProgress {
+            phase: "exporting".to_owned(),
+            processed: index + 1,
+            total,
+            exported,
+            failed,
+            current_path: item
+                .relative_path
+                .file_name()
+                .and_then(|value| value.to_str())
+                .map(str::to_owned),
+            output_dir: Some(prepared.output_dir.to_string_lossy().to_string()),
+            estimated_size_bytes: prepared.estimated_size_bytes,
+            written_size_bytes,
+            done: false,
+            error: None,
+        });
     }
 
-    fs::write(output_dir.join("dataset.jsonl"), lines.join("\n"))?;
-    tracing::info!("JSONL export finished: {} rows written", images.len());
-    Ok(images.len())
+    emit_progress(ExportProgress {
+        phase: "done".to_owned(),
+        processed: total,
+        total,
+        exported,
+        failed,
+        current_path: None,
+        output_dir: Some(prepared.output_dir.to_string_lossy().to_string()),
+        estimated_size_bytes: prepared.estimated_size_bytes,
+        written_size_bytes,
+        done: true,
+        error: None,
+    });
+
+    tracing::info!(
+        "数据集导出完成：exported={}, failed={}, output={:?}",
+        exported,
+        failed,
+        prepared.output_dir
+    );
+    Ok(exported)
+}
+
+fn export_item(output_dir: &Path, item: &ExportItem) -> AppResult<u64> {
+    let target_image_path = output_dir.join(&item.relative_path);
+    if let Some(parent) = target_image_path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+
+    let copied_size = fs::copy(&item.source_path, &target_image_path)?;
+    let annotation_path = target_image_path.with_extension("txt");
+    fs::write(&annotation_path, &item.annotation_content)?;
+
+    Ok(copied_size + item.annotation_content.as_bytes().len() as u64)
 }

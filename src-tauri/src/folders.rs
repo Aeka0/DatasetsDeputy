@@ -1,4 +1,5 @@
 use std::{
+    collections::{HashMap, HashSet},
     fs,
     path::{Path, PathBuf},
     time::UNIX_EPOCH,
@@ -119,6 +120,61 @@ fn instruction_path(image_path: &Path) -> PathBuf {
     image_path.with_file_name(format!("{stem}.inst.txt"))
 }
 
+fn sidecar_key(path: &Path) -> Option<String> {
+    let parent = path.parent().map(normalize_path).unwrap_or_default();
+    let stem = path.file_stem().and_then(|value| value.to_str())?;
+    let stem = stem.strip_suffix(".inst").unwrap_or(stem);
+    Some(format!("{}/{}", parent, stem).to_ascii_lowercase())
+}
+
+fn orphan_sidecar_image_path(path: &Path) -> Option<PathBuf> {
+    let stem = path.file_stem().and_then(|value| value.to_str())?;
+    let stem = stem.strip_suffix(".inst").unwrap_or(stem);
+    Some(path.with_file_name(stem))
+}
+
+fn collect_orphan_sidecar_paths(root: &Path, image_paths: &[PathBuf]) -> Vec<PathBuf> {
+    let image_keys = image_paths
+        .iter()
+        .filter_map(|path| sidecar_key(path))
+        .collect::<HashSet<_>>();
+    let mut orphan_paths = HashMap::<String, PathBuf>::new();
+
+    for entry in walkdir::WalkDir::new(root)
+        .into_iter()
+        .filter_map(Result::ok)
+    {
+        let path = entry.into_path();
+        if !path.is_file() || path.extension().and_then(|value| value.to_str()) != Some("txt") {
+            continue;
+        }
+        let Some(key) = sidecar_key(&path) else {
+            continue;
+        };
+        if image_keys.contains(&key) {
+            continue;
+        }
+        let has_content = fs::read_to_string(&path)
+            .map(|content| !content.trim().is_empty())
+            .unwrap_or(false);
+        if !has_content {
+            continue;
+        }
+        if let Some(image_path) = orphan_sidecar_image_path(&path) {
+            orphan_paths.entry(key).or_insert(image_path);
+        }
+    }
+
+    let mut paths = orphan_paths.into_values().collect::<Vec<_>>();
+    paths.sort_by_key(|path| path.to_string_lossy().to_ascii_lowercase());
+    paths
+}
+
+pub fn count_orphan_sidecar_items(root: &Path) -> usize {
+    let image_paths = files::collect_image_paths(root);
+    collect_orphan_sidecar_paths(root, &image_paths).len()
+}
+
 fn write_sidecar(path: PathBuf, content: &str) -> AppResult<()> {
     fs::write(path, content)?;
     Ok(())
@@ -174,10 +230,6 @@ pub fn list_folder_profiles(dirs: &AppDirs) -> AppResult<Vec<AnnotationProfile>>
         .map(|root| AnnotationProfile {
             id: folder_profile_id(&root),
             name: FOLDER_PROFILE_NAME.to_owned(),
-            format_type: "structured".to_owned(),
-            source_type: "imported".to_owned(),
-            description: Some("Folder sidecar TXT annotation".to_owned()),
-            model_info: None,
             source_kind: Some("folder".to_owned()),
             dataset_id: Some(dataset_id(&root)),
         })
@@ -198,12 +250,24 @@ pub fn list_folder_images(dirs: &AppDirs) -> AppResult<Vec<DatasetImage>> {
         let root_path = normalize_path(&root);
         let dataset_id = dataset_id(&root);
         let paths = files::collect_image_paths(&root);
+        let orphan_paths = collect_orphan_sidecar_paths(&root, &paths);
+        let mut entries = paths
+            .into_iter()
+            .map(|path| (path, false))
+            .collect::<Vec<_>>();
+        entries.extend(orphan_paths.into_iter().map(|path| (path, true)));
 
-        for (index, path) in paths.iter().enumerate() {
+        for (index, (path, source_missing)) in entries.iter().enumerate() {
             let id = folder_image_id(&root, index);
-            let metadata = fs::metadata(path).ok();
-            let thumbnail_path = cached_folder_thumbnail_path(dirs, path, metadata.as_ref())
-                .unwrap_or_else(|| path.to_path_buf());
+            let metadata = (!source_missing).then(|| fs::metadata(path).ok()).flatten();
+            let thumbnail_path = if *source_missing {
+                None
+            } else {
+                Some(
+                    cached_folder_thumbnail_path(dirs, path, metadata.as_ref())
+                        .unwrap_or_else(|| path.to_path_buf()),
+                )
+            };
             let annotation = read_text_file(annotation_path(path))?;
             let instruction = read_text_file(instruction_path(path))?;
             let updated_at = metadata
@@ -221,11 +285,13 @@ pub fn list_folder_images(dirs: &AppDirs) -> AppResult<Vec<DatasetImage>> {
                     .and_then(|value| value.to_str())
                     .unwrap_or("image")
                     .to_owned(),
-                thumbnail_path: Some(thumbnail_path.to_string_lossy().to_string()),
+                storage_path: None,
+                thumbnail_path: thumbnail_path.map(|path| path.to_string_lossy().to_string()),
                 width: None,
                 height: None,
                 file_size: metadata.map(|metadata| metadata.len() as i64),
                 file_hash: None,
+                source_missing: *source_missing,
                 imported_at: updated_at.clone(),
                 updated_at: updated_at.clone(),
                 annotations: vec![Annotation {
@@ -250,9 +316,9 @@ pub fn list_folder_images(dirs: &AppDirs) -> AppResult<Vec<DatasetImage>> {
 
 pub fn save_folder_annotation(image_path: &str, content: &str) -> AppResult<()> {
     let path = PathBuf::from(image_path);
-    if !path.is_file() {
+    if !path.is_file() && path.parent().is_none_or(|parent| !parent.is_dir()) {
         return Err(AppError::InvalidInput(format!(
-            "Image does not exist: {image_path}"
+            "图片路径所在目录不存在：{image_path}"
         )));
     }
     write_sidecar(annotation_path(&path), content)
@@ -260,9 +326,9 @@ pub fn save_folder_annotation(image_path: &str, content: &str) -> AppResult<()> 
 
 pub fn save_folder_instruction(image_path: &str, instruction: &str) -> AppResult<()> {
     let path = PathBuf::from(image_path);
-    if !path.is_file() {
+    if !path.is_file() && path.parent().is_none_or(|parent| !parent.is_dir()) {
         return Err(AppError::InvalidInput(format!(
-            "Image does not exist: {image_path}"
+            "图片路径所在目录不存在：{image_path}"
         )));
     }
     write_sidecar(instruction_path(&path), instruction)

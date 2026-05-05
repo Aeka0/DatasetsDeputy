@@ -5,10 +5,7 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 
-use crate::{
-    app_dirs::AppDirs,
-    errors::AppResult,
-};
+use crate::{app_dirs::AppDirs, errors::AppResult};
 
 const SETTINGS_FILE: &str = "model-settings.json";
 
@@ -72,8 +69,7 @@ pub fn save_settings(dirs: &AppDirs, settings: ModelSettings) -> AppResult<Model
 fn normalize_settings(mut settings: ModelSettings) -> ModelSettings {
     settings.wd14_tagger.model_path = settings.wd14_tagger.model_path.trim().to_owned();
     settings.wd14_tagger.model_type = infer_model_type(&settings.wd14_tagger.model_path);
-    settings.wd14_tagger.general_threshold =
-        settings.wd14_tagger.general_threshold.clamp(0.0, 1.0);
+    settings.wd14_tagger.general_threshold = settings.wd14_tagger.general_threshold.clamp(0.0, 1.0);
     settings.wd14_tagger.character_threshold =
         settings.wd14_tagger.character_threshold.clamp(0.0, 1.0);
     settings

@@ -1,4 +1,4 @@
-import { FolderOpen, Grid3X3, Info, Search, Table2 } from "lucide-react";
+import { FolderOpen, Grid3X3, Info, RefreshCw, Search, Table2 } from "lucide-react";
 import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -73,18 +73,21 @@ function getVisibleImages(
 function PropertyRow({
   label,
   value,
-  mono
+  mono,
+  action
 }: {
   label: string;
   value: string | number;
   mono?: boolean;
+  action?: React.ReactNode;
 }) {
   return (
-    <div className="flex min-h-[28px] items-baseline gap-3 text-[13px]">
+    <div className="flex min-h-[28px] items-center gap-3 text-[13px]">
       <dt className="w-[86px] shrink-0 text-slate-500">{label}</dt>
       <dd className={cn("m-0 min-w-0 truncate text-slate-900", mono && "font-mono text-[12px]")}>
         {value}
       </dd>
+      {action ? <span className="inline-flex h-6 items-center">{action}</span> : null}
     </div>
   );
 }
@@ -100,17 +103,27 @@ function SectionHeader({ children }: { children: React.ReactNode }) {
 function DatasetOverview({
   images,
   selectedProject,
-  profiles
+  profiles,
+  isCheckingProblemItems,
+  checkProblemItems
 }: {
   images: DatasetImage[];
   selectedProject: DatasetProject | undefined;
   profiles: AnnotationProfile[];
+  isCheckingProblemItems: boolean;
+  checkProblemItems: (project?: DatasetProject) => Promise<unknown>;
 }) {
   const { t } = useTranslation();
   const totalSize = images.reduce((sum, image) => sum + (image.fileSize ?? 0), 0);
   const annotatedImages = images.filter((image) =>
     image.annotations.some((annotation) => annotation.content.trim())
   ).length;
+  const problemItems = images.filter((image) => image.sourceMissing).length;
+  const canCheckProblemItems =
+    Boolean(selectedProject?.datasetId) &&
+    !["asset-database-group", "database-group", "workspace-folder-group"].includes(
+      selectedProject?.id ?? ""
+    );
   const profileById = new Map(profiles.map((profile) => [profile.id, profile.name]));
   const annotationTypeNames = Array.from(
     new Set(
@@ -146,6 +159,24 @@ function DatasetOverview({
         <dl className="space-y-0.5">
           <PropertyRow label={t("workspace.imageCount")} value={images.length.toLocaleString()} />
           <PropertyRow label={t("workspace.annotated")} value={`${annotatedImages} / ${images.length}`} />
+          <PropertyRow
+            label={t("workspace.problemItems")}
+            value={problemItems.toLocaleString()}
+            action={
+              <button
+                type="button"
+                className="no-drag inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-slate-500 transition hover:bg-slate-100 hover:text-slate-900 disabled:cursor-wait disabled:opacity-50"
+                disabled={isCheckingProblemItems || !canCheckProblemItems}
+                onClick={() => void checkProblemItems(selectedProject)}
+                title={t("workspace.checkProblemItems")}
+              >
+                <RefreshCw
+                  size={14}
+                  className={cn(isCheckingProblemItems && "animate-spin")}
+                />
+              </button>
+            }
+          />
           <PropertyRow label={t("workspace.annotationTypes")} value={annotationTypeNames || "-"} />
           <PropertyRow label={t("workspace.fileSize")} value={formatBytes(totalSize)} />
         </dl>
@@ -164,8 +195,10 @@ export function DatasetWorkspace() {
     selectedProjectId,
     selectedImageIds,
     search,
+    isCheckingProblemItems,
     setSearch,
-    setWorkspaceTab
+    setWorkspaceTab,
+    checkProblemItems
   } = useDatasetStore();
   const selectedProject = flattenProjects(projects).find(
     (project) => project.id === selectedProjectId
@@ -189,6 +222,10 @@ export function DatasetWorkspace() {
     const visibleImageIds = new Set(visibleImages.map((image) => image.id));
     return selectedImageIds.filter((imageId) => visibleImageIds.has(imageId)).length;
   }, [selectedImageIds, visibleImages]);
+  const visibleProblemItemCount = useMemo(
+    () => visibleImages.filter((image) => image.sourceMissing).length,
+    [visibleImages]
+  );
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -202,8 +239,17 @@ export function DatasetWorkspace() {
               ) : null}
               <span className="font-semibold">{selectedProject?.name}</span>
             </span>
-            <span className="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-normal text-slate-500">
-              {t("toolbar.datasetCount", { count: visibleImages.length })}
+            <span
+              className={cn(
+                "shrink-0 rounded-full px-2 py-0.5 text-[11px] font-normal",
+                visibleProblemItemCount > 0
+                  ? "bg-orange-100 text-orange-700"
+                  : "bg-slate-100 text-slate-500"
+              )}
+            >
+              {visibleProblemItemCount > 0
+                ? `${visibleProblemItemCount}/${visibleImages.length}`
+                : t("toolbar.datasetCount", { count: visibleImages.length })}
             </span>
             {selectedVisibleImageCount > 0 ? (
               <span className="shrink-0 rounded-full bg-slate-900 px-2 py-0.5 text-[11px] font-normal text-white">
@@ -250,7 +296,13 @@ export function DatasetWorkspace() {
       </div>
 
       {activeTab === "overview" ? (
-        <DatasetOverview images={visibleImages} selectedProject={selectedProject} profiles={profiles} />
+        <DatasetOverview
+          images={visibleImages}
+          selectedProject={selectedProject}
+          profiles={profiles}
+          isCheckingProblemItems={isCheckingProblemItems}
+          checkProblemItems={checkProblemItems}
+        />
       ) : activeTab === "grid" ? (
         <DatasetGrid images={visibleImages} />
       ) : (

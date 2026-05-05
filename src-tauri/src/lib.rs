@@ -14,7 +14,7 @@ mod wd14_tagger;
 mod window_region;
 mod window_rendering;
 
-use tauri::{Manager, WebviewWindowBuilder};
+use tauri::{Manager, WebviewWindowBuilder, WindowEvent};
 #[cfg(target_os = "windows")]
 use tauri::{PhysicalSize, Size};
 
@@ -30,6 +30,17 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
+        .on_window_event(|window, event| {
+            #[cfg(target_os = "windows")]
+            if window.label() == "main" {
+                match event {
+                    WindowEvent::Resized(_) | WindowEvent::ScaleFactorChanged { .. } => {
+                        window_region::sync_maximized_region(window);
+                    }
+                    _ => {}
+                }
+            }
+        })
         .on_page_load(|webview, _payload| {
             if webview.label() != "main" {
                 return;
@@ -128,12 +139,14 @@ pub fn run() {
             commands::finish_startup,
             commands::list_images,
             commands::list_annotation_profiles,
+            commands::check_problem_items,
             commands::get_gemini_settings,
             commands::save_gemini_settings,
             commands::fetch_gemini_models,
             commands::test_gemini_connection,
             commands::generate_gemini_annotation,
             commands::generate_wd14_annotation,
+            commands::generate_wd14_annotations,
             commands::get_python_env_settings,
             commands::save_python_env_settings,
             commands::get_model_settings,
@@ -154,6 +167,7 @@ pub fn run() {
             commands::clear_log_files,
             commands::save_annotation,
             commands::save_instruction,
+            commands::save_annotation_changes,
             commands::save_folder_annotation,
             commands::save_folder_instruction,
             commands::create_annotation_profile,
@@ -161,7 +175,10 @@ pub fn run() {
             commands::remove_dataset_folder,
             commands::remove_folder_dataset,
             commands::rename_dataset_folder,
-            commands::export_dataset
+            commands::create_dataset_subfolder,
+            commands::delete_workspace_subfolder,
+            commands::prepare_export_dataset,
+            commands::start_export_dataset
         ])
         .run(tauri::generate_context!())
         .expect("failed to run Datasets Deputy");

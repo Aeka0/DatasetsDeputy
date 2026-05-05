@@ -72,7 +72,11 @@ fn is_windows_11_or_later() -> bool {
             tracing::info!(
                 "操作系统版本检测：build {}，判定为 {}",
                 info.dw_build_number,
-                if is_win11 { "Windows 11+" } else { "Windows 10" }
+                if is_win11 {
+                    "Windows 11+"
+                } else {
+                    "Windows 10"
+                }
             );
             is_win11
         } else {

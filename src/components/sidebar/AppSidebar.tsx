@@ -57,7 +57,6 @@ export function AppSidebar() {
           {profiles.map((profile) => (
             <div key={profile.id} className="rounded-2xl bg-white/[0.055] px-3 py-2">
               <div className="text-sm text-white/86">{profile.name}</div>
-              <div className="text-xs capitalize text-white/44">{profile.formatType}</div>
             </div>
           ))}
         </div>

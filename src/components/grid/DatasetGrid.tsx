@@ -1,5 +1,5 @@
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { Files, ImageIcon } from "lucide-react";
+import { CircleAlert, Files, ImageIcon } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -32,6 +32,7 @@ export function DatasetGrid({ images }: { images: DatasetImage[] }) {
       ? (containerWidth - gridGap * (columnCount - 1)) / columnCount
       : minCardWidth;
   const rowHeight = cardWidth + cardTextHeight + gridGap;
+  const issueIconSize = Math.max(28, Math.min(56, Math.round(cardWidth * 0.24)));
   const rowCount = Math.ceil(images.length / columnCount);
   const virtualizer = useVirtualizer({
     count: rowCount,
@@ -88,7 +89,9 @@ export function DatasetGrid({ images }: { images: DatasetImage[] }) {
                   onClick={() => openImagePreview(image.id)}
                 >
                   <div className="flex aspect-square items-center justify-center overflow-hidden rounded-md bg-slate-100">
-                    {image.thumbnailPath ? (
+                    {image.sourceMissing ? (
+                      <CircleAlert size={issueIconSize} className="text-red-600" />
+                    ) : image.thumbnailPath ? (
                       <img
                         src={resolveAssetSrc(image.thumbnailPath)}
                         alt=""

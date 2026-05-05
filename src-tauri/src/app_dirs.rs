@@ -88,6 +88,36 @@ pub fn dataset_database_path(dirs: &AppDirs, dataset_path: &Path) -> PathBuf {
         .join(format!("{stem}-{}.sqlite", &hash[..16]))
 }
 
+pub fn dataset_database_path_for_kind(
+    dirs: &AppDirs,
+    dataset_path: &Path,
+    source_kind: &str,
+) -> PathBuf {
+    if source_kind == "database" {
+        return dataset_database_path(dirs, dataset_path);
+    }
+
+    let normalized = dataset_path
+        .to_string_lossy()
+        .replace('\\', "/")
+        .trim_end_matches('/')
+        .to_ascii_lowercase();
+    let mut hasher = Sha256::new();
+    hasher.update(source_kind.as_bytes());
+    hasher.update(b":");
+    hasher.update(normalized.as_bytes());
+    let hash = format!("{:x}", hasher.finalize());
+    let stem = dataset_path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .map(sanitize_file_stem)
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| "dataset".to_owned());
+
+    dirs.dataset_databases
+        .join(format!("{stem}-{source_kind}-{}.sqlite", &hash[..16]))
+}
+
 fn sanitize_file_stem(value: &str) -> String {
     value
         .chars()

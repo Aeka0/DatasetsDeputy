@@ -467,6 +467,7 @@ pub fn install_managed_onnx_dependencies(
         "pip".to_owned(),
         "install".to_owned(),
         package.to_owned(),
+        "Pillow".to_owned(),
     ];
     let install = run_capture(&python_path.to_string_lossy(), &args)?;
     Ok(PythonEnvInstallResult {

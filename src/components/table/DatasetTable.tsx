@@ -1,5 +1,5 @@
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { Check, ChevronDown, ImageIcon, LoaderCircle, Save } from "lucide-react";
+import { Check, ChevronDown, CircleAlert, ImageIcon, LoaderCircle, Save } from "lucide-react";
 import type {
   MouseEvent as ReactMouseEvent,
   PointerEvent as ReactPointerEvent
@@ -11,7 +11,7 @@ import { useTranslation } from "react-i18next";
 import { cn } from "../../lib/cn";
 import { resolveAssetSrc } from "../../lib/tauri";
 import { useDatasetStore } from "../../stores/datasetStore";
-import type { Annotation, DatasetImage } from "../../types";
+import type { Annotation, AnnotationChange, DatasetImage } from "../../types";
 
 const rowHeight = 120;
 type CellKind = "annotation" | "instruction";
@@ -111,8 +111,7 @@ export function DatasetTable({ images }: { images: DatasetImage[] }) {
     updateTableAnnotationDraft,
     updateTableInstructionDraft,
     markTableCellSaved,
-    saveAnnotation: persistAnnotation,
-    saveInstruction
+    saveAnnotationChanges
   } = useDatasetStore();
   const parentRef = useRef<HTMLDivElement>(null);
   const headerScrollRef = useRef<HTMLDivElement>(null);
@@ -135,7 +134,9 @@ export function DatasetTable({ images }: { images: DatasetImage[] }) {
   );
   const selectedProfileId = availableProfiles.some((profile) => profile.id === activeProfileId)
     ? activeProfileId
-    : availableProfiles[0]?.id;
+    : isFolderMode
+      ? availableProfiles[0]?.id
+      : undefined;
   const selectedProfile = availableProfiles.find((profile) => profile.id === selectedProfileId);
   useEffect(() => {
     if (!selectedProfileId) return;
@@ -293,21 +294,38 @@ export function DatasetTable({ images }: { images: DatasetImage[] }) {
     [annotationDrafts, images, instructionDrafts, selectedProfileId]
   );
 
-  const saveAnnotationDraft = async (image: DatasetImage) => {
+  const saveDraftsForImages = async (targetImages: DatasetImage[]) => {
     if (!selectedProfileId) return;
-    const draft = annotationDrafts[image.id] ?? "";
-    if (draft === getAnnotationText(image, selectedProfileId)) return;
-    await persistAnnotation(image.id, selectedProfileId, draft);
-    markTableCellSaved(createCellKey(image.id, "annotation"));
-  };
 
-  const saveInstructionDraft = async (image: DatasetImage) => {
-    if (!selectedProfileId) return;
-    const draft = instructionDrafts[image.id] ?? "";
-    const annotation = getAnnotationForProfile(image, selectedProfileId);
-    if (draft === getInstructionText(annotation)) return;
-    await saveInstruction(image.id, selectedProfileId, draft);
-    markTableCellSaved(createCellKey(image.id, "instruction"));
+    const changes: AnnotationChange[] = [];
+    const savedCellKeys: string[] = [];
+    for (const image of targetImages) {
+      const annotationKey = createCellKey(image.id, "annotation");
+      const instructionKey = createCellKey(image.id, "instruction");
+      const change: AnnotationChange = {
+        imageId: image.id,
+        profileId: selectedProfileId
+      };
+
+      if (dirtyCells.has(annotationKey)) {
+        change.content = annotationDrafts[image.id] ?? "";
+        savedCellKeys.push(annotationKey);
+      }
+      if (dirtyCells.has(instructionKey)) {
+        change.instruction = instructionDrafts[image.id] ?? "";
+        savedCellKeys.push(instructionKey);
+      }
+      if (change.content !== undefined || change.instruction !== undefined) {
+        changes.push(change);
+      }
+    }
+
+    if (changes.length === 0) return;
+
+    await saveAnnotationChanges(changes);
+    for (const key of savedCellKeys) {
+      markTableCellSaved(key);
+    }
   };
 
   const saveDirtyCells = async () => {
@@ -315,14 +333,7 @@ export function DatasetTable({ images }: { images: DatasetImage[] }) {
 
     setIsSaving(true);
     try {
-      for (const image of images) {
-        if (dirtyCells.has(createCellKey(image.id, "annotation"))) {
-          await saveAnnotationDraft(image);
-        }
-        if (dirtyCells.has(createCellKey(image.id, "instruction"))) {
-          await saveInstructionDraft(image);
-        }
-      }
+      await saveDraftsForImages(images);
     } finally {
       setIsSaving(false);
     }
@@ -338,12 +349,7 @@ export function DatasetTable({ images }: { images: DatasetImage[] }) {
 
     setIsSaving(true);
     try {
-      if (dirtyCells.has(annotationKey)) {
-        await saveAnnotationDraft(image);
-      }
-      if (dirtyCells.has(instructionKey)) {
-        await saveInstructionDraft(image);
-      }
+      await saveDraftsForImages([image]);
     } finally {
       setIsSaving(false);
     }
@@ -529,7 +535,9 @@ export function DatasetTable({ images }: { images: DatasetImage[] }) {
                   onClick={() => openImagePreview(image.id)}
                 >
                   <div className="flex h-[100px] w-[116px] items-center justify-center overflow-hidden bg-slate-100">
-                    {image.thumbnailPath ? (
+                    {image.sourceMissing ? (
+                      <CircleAlert size={34} className="text-red-600" />
+                    ) : image.thumbnailPath ? (
                       <img
                         src={resolveAssetSrc(image.thumbnailPath)}
                         alt=""

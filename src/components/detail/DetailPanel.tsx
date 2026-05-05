@@ -1,4 +1,4 @@
-import { LoaderCircle, Save, X } from "lucide-react";
+import { CircleAlert, LoaderCircle, Save, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -32,9 +32,12 @@ export function DetailPanel() {
     () => profiles.filter((profile) => availableProfileIds.has(profile.id)),
     [availableProfileIds, profiles]
   );
+  const isFolderImage = selectedImage?.sourceKind === "folder";
   const selectedProfileId = availableProfiles.some((profile) => profile.id === activeProfileId)
     ? activeProfileId
-    : availableProfiles[0]?.id;
+    : isFolderImage
+      ? availableProfiles[0]?.id
+      : undefined;
   const selectedAnnotation = selectedImage?.annotations.find(
     (annotation) => annotation.profileId === selectedProfileId
   );
@@ -69,7 +72,9 @@ export function DetailPanel() {
 
       <div className="min-h-0 flex-1 space-y-5 overflow-auto p-5">
         <div className="flex aspect-[4/3] items-center justify-center overflow-hidden rounded-3xl bg-white/[0.055]">
-          {selectedImage.thumbnailPath ? (
+          {selectedImage.sourceMissing ? (
+            <CircleAlert size={64} className="text-red-500" />
+          ) : selectedImage.thumbnailPath ? (
             <img
               src={resolveAssetSrc(selectedImage.thumbnailPath)}
               alt=""

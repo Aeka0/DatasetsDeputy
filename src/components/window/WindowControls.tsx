@@ -4,20 +4,30 @@ import { useEffect, useState } from "react";
 
 import { hasTauriRuntime } from "../../lib/tauri";
 
+function setDocumentMaximizedState(isMaximized: boolean) {
+  document.documentElement.dataset.windowMaximized = isMaximized ? "true" : "false";
+}
+
 export function WindowControls() {
   const [isMaximized, setIsMaximized] = useState(false);
 
   useEffect(() => {
     if (!hasTauriRuntime()) return;
     const currentWindow = getCurrentWindow();
-    
-    // Initial check
-    currentWindow.isMaximized().then(setIsMaximized).catch(console.error);
 
-    // Listen for resize events to update the maximize icon
-    const unlistenPromise = currentWindow.onResized(() => {
-      currentWindow.isMaximized().then(setIsMaximized).catch(console.error);
-    });
+    const refreshMaximizedState = () => {
+      currentWindow
+        .isMaximized()
+        .then((maximized) => {
+          setIsMaximized(maximized);
+          setDocumentMaximizedState(maximized);
+        })
+        .catch(console.error);
+    };
+    
+    refreshMaximizedState();
+
+    const unlistenPromise = currentWindow.onResized(refreshMaximizedState);
 
     return () => {
       unlistenPromise.then((unlisten) => unlisten()).catch(console.error);

@@ -1,23 +1,25 @@
 use std::{
+    collections::HashSet,
     fs,
-    path::{Path, PathBuf},
+    path::{Component, Path, PathBuf},
 };
 
+use serde::Deserialize;
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_dialog::DialogExt;
 
 use crate::{
     app_dirs,
-    db::{AnnotationProfile, Database, DatasetImage},
+    db::{AnnotationChange, AnnotationProfile, Database, DatasetImage, ImageSourceMetadata},
     errors::{AppError, AppResult},
-    export::{self, ExportRequest},
+    export::{self, ExportDatasetRequest, ExportItem, ExportPreview, PreparedExport},
     files::{self, ImportPreview, ImportSummary},
     folders,
     gemini::{self, GeminiSettings},
     model_settings::{self, ModelSettings},
     python_env::{self, PythonEnvInstallResult, PythonEnvProbeReport, PythonEnvSettings},
-    wd14_tagger,
+    thumbnail, wd14_tagger,
     window_rendering::{self, WindowRenderingSettings},
     AppState,
 };
@@ -72,9 +74,27 @@ pub struct LogFilesInfo {
 
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct ProblemItemCheckSummary {
+    pub checked: usize,
+    pub updated: usize,
+    pub missing: usize,
+    pub failed: usize,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ModelPathSelection {
     pub path: String,
     pub model_type: String,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SaveAnnotationChange {
+    pub image_id: i64,
+    pub profile_id: i64,
+    pub content: Option<String>,
+    pub instruction: Option<String>,
 }
 
 #[tauri::command]
@@ -165,32 +185,57 @@ fn open_database_by_prefix(
     Ok((open_database(&db_ref.path)?, db_ref.path))
 }
 
-fn namespace_profile(mut profile: AnnotationProfile, prefix: i64) -> AnnotationProfile {
+fn namespace_profile(
+    mut profile: AnnotationProfile,
+    prefix: i64,
+    source_kind: &str,
+) -> AnnotationProfile {
     profile.id = to_public_id(prefix, profile.id);
-    profile.source_kind = Some("database".to_owned());
-    profile.dataset_id = Some(format!("database:{prefix}"));
+    profile.source_kind = Some(source_kind.to_owned());
+    profile.dataset_id = Some(format!("{source_kind}:{prefix}"));
     profile
 }
 
 fn namespace_image(
     mut image: DatasetImage,
     prefix: i64,
+    source_kind: &str,
     root_path: Option<String>,
 ) -> DatasetImage {
+    let source_path = if source_kind == "asset" {
+        image.storage_path.as_deref().unwrap_or(&image.path)
+    } else {
+        &image.path
+    };
     image.id = to_public_id(prefix, image.id);
     for annotation in &mut image.annotations {
         annotation.id = to_public_id(prefix, annotation.id);
         annotation.image_id = to_public_id(prefix, annotation.image_id);
         annotation.profile_id = to_public_id(prefix, annotation.profile_id);
     }
-    image.source_kind = Some("database".to_owned());
-    image.dataset_id = Some(format!("database:{prefix}"));
+    image.source_missing = !Path::new(source_path).is_file();
+    image.source_kind = Some(source_kind.to_owned());
+    image.dataset_id = Some(format!("{source_kind}:{prefix}"));
     image.root_path = root_path;
     image
 }
 
 fn normalize_path(value: &str) -> String {
     value.replace('\\', "/").trim_end_matches('/').to_owned()
+}
+
+fn normalize_database_source_kind(value: Option<String>) -> AppResult<String> {
+    match value
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        Some("asset") => Ok("asset".to_owned()),
+        Some("database") | None => Ok("database".to_owned()),
+        Some(other) => Err(AppError::InvalidInput(format!(
+            "不支持的数据管理模式：{other}"
+        ))),
+    }
 }
 
 fn sqlite_sidecar_paths(path: &Path) -> [PathBuf; 3] {
@@ -208,6 +253,59 @@ fn remove_sqlite_files(path: &Path) -> AppResult<()> {
         }
     }
     Ok(())
+}
+
+fn output_folder_name_from_path(path: &Path) -> String {
+    path.file_stem()
+        .and_then(|value| value.to_str())
+        .map(sanitize_output_folder_name)
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| "dataset".to_owned())
+}
+
+fn sanitize_output_folder_name(value: &str) -> String {
+    value
+        .chars()
+        .map(|character| {
+            if character.is_ascii_alphanumeric() || matches!(character, '-' | '_' | '.' | ' ') {
+                character
+            } else {
+                '_'
+            }
+        })
+        .collect::<String>()
+        .trim()
+        .trim_matches('.')
+        .to_owned()
+}
+
+fn export_relative_path(path: &Path, root_path: Option<&str>) -> PathBuf {
+    let relative = root_path
+        .map(Path::new)
+        .and_then(|root| path.strip_prefix(root).ok())
+        .filter(|relative| {
+            !relative.as_os_str().is_empty()
+                && relative
+                    .components()
+                    .all(|component| matches!(component, Component::Normal(_) | Component::CurDir))
+        })
+        .map(Path::to_path_buf);
+
+    relative.unwrap_or_else(|| {
+        path.file_name()
+            .map(PathBuf::from)
+            .unwrap_or_else(|| PathBuf::from("image"))
+    })
+}
+
+fn source_size(path: &Path, fallback: Option<i64>) -> AppResult<u64> {
+    if let Ok(metadata) = fs::metadata(path) {
+        return Ok(metadata.len());
+    }
+
+    Ok(fallback
+        .and_then(|value| u64::try_from(value).ok())
+        .unwrap_or(0))
 }
 
 fn directory_size(path: &Path) -> AppResult<u64> {
@@ -272,8 +370,14 @@ fn list_images_for_dirs(dirs: &app_dirs::AppDirs) -> AppResult<Vec<DatasetImage>
     for db_ref in dataset_database_refs(dirs)? {
         let db = open_database(&db_ref.path)?;
         let root_path = db.dataset_root_path()?;
+        let source_kind = db.dataset_source_kind()?;
         for image in db.list_images()? {
-            images.push(namespace_image(image, db_ref.prefix, root_path.clone()));
+            images.push(namespace_image(
+                image,
+                db_ref.prefix,
+                &source_kind,
+                root_path.clone(),
+            ));
         }
     }
     images.extend(folders::list_folder_images(dirs)?);
@@ -286,12 +390,117 @@ fn list_annotation_profiles_for_dirs(
     let mut profiles = Vec::new();
     for db_ref in dataset_database_refs(dirs)? {
         let db = open_database(&db_ref.path)?;
+        let source_kind = db.dataset_source_kind()?;
         for profile in db.list_annotation_profiles()? {
-            profiles.push(namespace_profile(profile, db_ref.prefix));
+            profiles.push(namespace_profile(profile, db_ref.prefix, &source_kind));
         }
     }
     profiles.extend(folders::list_folder_profiles(dirs)?);
     Ok(profiles)
+}
+
+fn check_database_problem_items(
+    dirs: &app_dirs::AppDirs,
+    prefix: i64,
+    expected_source_kind: &str,
+    local_image_ids: Option<HashSet<i64>>,
+) -> AppResult<ProblemItemCheckSummary> {
+    let (mut db, _) = open_database_by_prefix(dirs, prefix)?;
+    let source_kind = db.dataset_source_kind()?;
+    if source_kind != expected_source_kind {
+        return Err(AppError::InvalidInput(format!(
+            "数据集类型不匹配：期望 {expected_source_kind}，实际 {source_kind}"
+        )));
+    }
+
+    let thumbnail_dir = files::default_thumbnail_dir(&dirs.root);
+    let mut summary = ProblemItemCheckSummary {
+        checked: 0,
+        updated: 0,
+        missing: 0,
+        failed: 0,
+    };
+
+    for image in db.list_images()? {
+        if local_image_ids
+            .as_ref()
+            .is_some_and(|ids| !ids.contains(&image.id))
+        {
+            continue;
+        }
+        summary.checked += 1;
+        let source_path = if source_kind == "asset" {
+            image.storage_path.as_deref().unwrap_or(&image.path)
+        } else {
+            &image.path
+        };
+        let source_path = PathBuf::from(source_path);
+        if !source_path.is_file() {
+            summary.missing += 1;
+            continue;
+        }
+        if source_kind != "database" {
+            continue;
+        }
+
+        let result = (|| -> AppResult<bool> {
+            let hash = files::hash_file(&source_path)?;
+            if image.file_hash.as_deref() == Some(hash.as_str()) {
+                return Ok(false);
+            }
+
+            let metadata = fs::metadata(&source_path)?;
+            let thumbnail = thumbnail::create_thumbnail(&source_path, &thumbnail_dir, &hash)?;
+            db.update_image_source_metadata(
+                image.id,
+                &ImageSourceMetadata {
+                    file_size: metadata.len() as i64,
+                    file_hash: hash,
+                    thumbnail_path: Some(thumbnail.path),
+                    width: Some(thumbnail.width),
+                    height: Some(thumbnail.height),
+                },
+            )?;
+            Ok(true)
+        })();
+
+        match result {
+            Ok(true) => summary.updated += 1,
+            Ok(false) => {}
+            Err(error) => {
+                summary.failed += 1;
+                tracing::warn!("问题条目检查失败：{:?}：{}", source_path, error);
+            }
+        }
+    }
+
+    Ok(summary)
+}
+
+fn check_folder_problem_items(dataset_id: &str) -> AppResult<ProblemItemCheckSummary> {
+    let folder_root = dataset_id
+        .strip_prefix("folder:")
+        .filter(|value| !value.is_empty())
+        .map(PathBuf::from)
+        .ok_or_else(|| {
+            AppError::InvalidInput(format!("Invalid folder dataset id: {dataset_id}"))
+        })?;
+    if !folder_root.is_dir() {
+        return Ok(ProblemItemCheckSummary {
+            checked: 0,
+            updated: 0,
+            missing: 1,
+            failed: 0,
+        });
+    }
+
+    let missing = folders::count_orphan_sidecar_items(&folder_root);
+    Ok(ProblemItemCheckSummary {
+        checked: missing,
+        updated: 0,
+        missing,
+        failed: 0,
+    })
 }
 
 #[tauri::command]
@@ -310,6 +519,57 @@ pub async fn list_annotation_profiles(
     tauri::async_runtime::spawn_blocking(move || list_annotation_profiles_for_dirs(&dirs))
         .await
         .map_err(|error| AppError::InvalidInput(format!("Profile listing task failed: {error}")))?
+}
+
+#[tauri::command]
+pub async fn check_problem_items(
+    state: State<'_, AppState>,
+    dataset_id: String,
+    image_ids: Option<Vec<i64>>,
+) -> AppResult<ProblemItemCheckSummary> {
+    let dirs = state.dirs.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        if let Some(prefix_value) = dataset_id.strip_prefix("database:") {
+            let prefix = prefix_value.parse::<i64>().map_err(|_| {
+                AppError::InvalidInput(format!("Invalid database dataset id: {dataset_id}"))
+            })?;
+            let local_image_ids = image_ids
+                .map(|ids| {
+                    ids.into_iter()
+                        .filter_map(|id| split_public_id(id).ok())
+                        .filter_map(|(id_prefix, local_id)| {
+                            (id_prefix == prefix).then_some(local_id)
+                        })
+                        .collect::<HashSet<_>>()
+                })
+                .filter(|ids| !ids.is_empty());
+            return check_database_problem_items(&dirs, prefix, "database", local_image_ids);
+        }
+        if let Some(prefix_value) = dataset_id.strip_prefix("asset:") {
+            let prefix = prefix_value.parse::<i64>().map_err(|_| {
+                AppError::InvalidInput(format!("Invalid asset dataset id: {dataset_id}"))
+            })?;
+            let local_image_ids = image_ids
+                .map(|ids| {
+                    ids.into_iter()
+                        .filter_map(|id| split_public_id(id).ok())
+                        .filter_map(|(id_prefix, local_id)| {
+                            (id_prefix == prefix).then_some(local_id)
+                        })
+                        .collect::<HashSet<_>>()
+                })
+                .filter(|ids| !ids.is_empty());
+            return check_database_problem_items(&dirs, prefix, "asset", local_image_ids);
+        }
+        if dataset_id.starts_with("folder:") {
+            return check_folder_problem_items(&dataset_id);
+        }
+        Err(AppError::InvalidInput(format!(
+            "Unsupported dataset id: {dataset_id}"
+        )))
+    })
+    .await
+    .map_err(|error| AppError::InvalidInput(format!("问题条目检查任务失败：{error}")))?
 }
 
 #[tauri::command]
@@ -373,6 +633,28 @@ pub async fn generate_wd14_annotation(
     })
     .await
     .map_err(|error| AppError::InvalidInput(format!("WD14 标注任务失败：{error}")))?
+}
+
+#[tauri::command]
+pub async fn generate_wd14_annotations(
+    state: State<'_, AppState>,
+    image_paths: Vec<String>,
+) -> AppResult<Vec<String>> {
+    let dirs = state.dirs.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let paths = image_paths
+            .into_iter()
+            .map(PathBuf::from)
+            .collect::<Vec<_>>();
+        wd14_tagger::generate_annotations(&dirs, &paths).map(|results| {
+            results
+                .into_iter()
+                .map(|result| result.positive_prompt)
+                .collect()
+        })
+    })
+    .await
+    .map_err(|error| AppError::InvalidInput(format!("WD14 annotation task failed: {error}")))?
 }
 
 #[tauri::command]
@@ -594,6 +876,7 @@ pub fn start_import_folder(
     app: AppHandle,
     folder_path: String,
     annotation_type: Option<String>,
+    import_mode: Option<String>,
 ) -> AppResult<()> {
     let folder = std::path::PathBuf::from(&folder_path);
     if !folder.is_dir() {
@@ -604,7 +887,9 @@ pub fn start_import_folder(
 
     let dirs = app_dirs::ensure_release_dirs(&app)?;
     let thumbnail_dir = files::default_thumbnail_dir(&dirs.root);
-    let database_path = app_dirs::dataset_database_path(&dirs, &folder);
+    let source_kind = normalize_database_source_kind(import_mode)?;
+    let asset_dir = dirs.datasets.join("assets");
+    let database_path = app_dirs::dataset_database_path_for_kind(&dirs, &folder, &source_kind);
     let app_for_thread = app.clone();
     let root_name = folder
         .file_name()
@@ -614,9 +899,10 @@ pub fn start_import_folder(
     let root_path = folder.to_string_lossy().to_string();
 
     tracing::info!(
-        "Starting background folder import: {:?}, annotation_type={:?}",
+        "开始后台导入数据集：{:?}，标注类型={:?}，数据模式={}",
         folder,
-        annotation_type
+        annotation_type,
+        source_kind
     );
     std::thread::spawn(move || {
         let emit_progress = |progress: ImportProgress| {
@@ -638,12 +924,12 @@ pub fn start_import_folder(
         });
 
         let mut db = match open_database(&database_path).and_then(|mut db| {
-            db.set_dataset_metadata(&root_name, &root_path)?;
+            db.set_dataset_metadata(&root_name, &root_path, &source_kind)?;
             Ok(db)
         }) {
             Ok(db) => db,
             Err(error) => {
-                tracing::error!("Background import failed to open database: {}", error);
+                tracing::error!("后台导入打开数据库失败：{}", error);
                 emit_progress(ImportProgress {
                     phase: "failed".to_owned(),
                     processed: 0,
@@ -679,11 +965,7 @@ pub fn start_import_folder(
             Some(import_profile_name) => match db.ensure_import_profile(import_profile_name) {
                 Ok(profile_id) => Some(profile_id),
                 Err(error) => {
-                    tracing::warn!(
-                        "Failed to create import annotation profile {:?}: {}",
-                        import_profile_name,
-                        error
-                    );
+                    tracing::warn!("创建导入标注类型失败：{:?}：{}", import_profile_name, error);
                     None
                 }
             },
@@ -716,7 +998,14 @@ pub fn start_import_folder(
         });
 
         for (index, path) in paths.iter().enumerate() {
-            match files::import_image(&mut db, path, &thumbnail_dir, import_profile_id) {
+            let import_asset_dir = (source_kind == "asset").then_some(asset_dir.as_path());
+            match files::import_image(
+                &mut db,
+                path,
+                &thumbnail_dir,
+                import_asset_dir,
+                import_profile_id,
+            ) {
                 Ok(result) => {
                     if result.inserted {
                         summary.imported += 1;
@@ -732,7 +1021,7 @@ pub fn start_import_folder(
                 }
                 Err(error) => {
                     summary.failed += 1;
-                    tracing::warn!("Image import failed for {:?}: {}", path, error);
+                    tracing::warn!("图片导入失败：{:?}：{}", path, error);
                     failures.push(ImportFailure {
                         file_path: path.to_string_lossy().to_string(),
                         reason: error.to_string(),
@@ -759,7 +1048,7 @@ pub fn start_import_folder(
         }
 
         tracing::info!(
-            "Background folder import finished: imported={}, skipped={}, failed={}",
+            "后台数据集导入完成：imported={}, skipped={}, failed={}",
             summary.imported,
             summary.skipped,
             summary.failed
@@ -849,6 +1138,50 @@ pub fn save_instruction(
 }
 
 #[tauri::command]
+pub fn save_annotation_changes(
+    state: State<'_, AppState>,
+    changes: Vec<SaveAnnotationChange>,
+) -> AppResult<()> {
+    let mut changes_by_prefix = std::collections::BTreeMap::<i64, Vec<AnnotationChange>>::new();
+
+    for change in changes {
+        if change.content.is_none() && change.instruction.is_none() {
+            continue;
+        }
+
+        let (image_prefix, local_image_id) = split_public_id(change.image_id)?;
+        let (profile_prefix, local_profile_id) = split_public_id(change.profile_id)?;
+        if image_prefix != profile_prefix {
+            return Err(AppError::InvalidInput(
+                "Image and annotation profile belong to different dataset databases".to_owned(),
+            ));
+        }
+
+        changes_by_prefix
+            .entry(image_prefix)
+            .or_default()
+            .push(AnnotationChange {
+                image_id: local_image_id,
+                profile_id: local_profile_id,
+                content: change.content,
+                instruction: change.instruction,
+            });
+    }
+
+    for (prefix, local_changes) in changes_by_prefix {
+        let (mut db, _) = open_database_by_prefix(&state.dirs, prefix)?;
+        tracing::info!(
+            "批量保存标注改动：dataset_prefix={}, changes={}",
+            prefix,
+            local_changes.len()
+        );
+        db.upsert_annotation_changes(local_changes)?;
+    }
+
+    Ok(())
+}
+
+#[tauri::command]
 pub fn create_annotation_profile(
     state: State<'_, AppState>,
     name: String,
@@ -891,13 +1224,21 @@ pub fn clear_annotation(state: State<'_, AppState>, annotation_id: i64) -> AppRe
 }
 
 #[tauri::command]
-pub fn remove_dataset_folder(state: State<'_, AppState>, folder_path: String) -> AppResult<usize> {
+pub fn remove_dataset_folder(
+    state: State<'_, AppState>,
+    folder_path: String,
+    source_kind: Option<String>,
+) -> AppResult<usize> {
     tracing::info!("Removing dataset folder records for path={}", folder_path);
     let normalized_folder = normalize_path(&folder_path);
+    let source_kind = normalize_database_source_kind(source_kind)?;
     let mut removed = 0;
 
     for db_ref in dataset_database_refs(&state.dirs)? {
         let mut db = open_database(&db_ref.path)?;
+        if db.dataset_source_kind()? != source_kind {
+            continue;
+        }
         let root_path = db.dataset_root_path()?.map(|value| normalize_path(&value));
         let image_count = db.list_images()?.len();
 
@@ -962,15 +1303,243 @@ pub fn rename_dataset_folder(
 }
 
 #[tauri::command]
-pub fn export_dataset(state: State<'_, AppState>, request: ExportRequest) -> AppResult<usize> {
-    let mut images = Vec::new();
-    for db_ref in dataset_database_refs(&state.dirs)? {
+pub fn create_dataset_subfolder(folder_path: String, name: String) -> AppResult<String> {
+    let new_path = renamed_folder_path(&format!("{folder_path}/placeholder"), &name)?;
+    let parent = PathBuf::from(&folder_path);
+    if !parent.is_dir() {
+        return Err(AppError::InvalidInput(format!(
+            "父文件夹不存在：{folder_path}"
+        )));
+    }
+    if new_path.exists() {
+        return Err(AppError::InvalidInput(format!(
+            "目标文件夹已存在：{}",
+            new_path.to_string_lossy()
+        )));
+    }
+
+    fs::create_dir_all(&new_path)?;
+    tracing::info!("已创建数据集子文件夹：{:?}", new_path);
+    Ok(new_path.to_string_lossy().to_string())
+}
+
+#[tauri::command]
+pub fn delete_workspace_subfolder(folder_path: String) -> AppResult<()> {
+    let path = PathBuf::from(&folder_path);
+    if !path.is_dir() {
+        return Err(AppError::InvalidInput(format!(
+            "工作文件夹子目录不存在：{folder_path}"
+        )));
+    }
+
+    tracing::info!("正在删除工作文件夹子目录及其全部内容：{:?}", path);
+    fs::remove_dir_all(path)?;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn prepare_export_dataset(
+    state: State<'_, AppState>,
+    request: ExportDatasetRequest,
+) -> AppResult<ExportPreview> {
+    let dirs = state.dirs.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let prepared = prepare_export(&dirs, &request)?;
+        Ok(export::estimate_export(
+            &prepared.items,
+            &prepared.output_dir,
+        ))
+    })
+    .await
+    .map_err(|error| AppError::InvalidInput(format!("Export preview task failed: {error}")))?
+}
+
+#[tauri::command]
+pub fn start_export_dataset(app: AppHandle, request: ExportDatasetRequest) -> AppResult<()> {
+    let dirs = app_dirs::ensure_release_dirs(&app)?;
+    let app_for_thread = app.clone();
+
+    std::thread::spawn(move || {
+        let emit_progress = |progress: export::ExportProgress| {
+            let _ = app_for_thread.emit("export-progress", progress);
+        };
+
+        let prepared = match prepare_export(&dirs, &request) {
+            Ok(prepared) => prepared,
+            Err(error) => {
+                emit_progress(export::ExportProgress {
+                    phase: "failed".to_owned(),
+                    processed: 0,
+                    total: 0,
+                    exported: 0,
+                    failed: 1,
+                    current_path: None,
+                    output_dir: None,
+                    estimated_size_bytes: 0,
+                    written_size_bytes: 0,
+                    done: true,
+                    error: Some(error.to_string()),
+                });
+                return;
+            }
+        };
+
+        if let Err(error) = export::export_dataset(prepared, &emit_progress) {
+            emit_progress(export::ExportProgress {
+                phase: "failed".to_owned(),
+                processed: 0,
+                total: 0,
+                exported: 0,
+                failed: 1,
+                current_path: None,
+                output_dir: None,
+                estimated_size_bytes: 0,
+                written_size_bytes: 0,
+                done: true,
+                error: Some(error.to_string()),
+            });
+        }
+    });
+
+    Ok(())
+}
+
+fn prepare_export(
+    dirs: &app_dirs::AppDirs,
+    request: &ExportDatasetRequest,
+) -> AppResult<PreparedExport> {
+    let image_ids = request.image_ids.iter().copied().collect::<HashSet<_>>();
+
+    let database_source_kind = if request.dataset_id.starts_with("asset:") {
+        Some("asset")
+    } else if request.dataset_id.starts_with("database:") {
+        Some("database")
+    } else {
+        None
+    };
+
+    if let Some(source_kind) = database_source_kind {
+        let dataset_prefix = format!("{source_kind}:");
+        let prefix_value = request
+            .dataset_id
+            .strip_prefix(dataset_prefix.as_str())
+            .unwrap_or_default();
+        let prefix = prefix_value.parse::<i64>().map_err(|_| {
+            AppError::InvalidInput(format!("Invalid dataset id: {}", request.dataset_id))
+        })?;
+        let db_ref = dataset_database_refs(dirs)?
+            .into_iter()
+            .find(|db_ref| db_ref.prefix == prefix)
+            .ok_or_else(|| {
+                AppError::InvalidInput(format!("Dataset database not found: {prefix}"))
+            })?;
         let db = open_database(&db_ref.path)?;
         let root_path = db.dataset_root_path()?;
-        for image in db.list_images()? {
-            images.push(namespace_image(image, db_ref.prefix, root_path.clone()));
+        let profile_id = request.profile_id.ok_or_else(|| {
+            AppError::InvalidInput("Database export requires an annotation type".to_owned())
+        })?;
+        let (profile_prefix, local_profile_id) = split_public_id(profile_id)?;
+        if profile_prefix != prefix {
+            return Err(AppError::InvalidInput(
+                "Annotation type does not belong to the selected dataset".to_owned(),
+            ));
         }
+
+        let output_dir = request
+            .output_dir
+            .join(output_folder_name_from_path(&db_ref.path));
+        let items = db
+            .list_images()?
+            .into_iter()
+            .filter_map(|image| {
+                let public_id = to_public_id(prefix, image.id);
+                if !image_ids.is_empty() && !image_ids.contains(&public_id) {
+                    return None;
+                }
+
+                let source_path = image
+                    .storage_path
+                    .as_deref()
+                    .map(PathBuf::from)
+                    .unwrap_or_else(|| PathBuf::from(&image.path));
+                let annotation_content = image
+                    .annotations
+                    .iter()
+                    .find(|annotation| annotation.profile_id == local_profile_id)
+                    .map(|annotation| annotation.content.clone())
+                    .unwrap_or_default();
+                let relative_path =
+                    export_relative_path(Path::new(&image.path), root_path.as_deref());
+                Some(
+                    source_size(&source_path, image.file_size).map(|source_size_bytes| {
+                        ExportItem {
+                            source_path,
+                            relative_path,
+                            annotation_content,
+                            source_size_bytes,
+                        }
+                    }),
+                )
+            })
+            .collect::<AppResult<Vec<_>>>()?;
+        let estimated_size_bytes = items
+            .iter()
+            .map(|item| item.source_size_bytes + item.annotation_content.as_bytes().len() as u64)
+            .sum();
+
+        return Ok(PreparedExport {
+            output_dir,
+            items,
+            estimated_size_bytes,
+        });
     }
-    images.extend(folders::list_folder_images(&state.dirs)?);
-    export::export_dataset(&images, request)
+
+    if request.dataset_id.starts_with("folder:") {
+        let folder_root = request
+            .dataset_id
+            .strip_prefix("folder:")
+            .filter(|value| !value.is_empty())
+            .map(PathBuf::from)
+            .ok_or_else(|| {
+                AppError::InvalidInput(format!("Invalid folder dataset id: {}", request.dataset_id))
+            })?;
+        let output_dir = request
+            .output_dir
+            .join(output_folder_name_from_path(&folder_root));
+        let items = folders::list_folder_images(dirs)?
+            .into_iter()
+            .filter(|image| image.dataset_id.as_deref() == Some(request.dataset_id.as_str()))
+            .filter(|image| image_ids.is_empty() || image_ids.contains(&image.id))
+            .map(|image| {
+                let source_path = PathBuf::from(&image.path);
+                let annotation_content = image
+                    .annotations
+                    .first()
+                    .map(|annotation| annotation.content.clone())
+                    .unwrap_or_default();
+                let relative_path = export_relative_path(&source_path, image.root_path.as_deref());
+                source_size(&source_path, image.file_size).map(|source_size_bytes| ExportItem {
+                    source_path,
+                    relative_path,
+                    annotation_content,
+                    source_size_bytes,
+                })
+            })
+            .collect::<AppResult<Vec<_>>>()?;
+        let estimated_size_bytes = items
+            .iter()
+            .map(|item| item.source_size_bytes + item.annotation_content.as_bytes().len() as u64)
+            .sum();
+
+        return Ok(PreparedExport {
+            output_dir,
+            items,
+            estimated_size_bytes,
+        });
+    }
+
+    Err(AppError::InvalidInput(format!(
+        "Unsupported dataset id: {}",
+        request.dataset_id
+    )))
 }

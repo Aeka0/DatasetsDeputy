@@ -1,13 +1,9 @@
+use serde::Deserialize;
 use std::{
     fs,
-    io::Write,
     path::{Path, PathBuf},
     process::Command,
-    time::{SystemTime, UNIX_EPOCH},
 };
-
-use image::imageops::FilterType;
-use serde::Deserialize;
 
 use crate::{
     app_dirs::AppDirs,
@@ -16,7 +12,7 @@ use crate::{
     python_env,
 };
 
-const INPUT_SIZE: u32 = 448;
+const INFERENCE_BATCH_SIZE: usize = 16;
 
 const INFERENCE_SCRIPT: &str = r#"
 import json
@@ -28,8 +24,9 @@ import numpy as np
 payload = json.loads(sys.argv[1])
 model_dir = payload["modelDir"]
 model_type = payload["modelType"]
-input_path = payload["inputPath"]
+input_paths = payload.get("inputPaths") or [payload["inputPath"]]
 tag_count = int(payload["tagCount"])
+batch_size = max(1, int(payload.get("batchSize", 16)))
 
 def first_file(extensions):
     matches = []
@@ -54,23 +51,52 @@ def as_numpy(value):
         value = value[0]
     if hasattr(value, "detach"):
         value = value.detach().cpu().numpy()
-    return np.asarray(value, dtype=np.float32).reshape(-1)
+    return np.asarray(value, dtype=np.float32)
 
-def select_scores(outputs):
+def select_score_matrix(outputs, expected_batch_size):
     best = None
     best_length = -1
     for output in outputs:
-        candidate = np.asarray(output, dtype=np.float32).reshape(-1)
-        if candidate.size == tag_count:
-            return candidate
+        candidate = np.asarray(output, dtype=np.float32)
+        if candidate.ndim >= 2 and candidate.shape[0] == expected_batch_size and candidate.reshape(expected_batch_size, -1).shape[1] == tag_count:
+            return candidate.reshape(expected_batch_size, -1)
+        if candidate.size == expected_batch_size * tag_count:
+            return candidate.reshape(expected_batch_size, tag_count)
+        if expected_batch_size == 1 and candidate.size == tag_count:
+            return candidate.reshape(1, tag_count)
+        candidate = candidate.reshape(-1)
+        if expected_batch_size == 1 and candidate.size == tag_count:
+            return candidate.reshape(1, tag_count)
         if candidate.size > best_length:
             best = candidate
             best_length = candidate.size
     if best is None or best.size == 0:
         raise RuntimeError("model did not return a tensor output")
-    return best
+    return best.reshape(expected_batch_size, -1) if best.size % expected_batch_size == 0 else best.reshape(1, -1)
 
-input_nchw = np.fromfile(input_path, dtype=np.float32).reshape(1, 3, 448, 448)
+def load_image_batch(paths):
+    from PIL import Image
+
+    batch = []
+    for path in paths:
+        image = Image.open(path)
+        if image.mode == "RGBA":
+            background = Image.new("RGB", image.size, (255, 255, 255))
+            background.paste(image, mask=image.split()[3])
+            image = background
+        elif image.mode == "P":
+            image = image.convert("RGBA")
+            background = Image.new("RGB", image.size, (255, 255, 255))
+            background.paste(image, mask=image.split()[3])
+            image = background
+        else:
+            image = image.convert("RGB")
+
+        image = image.resize((448, 448), Image.Resampling.BICUBIC)
+        array = np.asarray(image, dtype=np.float32) / 255.0
+        array = (array - 0.5) / 0.5
+        batch.append(np.transpose(array, (2, 0, 1)))
+    return np.stack(batch, axis=0).astype(np.float32, copy=False)
 
 if model_type == "onnx":
     import onnxruntime as ort
@@ -82,7 +108,7 @@ if model_type == "onnx":
     available = set(ort.get_available_providers())
     providers = [
         provider
-        for provider in ("DmlExecutionProvider", "CUDAExecutionProvider", "CPUExecutionProvider")
+        for provider in ("CUDAExecutionProvider", "DmlExecutionProvider", "CPUExecutionProvider")
         if provider in available
     ]
     if not providers:
@@ -91,18 +117,22 @@ if model_type == "onnx":
     session = ort.InferenceSession(model_path, providers=providers)
     input_meta = session.get_inputs()[0]
     shape = input_meta.shape
-    model_input = input_nchw
-    if len(shape) == 4 and shape[-1] == 3:
-        model_input = np.transpose(input_nchw, (0, 2, 3, 1))
-
-    outputs = session.run(None, {input_meta.name: model_input})
-    scores = select_scores(outputs)
-    print(json.dumps({"scores": scores.tolist(), "provider": session.get_providers()[0]}, ensure_ascii=False))
+    all_scores = []
+    for start in range(0, len(input_paths), batch_size):
+        chunk_paths = input_paths[start:start + batch_size]
+        input_nchw = load_image_batch(chunk_paths)
+        model_input = input_nchw
+        if len(shape) == 4 and shape[-1] == 3:
+            model_input = np.transpose(input_nchw, (0, 2, 3, 1))
+        outputs = session.run(None, {input_meta.name: model_input})
+        all_scores.extend(select_score_matrix(outputs, len(chunk_paths)).tolist())
+    print(json.dumps({"scores": all_scores, "provider": session.get_providers()[0]}, ensure_ascii=False))
 elif model_type == "pytorch":
     import torch
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    tensor = torch.from_numpy(input_nchw).to(device)
+    if device.type == "cuda":
+        torch.backends.cudnn.benchmark = True
 
     if os.path.isfile(os.path.join(model_dir, "config.json")):
         try:
@@ -113,9 +143,13 @@ elif model_type == "pytorch":
             ) from exc
         model = AutoModelForImageClassification.from_pretrained(model_dir).to(device)
         model.eval()
-        with torch.no_grad():
-            output = model(pixel_values=tensor)
-        scores = as_numpy(getattr(output, "logits", output))
+        all_scores = []
+        with torch.inference_mode():
+            for start in range(0, len(input_paths), batch_size):
+                chunk_paths = input_paths[start:start + batch_size]
+                tensor = torch.from_numpy(load_image_batch(chunk_paths)).to(device, non_blocking=True)
+                output = model(pixel_values=tensor)
+                all_scores.extend(as_numpy(getattr(output, "logits", output)).reshape(len(chunk_paths), -1).tolist())
     else:
         model_path = first_file({".pt", ".pth"})
         if model_path is None:
@@ -127,10 +161,14 @@ elif model_type == "pytorch":
                 "PyTorch WD14 inference currently supports TorchScript .pt/.pth files or Hugging Face folders."
             ) from exc
         model.eval()
-        with torch.no_grad():
-            scores = as_numpy(model(tensor))
+        all_scores = []
+        with torch.inference_mode():
+            for start in range(0, len(input_paths), batch_size):
+                chunk_paths = input_paths[start:start + batch_size]
+                tensor = torch.from_numpy(load_image_batch(chunk_paths)).to(device, non_blocking=True)
+                all_scores.extend(as_numpy(model(tensor)).reshape(len(chunk_paths), -1).tolist())
 
-    print(json.dumps({"scores": scores.tolist(), "provider": str(device)}, ensure_ascii=False))
+    print(json.dumps({"scores": all_scores, "provider": str(device)}, ensure_ascii=False))
 else:
     raise RuntimeError("Unknown WD14 model type. Select a folder containing ONNX or PyTorch weights.")
 "#;
@@ -145,7 +183,7 @@ struct TagDefinition {
 
 #[derive(Debug, Deserialize)]
 struct InferencePayload {
-    scores: Vec<f32>,
+    scores: Vec<Vec<f32>>,
     provider: Option<String>,
 }
 
@@ -157,21 +195,47 @@ pub struct Wd14TaggerResult {
 }
 
 pub fn generate_annotation(dirs: &AppDirs, image_path: &Path) -> AppResult<Wd14TaggerResult> {
+    generate_annotations(dirs, &[image_path.to_path_buf()])?
+        .into_iter()
+        .next()
+        .ok_or_else(|| AppError::InvalidInput("WD14 did not return an annotation".to_owned()))
+}
+
+pub fn generate_annotations(
+    dirs: &AppDirs,
+    image_paths: &[PathBuf],
+) -> AppResult<Vec<Wd14TaggerResult>> {
+    if image_paths.is_empty() {
+        return Ok(Vec::new());
+    }
+
     let model_settings = model_settings::load_settings(dirs)?;
     let tagger_settings = model_settings.wd14_tagger;
     let model_dir = resolve_model_dir(&tagger_settings)?;
     let tags = load_tag_definitions(&model_dir)?;
-    let input_path = write_preprocessed_input(dirs, image_path)?;
-
-    let result = run_python_inference(dirs, &tagger_settings, &model_dir, &input_path, tags.len());
-    let _ = fs::remove_file(&input_path);
-
-    let payload = result?;
-    let positive_prompt = build_prompt(&payload.scores, &tags, &tagger_settings)?;
-    Ok(Wd14TaggerResult {
-        positive_prompt,
-        execution_provider: payload.provider.unwrap_or(tagger_settings.model_type),
-    })
+    let payload =
+        run_python_inference(dirs, &tagger_settings, &model_dir, image_paths, tags.len())?;
+    let all_scores = payload.scores;
+    if all_scores.len() != image_paths.len() {
+        return Err(AppError::InvalidInput(format!(
+            "WD14 returned {} results for {} images",
+            all_scores.len(),
+            image_paths.len()
+        )));
+    }
+    let execution_provider = payload
+        .provider
+        .unwrap_or_else(|| tagger_settings.model_type.clone());
+    all_scores
+        .iter()
+        .map(|scores| {
+            let positive_prompt = build_prompt(scores, &tags, &tagger_settings)?;
+            Ok(Wd14TaggerResult {
+                positive_prompt,
+                execution_provider: execution_provider.clone(),
+            })
+        })
+        .collect()
 }
 
 fn resolve_model_dir(settings: &Wd14TaggerSettings) -> AppResult<PathBuf> {
@@ -194,52 +258,23 @@ fn resolve_model_dir(settings: &Wd14TaggerSettings) -> AppResult<PathBuf> {
     )))
 }
 
-fn write_preprocessed_input(dirs: &AppDirs, image_path: &Path) -> AppResult<PathBuf> {
-    let image = image::open(image_path)?;
-    let resized = image
-        .resize_exact(INPUT_SIZE, INPUT_SIZE, FilterType::CatmullRom)
-        .to_rgb8();
-    let plane_size = (INPUT_SIZE * INPUT_SIZE) as usize;
-    let mut data = vec![0f32; plane_size * 3];
-    for (index, pixel) in resized.pixels().enumerate() {
-        data[index] = normalize_channel(pixel[0]);
-        data[plane_size + index] = normalize_channel(pixel[1]);
-        data[plane_size * 2 + index] = normalize_channel(pixel[2]);
-    }
-
-    fs::create_dir_all(&dirs.temp)?;
-    let timestamp = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|value| value.as_nanos())
-        .unwrap_or_default();
-    let input_path = dirs
-        .temp
-        .join(format!("wd14-input-{}-{timestamp}.f32", std::process::id()));
-    let mut file = fs::File::create(&input_path)?;
-    for value in data {
-        file.write_all(&value.to_le_bytes())?;
-    }
-    Ok(input_path)
-}
-
-fn normalize_channel(value: u8) -> f32 {
-    (value as f32 / 255.0 - 0.5) / 0.5
-}
-
 fn run_python_inference(
     dirs: &AppDirs,
     settings: &Wd14TaggerSettings,
     model_dir: &Path,
-    input_path: &Path,
+    input_paths: &[PathBuf],
     tag_count: usize,
 ) -> AppResult<InferencePayload> {
     let python_path = python_env::resolve_configured_python_path(dirs)?.ok_or_else(|| {
-        AppError::InvalidInput("未找到可用 Python 运行时，请先在本地文件/环境中配置或安装运行时".to_owned())
+        AppError::InvalidInput(
+            "未找到可用 Python 运行时，请先在本地文件/环境中配置或安装运行时".to_owned(),
+        )
     })?;
     let payload = serde_json::json!({
         "modelDir": model_dir,
         "modelType": settings.model_type,
-        "inputPath": input_path,
+        "inputPaths": input_paths,
+        "batchSize": INFERENCE_BATCH_SIZE,
         "tagCount": tag_count,
     });
     let output = Command::new(&python_path)
@@ -271,7 +306,11 @@ fn load_tag_definitions(model_dir: &Path) -> AppResult<Vec<TagDefinition>> {
 
     let content = fs::read_to_string(csv_path)?;
     let mut tags = Vec::new();
-    for line in content.lines().skip(1).filter(|line| !line.trim().is_empty()) {
+    for line in content
+        .lines()
+        .skip(1)
+        .filter(|line| !line.trim().is_empty())
+    {
         let fields = parse_csv_line(line);
         if fields.len() < 6 {
             continue;

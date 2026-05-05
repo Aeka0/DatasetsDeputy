@@ -1,19 +1,23 @@
-import { open } from "@tauri-apps/plugin-dialog";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import i18next from "i18next";
 import { create } from "zustand";
 
 import { formatAppError } from "../lib/errors";
 import { hasTauriRuntime, invokeCommand } from "../lib/tauri";
 import type {
+  AnnotationChange,
   AnnotationProfile,
   DatasetImage,
   DatasetProject,
+  DatasetSourceKind,
+  ExportDatasetRequest,
   ExportPreset,
+  ExportPreview,
+  ExportProgress,
   ImportPreview,
   ImportProgress,
   ImportReport,
-  ImportSummary
+  ImportSummary,
+  ProblemItemCheckSummary
 } from "../types";
 
 const now = new Date().toISOString();
@@ -22,9 +26,6 @@ const sampleProfiles: AnnotationProfile[] = [
   {
     id: 1,
     name: "Sample imported annotation",
-    formatType: "structured",
-    sourceType: "imported",
-    description: "Sample annotation type created during import",
     sourceKind: "database",
     datasetId: "database:sample"
   }
@@ -138,6 +139,7 @@ const sampleProjects: DatasetProject[] = [
 ];
 
 let unlistenImportProgress: UnlistenFn | undefined;
+let unlistenExportProgress: UnlistenFn | undefined;
 
 function normalizePath(path: string) {
   return path.replaceAll("\\", "/").replace(/\/+$/, "");
@@ -206,6 +208,10 @@ function getProjectSourceKind(project: DatasetProject | undefined) {
   return project?.sourceKind ?? (project?.id.startsWith("folder-root:") ? "folder" : "database");
 }
 
+function normalizeProfileName(name: string) {
+  return name.trim().toLocaleLowerCase();
+}
+
 function createProjectTree(
   images: DatasetImage[],
   rootName?: string,
@@ -239,11 +245,21 @@ function createProjectTree(
       ? normalizedGroupRoot
       : normalizePath(getCommonDirectory(groupImages));
 
+    const rootIdPrefix = sourceKind === "folder"
+      ? "folder-root"
+      : sourceKind === "asset"
+      ? "asset-root"
+      : "dataset-root";
+    const fallbackRootName = sourceKind === "folder"
+      ? "Folder"
+      : sourceKind === "asset"
+      ? "Asset Database"
+      : "Dataset";
     const root: DatasetProject = {
-      id: sourceKind === "folder" ? `folder-root:${groupKey}` : `dataset-root:${groupKey}`,
+      id: `${rootIdPrefix}:${groupKey}`,
       name: groupMatchesImportRoot && groupRootName
         ? groupRootName
-        : getPathName(normalizedRoot, sourceKind === "folder" ? "Folder" : "Dataset"),
+        : getPathName(normalizedRoot, fallbackRootName),
       path: normalizedRoot,
       imageIds: groupImages.map((image) => image.id),
       children: [],
@@ -305,7 +321,7 @@ function flattenProjects(projects: DatasetProject[]): DatasetProject[] {
 }
 
 type WorkspaceTab = "overview" | "grid" | "table";
-type PendingImportKind = "database" | "folder";
+type PendingImportKind = DatasetSourceKind;
 type AppView = "workspace" | "initial" | "logs";
 const highlightCellStateStorageKey = "datasets-deputy.highlight-cell-state";
 
@@ -338,18 +354,26 @@ interface DatasetState {
   highlightCellState: boolean;
   activeProfileId?: number;
   isLoading: boolean;
+  isCheckingProblemItems: boolean;
   lastImport?: ImportSummary;
   importPreview?: ImportPreview;
   importProgress?: ImportProgress;
   importReport?: ImportReport;
+  exportPreview?: ExportPreview;
+  exportProgress?: ExportProgress;
   pendingImportKind?: PendingImportKind;
+  preparedImportKind?: Exclude<DatasetSourceKind, "folder">;
   showImportWizard: boolean;
+  showExportDialog: boolean;
   annotationType: string;
   initImportEvents: () => Promise<void>;
+  initExportEvents: () => Promise<void>;
   load: () => Promise<void>;
   refreshImages: () => Promise<void>;
+  checkProblemItems: (project?: DatasetProject) => Promise<ProblemItemCheckSummary | undefined>;
   openImportWizard: () => void;
   closeImportWizard: () => void;
+  importAssetDatabase: () => Promise<void>;
   importFolder: () => Promise<void>;
   mountFolder: () => Promise<void>;
   startPreparedImport: () => Promise<void>;
@@ -358,7 +382,11 @@ interface DatasetState {
   clearImportPreview: () => void;
   removeDataset: (project: DatasetProject) => Promise<void>;
   renameDatasetFolder: (project: DatasetProject, name: string) => Promise<void>;
-  exportDataset: (format: "txt_per_image" | "jsonl") => Promise<void>;
+  createDatasetSubfolder: (project: DatasetProject, name: string) => Promise<void>;
+  openExportDialog: () => void;
+  closeExportDialog: () => void;
+  prepareExportDataset: (request: ExportDatasetRequest) => Promise<ExportPreview | undefined>;
+  startExportDataset: (request: ExportDatasetRequest) => Promise<void>;
   setAppView: (view: AppView) => void;
   setWorkspaceTab: (tab: WorkspaceTab) => void;
   addAppLog: (message: string, level?: AppLogEntry["level"]) => void;
@@ -391,8 +419,17 @@ interface DatasetState {
   setHighlightCellState: (enabled: boolean) => void;
   markImageAnnotating: (imageId: number, annotating: boolean) => void;
   setActiveProfile: (id?: number) => void;
-  saveAnnotation: (imageId: number, profileId: number, content: string) => Promise<void>;
-  saveInstruction: (imageId: number, profileId: number, instruction: string) => Promise<void>;
+  saveAnnotation: (
+    imageId: number,
+    profileId: number | undefined,
+    content: string
+  ) => Promise<void>;
+  saveInstruction: (
+    imageId: number,
+    profileId: number | undefined,
+    instruction: string
+  ) => Promise<void>;
+  saveAnnotationChanges: (changes: AnnotationChange[]) => Promise<void>;
   createAnnotationProfile: (name: string) => Promise<number | undefined>;
   clearAnnotation: (annotationId: number) => Promise<void>;
 }
@@ -424,6 +461,78 @@ function getAnnotationContentForProfile(image: DatasetImage, profileId: number) 
 
 function getInstructionForProfile(image: DatasetImage, profileId: number) {
   return image.annotations.find((annotation) => annotation.profileId === profileId)?.instruction ?? "";
+}
+
+function hasWritableProfileId(profileId: number | undefined): profileId is number {
+  return Number.isFinite(profileId);
+}
+
+function requireWritableProfileId(profileId: number | undefined) {
+  if (!hasWritableProfileId(profileId)) {
+    throw new Error("保存标注需要先选择标注类型。");
+  }
+  return profileId;
+}
+
+function assertProfileForDatabaseImage(image: DatasetImage | undefined, profileId: number | undefined) {
+  if (image?.sourceKind === "folder") {
+    return;
+  }
+  requireWritableProfileId(profileId);
+}
+
+function applyAnnotationChanges(images: DatasetImage[], changes: AnnotationChange[]) {
+  const updatedAt = new Date().toISOString();
+  const changesByImageId = new Map<number, AnnotationChange[]>();
+  for (const change of changes) {
+    const current = changesByImageId.get(change.imageId);
+    if (current) {
+      current.push(change);
+    } else {
+      changesByImageId.set(change.imageId, [change]);
+    }
+  }
+
+  return images.map((image) => {
+    const imageChanges = changesByImageId.get(image.id);
+    if (!imageChanges?.length) return image;
+
+    let annotations = image.annotations;
+    for (const change of imageChanges) {
+      const existing = annotations.find((annotation) => annotation.profileId === change.profileId);
+      if (existing) {
+        annotations = annotations.map((annotation) =>
+          annotation.profileId === change.profileId
+            ? {
+                ...annotation,
+                content: change.content ?? annotation.content,
+                instruction: change.instruction ?? annotation.instruction,
+                updatedAt
+              }
+            : annotation
+        );
+      } else {
+        annotations = [
+          ...annotations,
+          {
+            id: Date.now() + image.id + annotations.length,
+            imageId: image.id,
+            profileId: change.profileId,
+            content: change.content ?? "",
+            instruction: change.instruction ?? "",
+            createdAt: updatedAt,
+            updatedAt
+          }
+        ];
+      }
+    }
+
+    return {
+      ...image,
+      annotations,
+      updatedAt
+    };
+  });
 }
 
 export const useDatasetStore = create<DatasetState>((set, get) => ({
@@ -461,12 +570,17 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
   highlightCellState: getStoredHighlightCellState(),
   activeProfileId: sampleProfiles[0]?.id,
   isLoading: false,
+  isCheckingProblemItems: false,
   annotationType: "",
   importPreview: undefined,
   importProgress: undefined,
   importReport: undefined,
+  exportPreview: undefined,
+  exportProgress: undefined,
   pendingImportKind: undefined,
+  preparedImportKind: undefined,
   showImportWizard: false,
+  showExportDialog: false,
   initImportEvents: async () => {
     if (!hasTauriRuntime() || unlistenImportProgress) {
       return;
@@ -506,12 +620,39 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
           importReport: progress.report,
           importProgress: undefined,
           pendingImportKind: undefined,
+          preparedImportKind: undefined,
           showImportWizard: false,
           appView: "workspace",
           selectedProjectId: undefined,
           ...createImageSelection([]),
           previewImageId: undefined
         });
+      }
+    });
+  },
+  initExportEvents: async () => {
+    if (!hasTauriRuntime() || unlistenExportProgress) {
+      return;
+    }
+
+    unlistenExportProgress = await listen<ExportProgress>("export-progress", async (event) => {
+      const progress = event.payload;
+      set({
+        exportProgress: progress,
+        isLoading: !progress.done
+      });
+
+      if (progress.done) {
+        if (progress.phase === "failed") {
+          get().addAppLog(
+            `导出失败：${progress.error ?? "未知错误"}`,
+            "error"
+          );
+        } else {
+          get().addAppLog(
+            `导出完成：已导出 ${progress.exported} 张图片，失败 ${progress.failed}。`
+          );
+        }
       }
     });
   },
@@ -571,6 +712,37 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
       };
     });
   },
+  checkProblemItems: async (project) => {
+    if (!hasTauriRuntime() || !project?.datasetId) {
+      return undefined;
+    }
+    if (
+      project.id === "asset-database-group" ||
+      project.id === "database-group" ||
+      project.id === "workspace-folder-group"
+    ) {
+      return undefined;
+    }
+
+    set({ isCheckingProblemItems: true });
+    get().addAppLog(`开始检查问题条目：${project.name}`);
+    try {
+      const summary = await invokeCommand<ProblemItemCheckSummary>("check_problem_items", {
+        datasetId: project.datasetId,
+        imageIds: project.imageIds
+      });
+      await get().refreshImages();
+      get().addAppLog(
+        `问题条目检查完成：检查 ${summary.checked} 项，更新 ${summary.updated} 项，缺失 ${summary.missing} 项，失败 ${summary.failed} 项。`
+      );
+      return summary;
+    } catch (error) {
+      get().addAppLog(`问题条目检查失败：${formatAppError(error)}`, "error");
+      throw error;
+    } finally {
+      set({ isCheckingProblemItems: false });
+    }
+  },
   openImportWizard: () =>
     {
       get().addAppLog("已打开导入向导。");
@@ -581,6 +753,7 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
       importProgress: undefined,
       importReport: undefined,
       pendingImportKind: undefined,
+      preparedImportKind: undefined,
       selectedProjectId: undefined,
       ...createImageSelection([]),
       previewImageId: undefined
@@ -589,6 +762,46 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
   closeImportWizard: () => {
     get().addAppLog("已关闭导入向导。");
     set({ showImportWizard: false });
+  },
+  importAssetDatabase: async () => {
+    if (!hasTauriRuntime()) {
+      return;
+    }
+
+    set({
+      isLoading: true,
+      importPreview: undefined,
+      importProgress: undefined,
+      importReport: undefined,
+      preparedImportKind: "asset"
+    });
+    get().addAppLog("开始准备资产数据库导入。");
+    try {
+      const preview = await invokeCommand<ImportPreview>("prepare_import_folder");
+      get().addAppLog(
+        `资产数据库导入预览完成：找到 ${preview.imageCount} 张图片，其中 ${preview.annotatedImageCount} 张已有标注。`
+      );
+      set({
+        importPreview: preview,
+        appView: "workspace",
+        showImportWizard: false,
+        pendingImportKind: undefined,
+        preparedImportKind: "asset",
+        annotationType: preview.annotatedImageCount > 0 ? get().annotationType : "",
+        selectedProjectId: undefined,
+        ...createImageSelection([]),
+        previewImageId: undefined
+      });
+    } catch (error) {
+      const payload = error as { code?: string };
+      if (payload.code !== "dialog_cancelled") {
+        get().addAppLog(`资产数据库导入准备失败：${formatAppError(error)}`, "error");
+        throw error;
+      }
+      get().addAppLog("用户已取消资产数据库导入准备。", "warning");
+    } finally {
+      set({ isLoading: false });
+    }
   },
   importFolder: async () => {
     if (!hasTauriRuntime()) {
@@ -599,19 +812,21 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
       isLoading: true,
       importPreview: undefined,
       importProgress: undefined,
-      importReport: undefined
+      importReport: undefined,
+      preparedImportKind: "database"
     });
-    get().addAppLog("开始准备文件夹导入。");
+    get().addAppLog("开始准备动态链接数据库导入。");
     try {
       const preview = await invokeCommand<ImportPreview>("prepare_import_folder");
       get().addAppLog(
-        `文件夹导入预览完成：找到 ${preview.imageCount} 张图片，其中 ${preview.annotatedImageCount} 张已有标注。`
+        `动态链接数据库导入预览完成：找到 ${preview.imageCount} 张图片，其中 ${preview.annotatedImageCount} 张已有标注。`
       );
       set({
         importPreview: preview,
         appView: "workspace",
         showImportWizard: false,
         pendingImportKind: undefined,
+        preparedImportKind: "database",
         annotationType: preview.annotatedImageCount > 0 ? get().annotationType : "",
         selectedProjectId: undefined,
         ...createImageSelection([]),
@@ -620,10 +835,10 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
     } catch (error) {
       const payload = error as { code?: string };
       if (payload.code !== "dialog_cancelled") {
-        get().addAppLog(`文件夹导入准备失败：${formatAppError(error)}`, "error");
+        get().addAppLog(`动态链接数据库导入准备失败：${formatAppError(error)}`, "error");
         throw error;
       }
-      get().addAppLog("用户已取消文件夹导入准备。", "warning");
+      get().addAppLog("用户已取消动态链接数据库导入准备。", "warning");
     } finally {
       set({ isLoading: false });
     }
@@ -638,6 +853,7 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
       importPreview: undefined,
       importProgress: undefined,
       importReport: undefined,
+      preparedImportKind: undefined,
       pendingImportKind: "folder"
     });
     get().addAppLog("开始挂载工作文件夹。");
@@ -692,17 +908,20 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
   },
   startPreparedImport: async () => {
     const preview = get().importPreview;
+    const importMode = get().preparedImportKind ?? "database";
     if (!hasTauriRuntime() || !preview) {
       return;
     }
 
     await get().initImportEvents();
-    get().addAppLog(`开始执行已准备的导入：${preview.folderPath}`);
+    get().addAppLog(
+      `开始执行已准备的${importMode === "asset" ? "资产数据库" : "动态链接数据库"}导入：${preview.folderPath}`
+    );
     set({
       isLoading: true,
       importPreview: undefined,
       importReport: undefined,
-      pendingImportKind: "database",
+      pendingImportKind: importMode,
       importProgress: {
         phase: "scanning",
         processed: 0,
@@ -716,10 +935,16 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
     try {
       await invokeCommand<void>("start_import_folder", {
         folderPath: preview.folderPath,
-        annotationType: get().annotationType.trim() || undefined
+        annotationType: get().annotationType.trim() || undefined,
+        importMode
       });
     } catch (error) {
-      set({ isLoading: false, importProgress: undefined, pendingImportKind: undefined });
+      set({
+        isLoading: false,
+        importProgress: undefined,
+        pendingImportKind: undefined,
+        preparedImportKind: undefined
+      });
       get().addAppLog(`已准备的导入失败：${formatAppError(error)}`, "error");
       throw error;
     }
@@ -761,16 +986,24 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
     }
   },
   setAnnotationType: (annotationType) => set({ annotationType }),
-  clearImportPreview: () => set({ importPreview: undefined, annotationType: "" }),
+  clearImportPreview: () =>
+    set({ importPreview: undefined, annotationType: "", preparedImportKind: undefined }),
   removeDataset: async (project) => {
     if (hasTauriRuntime()) {
       if (getProjectSourceKind(project) === "folder") {
-        await invokeCommand<number>("remove_folder_dataset", {
-          folderPath: project.path
-        });
+        if (project.id.startsWith("folder-root:")) {
+          await invokeCommand<number>("remove_folder_dataset", {
+            folderPath: project.path
+          });
+        } else {
+          await invokeCommand<void>("delete_workspace_subfolder", {
+            folderPath: project.path
+          });
+        }
       } else {
         await invokeCommand<number>("remove_dataset_folder", {
-          folderPath: project.path
+          folderPath: project.path,
+          sourceKind: getProjectSourceKind(project)
         });
       }
       const [images, profiles] = await Promise.all([
@@ -878,29 +1111,94 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
       };
     });
   },
-  exportDataset: async (format) => {
-    if (!hasTauriRuntime()) {
+  createDatasetSubfolder: async (project, name) => {
+    const trimmedName = name.trim();
+    if (!trimmedName) {
       return;
     }
+    if (/[\\/]/.test(trimmedName)) {
+      throw new Error("Folder name cannot contain path separators.");
+    }
 
-    const outputDir = await open({
-      directory: true,
-      multiple: false,
-      title: i18next.t("export.selectFolder")
+    if (hasTauriRuntime()) {
+      await invokeCommand<string>("create_dataset_subfolder", {
+        folderPath: project.path,
+        name: trimmedName
+      });
+      get().addAppLog(`已创建子文件夹：${trimmedName}`);
+      await get().refreshImages();
+      return;
+    }
+  },
+  openExportDialog: () => {
+    get().addAppLog("已打开导出设置。");
+    set({
+      showExportDialog: true,
+      exportPreview: undefined,
+      exportProgress: undefined
     });
+  },
+  closeExportDialog: () => set({ showExportDialog: false }),
+  prepareExportDataset: async (request) => {
+    if (!hasTauriRuntime()) {
+      const images = get().images.filter((image) => request.imageIds.includes(image.id));
+      const estimatedSizeBytes = images.reduce((sum, image) => {
+        const annotationContent =
+          image.annotations.find((annotation) => annotation.profileId === request.profileId)?.content ??
+          image.annotations[0]?.content ??
+          "";
+        return sum + (image.fileSize ?? 0) + new TextEncoder().encode(annotationContent).length;
+      }, 0);
+      const preview: ExportPreview = {
+        outputDir: request.outputDir,
+        estimatedSizeBytes,
+        imageCount: images.length,
+        annotationCount: images.filter((image) =>
+          image.annotations.some((annotation) =>
+            request.profileId
+              ? annotation.profileId === request.profileId && annotation.content.trim()
+              : annotation.content.trim()
+          )
+        ).length
+      };
+      set({ exportPreview: preview });
+      return preview;
+    }
 
-    if (!outputDir || Array.isArray(outputDir)) {
+    const preview = await invokeCommand<ExportPreview>("prepare_export_dataset", { request });
+    set({ exportPreview: preview });
+    return preview;
+  },
+  startExportDataset: async (request) => {
+    if (!hasTauriRuntime()) {
+      get().addAppLog("当前环境无法执行真实导出。", "warning");
       return;
     }
 
-    const profileIds = get().profiles.map((profile) => profile.id);
-    await invokeCommand<number>("export_dataset", {
-      request: {
-        outputDir,
-        format,
-        profileIds
+    await get().initExportEvents();
+    set({
+      isLoading: true,
+      exportProgress: {
+        phase: "exporting",
+        processed: 0,
+        total: get().exportPreview?.imageCount ?? request.imageIds.length,
+        exported: 0,
+        failed: 0,
+        outputDir: get().exportPreview?.outputDir,
+        estimatedSizeBytes: get().exportPreview?.estimatedSizeBytes ?? 0,
+        writtenSizeBytes: 0,
+        done: false
       }
     });
+    get().addAppLog("开始导出数据集。");
+
+    try {
+      await invokeCommand<void>("start_export_dataset", { request });
+    } catch (error) {
+      set({ isLoading: false, exportProgress: undefined });
+      get().addAppLog(`导出启动失败：${formatAppError(error)}`, "error");
+      throw error;
+    }
   },
   setAppView: (view) => set({ appView: view, previewImageId: undefined }),
   setWorkspaceTab: (tab) => set({ workspaceTab: tab, appView: "workspace" }),
@@ -1050,8 +1348,10 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
     })),
   setActiveProfile: (id) => set({ activeProfileId: id }),
   saveAnnotation: async (imageId, profileId, content) => {
+    const image = get().images.find((image) => image.id === imageId);
+    assertProfileForDatabaseImage(image, profileId);
+
     if (hasTauriRuntime()) {
-      const image = get().images.find((image) => image.id === imageId);
       if (image?.sourceKind === "folder") {
         await invokeCommand("save_folder_annotation", {
           imagePath: image.path,
@@ -1060,7 +1360,7 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
       } else {
         await invokeCommand("save_annotation", {
           imageId,
-          profileId,
+          profileId: requireWritableProfileId(profileId),
           content
         });
       }
@@ -1080,6 +1380,7 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
       images: state.images.map((image) => {
         if (image.id !== imageId) return image;
 
+        if (!hasWritableProfileId(profileId)) return image;
         const existing = image.annotations.find((annotation) => annotation.profileId === profileId);
         const annotations = existing
           ? image.annotations.map((annotation) =>
@@ -1109,8 +1410,10 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
     }));
   },
   saveInstruction: async (imageId, profileId, instruction) => {
+    const image = get().images.find((image) => image.id === imageId);
+    assertProfileForDatabaseImage(image, profileId);
+
     if (hasTauriRuntime()) {
-      const image = get().images.find((image) => image.id === imageId);
       if (image?.sourceKind === "folder") {
         await invokeCommand("save_folder_instruction", {
           imagePath: image.path,
@@ -1119,7 +1422,7 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
       } else {
         await invokeCommand("save_instruction", {
           imageId,
-          profileId,
+          profileId: requireWritableProfileId(profileId),
           instruction
         });
       }
@@ -1139,6 +1442,7 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
       images: state.images.map((image) => {
         if (image.id !== imageId) return image;
 
+        if (!hasWritableProfileId(profileId)) return image;
         const existing = image.annotations.find((annotation) => annotation.profileId === profileId);
         const annotations = existing
           ? image.annotations.map((annotation) =>
@@ -1167,6 +1471,63 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
       })
     }));
   },
+  saveAnnotationChanges: async (changes) => {
+    const effectiveChanges = changes.filter(
+      (change) => change.content !== undefined || change.instruction !== undefined
+    );
+    if (effectiveChanges.length === 0) {
+      return;
+    }
+
+    if (hasTauriRuntime()) {
+      const state = get();
+      const imageById = new Map(state.images.map((image) => [image.id, image]));
+      const databaseChanges: AnnotationChange[] = [];
+
+      for (const change of effectiveChanges) {
+        const image = imageById.get(change.imageId);
+        if (image?.sourceKind === "folder") {
+          if (change.content !== undefined) {
+            await invokeCommand("save_folder_annotation", {
+              imagePath: image.path,
+              content: change.content
+            });
+          }
+          if (change.instruction !== undefined) {
+            await invokeCommand("save_folder_instruction", {
+              imagePath: image.path,
+              instruction: change.instruction
+            });
+          }
+        } else {
+          assertProfileForDatabaseImage(image, change.profileId);
+          databaseChanges.push(change);
+        }
+      }
+
+      if (databaseChanges.length > 0) {
+        await invokeCommand("save_annotation_changes", { changes: databaseChanges });
+      }
+
+      const images = await invokeCommand<DatasetImage[]>("list_images");
+      set((current) => ({
+        images,
+        projects: createProjectTree(images),
+        selectedImageId: current.selectedImageId,
+        previewImageId: current.previewImageId,
+        selectedProjectId: current.selectedProjectId
+      }));
+      return;
+    }
+
+    set((state) => {
+      const images = applyAnnotationChanges(state.images, effectiveChanges);
+      return {
+        images,
+        projects: createProjectTree(images)
+      };
+    });
+  },
   createAnnotationProfile: async (name) => {
     const trimmedName = name.trim();
     if (!trimmedName) {
@@ -1182,6 +1543,15 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
     }
     const selectedImage = state.images.find((image) => image.id === state.selectedImageId);
     const selectedDatasetId = selectedImage ? getImageDatasetId(selectedImage) : undefined;
+    const targetDatasetId = selectedProject?.datasetId ?? selectedDatasetId;
+    const duplicateProfile = state.profiles.some(
+      (profile) =>
+        profile.datasetId === targetDatasetId &&
+        normalizeProfileName(profile.name) === normalizeProfileName(trimmedName)
+    );
+    if (duplicateProfile) {
+      throw new Error("标注类型名称已存在。");
+    }
     const imageIds = selectedProject?.imageIds.length
       ? selectedProject.imageIds
       : selectedDatasetId
@@ -1215,11 +1585,8 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
     const profile: AnnotationProfile = {
       id: profileId,
       name: trimmedName,
-      formatType: "structured",
-      sourceType: "manual",
-      description: "Dataset-wide annotation",
-      sourceKind: "database",
-      datasetId: selectedProject?.datasetId
+      sourceKind: selectedProject?.sourceKind ?? selectedImage?.sourceKind ?? "database",
+      datasetId: targetDatasetId
     };
     const idSet = new Set(imageIds);
     set((current) => ({

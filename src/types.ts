@@ -1,14 +1,6 @@
-export type AnnotationFormat = "tags" | "caption" | "structured";
-
-export type AnnotationSource = "manual" | "imported" | "local_model" | "remote_api";
-
 export interface AnnotationProfile {
   id: number;
   name: string;
-  formatType: AnnotationFormat;
-  sourceType: AnnotationSource;
-  description?: string;
-  modelInfo?: string;
   sourceKind?: DatasetSourceKind;
   datasetId?: string;
 }
@@ -24,15 +16,24 @@ export interface Annotation {
   updatedAt: string;
 }
 
+export interface AnnotationChange {
+  imageId: number;
+  profileId: number;
+  content?: string;
+  instruction?: string;
+}
+
 export interface DatasetImage {
   id: number;
   path: string;
   fileName: string;
+  storagePath?: string;
   thumbnailPath?: string;
   width?: number;
   height?: number;
   fileSize?: number;
   fileHash?: string;
+  sourceMissing?: boolean;
   importedAt: string;
   updatedAt: string;
   annotations: Annotation[];
@@ -41,7 +42,7 @@ export interface DatasetImage {
   rootPath?: string;
 }
 
-export type DatasetSourceKind = "database" | "folder";
+export type DatasetSourceKind = "asset" | "database" | "folder";
 
 export interface DatasetProject {
   id: string;
@@ -90,6 +91,41 @@ export interface ImportProgress extends ImportSummary {
   rootPath?: string;
   done: boolean;
   report?: ImportReport;
+}
+
+export interface ProblemItemCheckSummary {
+  checked: number;
+  updated: number;
+  missing: number;
+  failed: number;
+}
+
+export interface ExportPreview {
+  outputDir: string;
+  estimatedSizeBytes: number;
+  imageCount: number;
+  annotationCount: number;
+}
+
+export interface ExportProgress {
+  phase: "exporting" | "done" | "failed";
+  processed: number;
+  total: number;
+  exported: number;
+  failed: number;
+  currentPath?: string;
+  outputDir?: string;
+  estimatedSizeBytes: number;
+  writtenSizeBytes: number;
+  done: boolean;
+  error?: string;
+}
+
+export interface ExportDatasetRequest {
+  outputDir: string;
+  datasetId: string;
+  imageIds: number[];
+  profileId?: number;
 }
 
 export interface ExportPreset {

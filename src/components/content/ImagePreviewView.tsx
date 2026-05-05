@@ -1,4 +1,4 @@
-import { ArrowLeft, FileText, LoaderCircle, Plus, Save, Trash2 } from "lucide-react";
+import { ArrowLeft, CircleAlert, FileText, LoaderCircle, Plus, Save, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -34,6 +34,7 @@ export function ImagePreviewView() {
   const [content, setContent] = useState("");
   const [isCreatingProfile, setIsCreatingProfile] = useState(false);
   const [newProfileName, setNewProfileName] = useState("");
+  const [createProfileError, setCreateProfileError] = useState("");
   const [pendingProfileId, setPendingProfileId] = useState<number>();
 
   const selectedAnnotation = useMemo(
@@ -92,7 +93,10 @@ export function ImagePreviewView() {
   const isFolderImage = selectedImage.sourceKind === "folder";
   const isAnnotating = annotatingImageIds.includes(selectedImage.id);
   const profileById = new Map(profiles.map((profile) => [profile.id, profile]));
-  const previewSrc = resolveAssetSrc(selectedImage.path) ?? resolveAssetSrc(selectedImage.thumbnailPath);
+  const previewSrc = selectedImage.sourceMissing
+    ? undefined
+    : resolveAssetSrc(selectedImage.storagePath ?? selectedImage.path) ??
+      resolveAssetSrc(selectedImage.thumbnailPath);
   const selectedImageProfileIds = new Set(
     selectedImage.annotations.map((annotation) => annotation.profileId)
   );
@@ -113,15 +117,34 @@ export function ImagePreviewView() {
     if (isFolderImage) return;
     setIsCreatingProfile(true);
     setNewProfileName("");
+    setCreateProfileError("");
   };
 
-  const createProfile = async () => {
-    const profileId = await createAnnotationProfile(newProfileName);
-    if (!profileId) return;
+  const trimmedNewProfileName = newProfileName.trim();
+  const normalizedNewProfileName = trimmedNewProfileName.toLocaleLowerCase();
+  const newProfileNameExists = profiles.some(
+    (profile) =>
+      profile.datasetId === selectedImage.datasetId &&
+      profile.name.trim().toLocaleLowerCase() === normalizedNewProfileName
+  );
+  const newProfileError = newProfileNameExists
+    ? t("image.profileNameExists")
+    : createProfileError;
 
-    setPendingProfileId(profileId);
-    setIsCreatingProfile(false);
-    setNewProfileName("");
+  const createProfile = async () => {
+    if (newProfileNameExists) return;
+
+    try {
+      const profileId = await createAnnotationProfile(newProfileName);
+      if (!profileId) return;
+
+      setPendingProfileId(profileId);
+      setIsCreatingProfile(false);
+      setNewProfileName("");
+      setCreateProfileError("");
+    } catch (error) {
+      setCreateProfileError(error instanceof Error ? error.message : t("image.createTypeFailed"));
+    }
   };
 
   return (
@@ -147,7 +170,9 @@ export function ImagePreviewView() {
       <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_352px] gap-3">
         <section className="flex min-h-0 flex-col rounded-lg border border-slate-200 bg-slate-50">
           <div className="flex min-h-0 flex-1 items-center justify-center overflow-hidden p-3">
-            {previewSrc ? (
+            {selectedImage.sourceMissing ? (
+              <CircleAlert size={72} className="text-red-600" />
+            ) : previewSrc ? (
               <img
                 src={previewSrc}
                 alt=""
@@ -207,15 +232,21 @@ export function ImagePreviewView() {
                     </label>
                     <input
                       value={newProfileName}
-                      onChange={(event) => setNewProfileName(event.target.value)}
+                      onChange={(event) => {
+                        setNewProfileName(event.target.value);
+                        setCreateProfileError("");
+                      }}
                       className="glass-input h-8 w-full px-2 text-[13px]"
                       autoFocus
                     />
+                    {newProfileError ? (
+                      <div className="mt-1 text-[12px] text-red-600">{newProfileError}</div>
+                    ) : null}
                     <div className="mt-2 flex gap-2">
                       <button
                         className="no-drag inline-flex h-8 flex-1 items-center justify-center rounded-md border border-slate-900 bg-slate-900 px-2 text-[12px] font-medium text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
                         onClick={() => void createProfile()}
-                        disabled={!newProfileName.trim()}
+                        disabled={!trimmedNewProfileName || newProfileNameExists}
                       >
                         {t("image.createType")}
                       </button>

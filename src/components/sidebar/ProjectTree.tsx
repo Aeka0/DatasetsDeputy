@@ -2,13 +2,15 @@ import {
   ChevronDown,
   ChevronRight,
   Database,
+  DatabaseZap,
   Folder,
   FolderOpen,
+  Folders,
   Loader2,
   Plus
 } from "lucide-react";
 import type { MouseEvent } from "react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 
@@ -23,13 +25,15 @@ function ProjectNode({
   depth = 0,
   expandedIds,
   toggleExpanded,
-  openContextMenu
+  openContextMenu,
+  problemImageIds
 }: {
   project: DatasetProject;
   depth?: number;
   expandedIds: Set<string>;
   toggleExpanded: (project: DatasetProject) => void;
   openContextMenu: (event: MouseEvent, project: DatasetProject) => void;
+  problemImageIds: Set<number>;
 }) {
   const { selectedProjectId, selectProject } = useDatasetStore();
   const isSelected = selectedProjectId === project.id;
@@ -37,12 +41,19 @@ function ProjectNode({
   const isExpanded = expandedIds.has(project.id);
   const imageCount = project.imageIds.length;
   const isImportingNode = project.id.startsWith("importing-");
-  const isDatabaseNode = project.id === "database-group" || project.id.startsWith("dataset-root:");
-  const isGroupNode = project.id === "database-group" || project.id === "workspace-folder-group";
-  const canOpenContextMenu =
-    !isImportingNode &&
-    !isGroupNode &&
-    (project.sourceKind !== "folder" || project.id.startsWith("folder-root:"));
+  const isAssetDatabaseNode = project.id === "asset-database-group" || project.id.startsWith("asset-root:");
+  const isDynamicDatabaseNode = project.id === "database-group" || project.id.startsWith("dataset-root:");
+  const isWorkspaceFolderGroup = project.id === "workspace-folder-group";
+  const isGroupNode =
+    project.id === "asset-database-group" ||
+    project.id === "database-group" ||
+    isWorkspaceFolderGroup;
+  const datasetCount = project.children?.filter((child) => !child.id.startsWith("importing-")).length ?? 0;
+  const problemCount = isGroupNode
+    ? 0
+    : project.imageIds.filter((imageId) => problemImageIds.has(imageId)).length;
+  const displayCount = isGroupNode ? datasetCount : imageCount;
+  const canOpenContextMenu = !isImportingNode;
   const indentation = isGroupNode ? 4 : 8 + depth * 10;
 
   const handleRowActivate = () => {
@@ -66,7 +77,8 @@ function ProjectNode({
     <div>
       <div
         className={cn(
-          "project-tree-row no-drag flex h-8 w-full items-stretch gap-1 rounded-md pr-2.5 text-left transition",
+          "project-tree-row no-drag flex h-8 w-full items-stretch gap-1 pr-2.5 text-left transition",
+          isGroupNode ? "rounded-[3px]" : "rounded-md",
           sidebarLabelClass,
           isImportingNode
             ? "cursor-not-allowed text-black/36"
@@ -115,11 +127,17 @@ function ProjectNode({
           {isImportingNode ? (
             project.sourceKind === "folder" ? (
               <Folder size={16} className="shrink-0 text-black/36" />
+            ) : project.sourceKind === "database" ? (
+              <DatabaseZap size={16} className="shrink-0 text-black/36" />
             ) : (
               <Database size={16} className="shrink-0 text-black/36" />
             )
-          ) : isDatabaseNode ? (
+          ) : isDynamicDatabaseNode ? (
+            <DatabaseZap size={16} className="shrink-0 text-black" />
+          ) : isAssetDatabaseNode ? (
             <Database size={16} className="shrink-0 text-black" />
+          ) : isWorkspaceFolderGroup ? (
+            <Folders size={16} className="shrink-0 text-black" />
           ) : isSelected ? (
             <FolderOpen size={16} className="shrink-0 text-black" />
           ) : (
@@ -129,8 +147,16 @@ function ProjectNode({
           {isImportingNode ? (
             <Loader2 size={13} className="shrink-0 animate-spin text-black/40" />
           ) : (
-            <span className="project-tree-count shrink-0 rounded-full bg-white/72 px-1.5 py-0.5 text-[11px] leading-none text-black ring-1 ring-white/70">
-              {imageCount}
+            <span
+              className={cn(
+                "project-tree-count shrink-0 px-1.5 py-0.5 text-[11px] leading-none ring-1",
+                problemCount > 0
+                  ? "bg-orange-100 text-orange-700 ring-orange-200/80"
+                  : "bg-white/72 text-black ring-white/70",
+                isGroupNode ? "rounded-[3px]" : "rounded-full"
+              )}
+            >
+              {problemCount > 0 ? `${problemCount}/${displayCount}` : displayCount}
             </span>
           )}
         </button>
@@ -146,6 +172,7 @@ function ProjectNode({
               expandedIds={expandedIds}
               toggleExpanded={toggleExpanded}
               openContextMenu={openContextMenu}
+              problemImageIds={problemImageIds}
             />
           ))}
         </div>
@@ -156,8 +183,18 @@ function ProjectNode({
 
 export function ProjectTree() {
   const { t } = useTranslation();
-  const { projects, openImportWizard, isLoading, pendingImportKind, removeDataset, renameDatasetFolder } =
-    useDatasetStore();
+  const {
+    images,
+    projects,
+    openImportWizard,
+    isLoading,
+    pendingImportKind,
+    refreshImages,
+    checkProblemItems,
+    removeDataset,
+    renameDatasetFolder,
+    createDatasetSubfolder
+  } = useDatasetStore();
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const [contextMenu, setContextMenu] = useState<{
     x: number;
@@ -166,7 +203,9 @@ export function ProjectTree() {
   }>();
   const [pendingRemoval, setPendingRemoval] = useState<DatasetProject>();
   const [pendingRename, setPendingRename] = useState<DatasetProject>();
+  const [pendingNewChild, setPendingNewChild] = useState<DatasetProject>();
   const [renameValue, setRenameValue] = useState("");
+  const [newChildName, setNewChildName] = useState("");
 
   useEffect(() => {
     if (!contextMenu) return;
@@ -192,6 +231,7 @@ export function ProjectTree() {
   useEffect(() => {
     setExpandedIds((current) => {
       const next = new Set(current);
+      next.add("asset-database-group");
       next.add("database-group");
       next.add("workspace-folder-group");
       for (const project of projects) {
@@ -238,30 +278,93 @@ export function ProjectTree() {
     setRenameValue("");
   };
 
-  const databaseProjects = projects.filter((project) => project.sourceKind !== "folder");
+  const submitNewChild = async () => {
+    if (!pendingNewChild) return;
+    await createDatasetSubfolder(pendingNewChild, newChildName);
+    setPendingNewChild(undefined);
+    setNewChildName("");
+  };
+
+  const setProjectExpanded = (project: DatasetProject, expanded: boolean) => {
+    setExpandedIds((current) => {
+      const next = new Set(current);
+      if (expanded) {
+        next.add(project.id);
+      } else {
+        next.delete(project.id);
+      }
+      return next;
+    });
+  };
+
+  const isVirtualRoot = (project: DatasetProject) =>
+    project.id === "asset-database-group" ||
+    project.id === "database-group" ||
+    project.id === "workspace-folder-group";
+  const isDatasetRoot = (project: DatasetProject) =>
+    project.id.startsWith("asset-root:") ||
+    project.id.startsWith("dataset-root:") ||
+    project.id.startsWith("folder-root:");
+  const isWorkspaceFolderChild = (project: DatasetProject) =>
+    project.sourceKind === "folder" && !isVirtualRoot(project) && !project.id.startsWith("folder-root:");
+  const canCreateChildFolder = (project: DatasetProject) => isDatasetRoot(project) && Boolean(project.path);
+  const runProjectCheck = async (project: DatasetProject) => {
+    setContextMenu(undefined);
+    if (isVirtualRoot(project)) {
+      for (const child of project.children ?? []) {
+        await checkProblemItems(child);
+      }
+      return;
+    }
+    await checkProblemItems(project);
+  };
+
+  const assetProjects = projects.filter((project) => project.sourceKind === "asset");
+  const databaseProjects = projects.filter(
+    (project) => project.sourceKind !== "asset" && project.sourceKind !== "folder"
+  );
   const folderProjects = projects.filter((project) => project.sourceKind === "folder");
+  const problemImageIds = useMemo(
+    () => new Set(images.filter((image) => image.sourceMissing).map((image) => image.id)),
+    [images]
+  );
   const importingProject: DatasetProject | undefined = pendingImportKind
     ? {
         id: `importing-${pendingImportKind}`,
         name:
           pendingImportKind === "folder"
             ? t("tree.importingFolder")
-            : t("tree.importingDatabase"),
+            : pendingImportKind === "asset"
+            ? t("tree.importingAssetDatabase")
+            : t("tree.importingDynamicDatabase"),
         path: "",
         imageIds: [],
         sourceKind: pendingImportKind,
         datasetId: `importing-${pendingImportKind}`
       }
     : undefined;
+  const assetDatabaseChildren =
+    importingProject?.sourceKind === "asset"
+      ? [...assetProjects, importingProject]
+      : assetProjects;
   const databaseChildren =
     importingProject?.sourceKind === "database"
       ? [...databaseProjects, importingProject]
       : databaseProjects;
   const folderChildren =
     importingProject?.sourceKind === "folder" ? [...folderProjects, importingProject] : folderProjects;
+  const assetDatabaseGroup: DatasetProject = {
+    id: "asset-database-group",
+    name: t("tree.assetDatabases"),
+    path: "",
+    imageIds: assetProjects.flatMap((project) => project.imageIds),
+    children: assetDatabaseChildren,
+    sourceKind: "asset",
+    datasetId: "asset-database-group"
+  };
   const databaseGroup: DatasetProject = {
     id: "database-group",
-    name: t("tree.projects"),
+    name: t("tree.dynamicDatabases"),
     path: "",
     imageIds: databaseProjects.flatMap((project) => project.imageIds),
     children: databaseChildren,
@@ -294,16 +397,25 @@ export function ProjectTree() {
       <div className="mt-4 flex-1 overflow-y-auto px-3">
         <div className="no-drag space-y-1">
           <ProjectNode
+            project={assetDatabaseGroup}
+            expandedIds={expandedIds}
+            toggleExpanded={toggleExpanded}
+            openContextMenu={openContextMenu}
+            problemImageIds={problemImageIds}
+          />
+          <ProjectNode
             project={databaseGroup}
             expandedIds={expandedIds}
             toggleExpanded={toggleExpanded}
             openContextMenu={openContextMenu}
+            problemImageIds={problemImageIds}
           />
           <ProjectNode
             project={workspaceFolderGroup}
             expandedIds={expandedIds}
             toggleExpanded={toggleExpanded}
             openContextMenu={openContextMenu}
+            problemImageIds={problemImageIds}
           />
         </div>
       </div>
@@ -316,21 +428,70 @@ export function ProjectTree() {
               onContextMenu={(event) => event.preventDefault()}
             >
               <div className="app-dropdown-backdrop" />
-              {contextMenu.project.sourceKind !== "folder" ? (
+              <button
+                className="app-dropdown-item flex h-9 w-full items-center px-3.5 text-left text-[12px] font-medium text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+                disabled={!contextMenu.project.children?.length}
+                onClick={() => {
+                  const project = contextMenu.project;
+                  setContextMenu(undefined);
+                  setProjectExpanded(project, !expandedIds.has(project.id));
+                }}
+              >
+                {expandedIds.has(contextMenu.project.id) ? t("tree.collapse") : t("tree.expand")}
+              </button>
+              <button
+                className="app-dropdown-item flex h-9 w-full items-center px-3.5 text-left text-[12px] font-medium text-slate-700 transition hover:bg-slate-100"
+                onClick={() => {
+                  setContextMenu(undefined);
+                  void refreshImages();
+                }}
+              >
+                {t("tree.refresh")}
+              </button>
+              <button
+                className="app-dropdown-item flex h-9 w-full items-center px-3.5 text-left text-[12px] font-medium text-slate-700 transition hover:bg-slate-100"
+                onClick={() => void runProjectCheck(contextMenu.project)}
+              >
+                {t("tree.checkProblems")}
+              </button>
+              {canCreateChildFolder(contextMenu.project) ? (
+                <button
+                  className="app-dropdown-item flex h-9 w-full items-center px-3.5 text-left text-[12px] font-medium text-slate-700 transition hover:bg-slate-100"
+                  onClick={() => {
+                    setPendingNewChild(contextMenu.project);
+                    setNewChildName("");
+                    setContextMenu(undefined);
+                  }}
+                >
+                  {t("tree.newChildFolder")}
+                </button>
+              ) : null}
+              {!isVirtualRoot(contextMenu.project) && !isDatasetRoot(contextMenu.project) ? (
                 <>
+                  <div className="app-dropdown-separator my-1.5 h-px bg-slate-200" />
                   <button
                     className="app-dropdown-item flex h-9 w-full items-center px-3.5 text-left text-[12px] font-medium text-slate-700 transition hover:bg-slate-100"
                     onClick={() => startRename(contextMenu.project)}
                   >
-                    {contextMenu.project.id.startsWith("dataset-root:")
-                      ? t("tree.renameDataset")
-                      : t("tree.renameFolder")}
+                    {t("tree.renameFolder")}
                   </button>
-                  <div className="app-dropdown-separator my-1.5 h-px bg-slate-200" />
                 </>
+              ) : null}
+              {!isVirtualRoot(contextMenu.project) && !isDatasetRoot(contextMenu.project) ? (
+                <button
+                  className="app-dropdown-item flex h-9 w-full items-center px-3.5 text-left text-[12px] font-medium text-slate-700 transition hover:bg-slate-100"
+                  onClick={() => {
+                    const project = contextMenu.project;
+                    setContextMenu(undefined);
+                    setPendingRemoval(project);
+                  }}
+                >
+                  {t("tree.delete")}
+                </button>
               ) : null}
               <button
                 className="app-dropdown-item flex h-9 w-full items-center px-3.5 text-left text-[12px] font-medium text-slate-700 transition hover:bg-slate-100"
+                hidden={isVirtualRoot(contextMenu.project) || !isDatasetRoot(contextMenu.project)}
                 onClick={() => {
                   const project = contextMenu.project;
                   setContextMenu(undefined);
@@ -338,7 +499,7 @@ export function ProjectTree() {
                 }}
               >
                 {contextMenu.project.sourceKind === "folder"
-                  ? t("tree.removeFolder")
+                  ? t("tree.removeWorkspaceFolderPath")
                   : t("tree.removeDataset")}
               </button>
             </div>,
@@ -389,6 +550,50 @@ export function ProjectTree() {
           </form>
         </div>
       ) : null}
+      {pendingNewChild ? (
+        <div
+          className="no-drag fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/24 px-4"
+          onClick={() => setPendingNewChild(undefined)}
+        >
+          <form
+            className="w-full max-w-[360px] rounded-lg border border-slate-200 bg-white p-5 shadow-xl"
+            onClick={(event) => event.stopPropagation()}
+            onSubmit={(event) => {
+              event.preventDefault();
+              void submitNewChild();
+            }}
+          >
+            <h2 className="m-0 text-[15px] font-semibold leading-6 text-slate-950">
+              {t("tree.newChildFolderTitle")}
+            </h2>
+            <label className="mt-4 block text-[12px] font-medium text-slate-600">
+              {t("tree.renameNameLabel")}
+            </label>
+            <input
+              autoFocus
+              value={newChildName}
+              onChange={(event) => setNewChildName(event.target.value)}
+              className="glass-input mt-1 h-9 w-full px-3 text-[13px]"
+            />
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                type="button"
+                className="h-8 rounded-md border border-slate-200 bg-white px-3 text-[13px] text-slate-700 transition hover:bg-slate-50"
+                onClick={() => setPendingNewChild(undefined)}
+              >
+                {t("actions.cancel")}
+              </button>
+              <button
+                type="submit"
+                className="h-8 rounded-md bg-slate-950 px-3 text-[13px] font-medium text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+                disabled={!newChildName.trim()}
+              >
+                {t("actions.create")}
+              </button>
+            </div>
+          </form>
+        </div>
+      ) : null}
       {pendingRemoval ? (
         <div
           className="no-drag fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/24 px-4"
@@ -399,14 +604,38 @@ export function ProjectTree() {
             onClick={(event) => event.stopPropagation()}
           >
             <h2 className="m-0 text-[15px] font-semibold leading-6 text-slate-950">
-              {pendingRemoval.sourceKind === "folder"
+              {isWorkspaceFolderChild(pendingRemoval)
+                ? t("tree.confirmDeleteWorkspaceSubfolderTitle")
+                : pendingRemoval.sourceKind === "folder"
                 ? t("tree.confirmFolderTitle")
+                : pendingRemoval.sourceKind === "asset"
+                ? t("tree.confirmAssetTitle")
                 : t("tree.confirmTitle")}
             </h2>
             <p className="mt-2 text-[13px] leading-5 text-slate-600">
-              {pendingRemoval.sourceKind === "folder"
-                ? t("tree.confirmFolderDescription")
-                : t("tree.confirmDescription")}
+              {isWorkspaceFolderChild(pendingRemoval) ? (
+                <>
+                  {t("tree.confirmDeleteWorkspaceSubfolderDescriptionPrefix")}
+                  <span className="text-rose-400">
+                    {t("tree.confirmDeleteWorkspaceSubfolderDescriptionScope")}
+                  </span>
+                  {t("tree.confirmDeleteWorkspaceSubfolderDescriptionSuffix")}
+                </>
+              ) : pendingRemoval.sourceKind === "folder" ? (
+                t("tree.confirmFolderDescription")
+              ) : pendingRemoval.sourceKind === "asset" ? (
+                <>
+                  {t("tree.confirmAssetDescriptionPrefix")}
+                  <span className="text-rose-400">{t("tree.confirmAssetDescriptionScope")}</span>
+                  {t("tree.confirmAssetDescriptionSuffix")}
+                </>
+              ) : (
+                <>
+                  {t("tree.confirmDescriptionPrefix")}
+                  <span className="text-rose-400">{t("tree.confirmDescriptionScope")}</span>
+                  {t("tree.confirmDescriptionSuffix")}
+                </>
+              )}
             </p>
             <div className="mt-3 rounded-md bg-slate-50 px-3 py-2 text-[12px] leading-5 text-slate-600">
               <div className="truncate font-medium text-slate-900">{pendingRemoval.name}</div>
@@ -427,7 +656,9 @@ export function ProjectTree() {
                   void removeDataset(project);
                 }}
               >
-                {t("tree.confirmRemove")}
+                {isWorkspaceFolderChild(pendingRemoval)
+                  ? t("tree.confirmDelete")
+                  : t("tree.confirmRemove")}
               </button>
             </div>
           </div>

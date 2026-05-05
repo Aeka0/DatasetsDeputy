@@ -11,6 +11,7 @@ import { ImportProgressView } from "./components/content/ImportProgressView";
 import { ImportReportView } from "./components/content/ImportReportView";
 import { ImportWizardView } from "./components/content/ImportWizardView";
 import { WelcomeView } from "./components/content/WelcomeView";
+import { ExportDialog } from "./components/export/ExportDialog";
 import { ProjectTree } from "./components/sidebar/ProjectTree";
 import { TitleMenuBar } from "./components/window/TitleMenuBar";
 import { WindowControls } from "./components/window/WindowControls";
@@ -41,7 +42,12 @@ export default function App() {
       .catch((error) => {
         console.error("读取窗口渲染模式失败，使用默认显示模式：", error);
       });
-    const preload = Promise.all([loadWindowRendering, store.initImportEvents(), store.load()])
+    const preload = Promise.all([
+      loadWindowRendering,
+      store.initImportEvents(),
+      store.initExportEvents(),
+      store.load()
+    ])
       .catch((error) => {
         console.error("启动预加载失败，仍然显示主窗口：", error);
       });
@@ -141,6 +147,7 @@ export default function App() {
           </div>
         </section>
       </div>
+      <ExportDialog />
     </main>
   );
 }
