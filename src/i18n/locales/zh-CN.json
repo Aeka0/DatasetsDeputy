@@ -47,6 +47,10 @@
     "collapseFileTree": "收起侧边栏",
     "initialPage": "初始页面",
     "logPage": "日志页面",
+    "filterView": "筛选查看",
+    "filterUnannotated": "只看无标条目",
+    "filterUnsaved": "只看未保存改动",
+    "filterAll": "显示全部",
     "clearSavedMarks": "清理已保存标记",
     "aboutBody": "数据集图片预览、标注维度管理与导出工具。",
     "version": "开发版",
@@ -131,7 +135,9 @@
     "problemItems": "问题条目",
     "checkProblemItems": "检查问题条目",
     "annotationTypes": "标注类型",
-    "fileSize": "文件体积"
+    "fileSize": "文件体积",
+    "noFilterMatches": "没有符合筛选条件的图片",
+    "filterHiddenHint": "请更改“视图-筛选查看”的内容浏览被隐藏的条目"
   },
   "grid": {
     "annotationCount": "份标注"

@@ -338,6 +338,7 @@ function flattenProjects(projects: DatasetProject[]): DatasetProject[] {
 type WorkspaceTab = "overview" | "grid" | "table";
 type PendingImportKind = DatasetSourceKind;
 type AppView = "workspace" | "initial" | "logs";
+export type ViewFilterMode = "all" | "unannotated" | "unsaved";
 const highlightCellStateStorageKey = "datasets-deputy.highlight-cell-state";
 
 export interface AppLogEntry {
@@ -361,6 +362,9 @@ interface DatasetState {
   selectionAnchorImageId?: number;
   previewImageId?: number;
   search: string;
+  viewFilterMode: ViewFilterMode;
+  viewFilterProjectId?: string;
+  viewFilterImageIds: number[];
   tableDraftProfileId?: number;
   tableAnnotationDrafts: Record<number, string>;
   tableInstructionDrafts: Record<number, string>;
@@ -415,6 +419,7 @@ interface DatasetState {
   openImagePreview: (id: number) => void;
   closeImagePreview: () => void;
   setSearch: (search: string) => void;
+  setViewFilter: (mode: ViewFilterMode, projectId?: string, imageIds?: number[]) => void;
   resetTableDrafts: (
     profileId: number,
     annotationDrafts: Record<number, string>,
@@ -579,6 +584,9 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
   selectionAnchorImageId: undefined,
   previewImageId: undefined,
   search: "",
+  viewFilterMode: "all",
+  viewFilterProjectId: undefined,
+  viewFilterImageIds: [],
   tableDraftProfileId: undefined,
   tableAnnotationDrafts: {},
   tableInstructionDrafts: {},
@@ -1358,6 +1366,12 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
     set({ appView: "workspace", previewImageId: id, ...createImageSelection([id], id, id) }),
   closeImagePreview: () => set({ previewImageId: undefined }),
   setSearch: (search) => set({ search }),
+  setViewFilter: (mode, projectId, imageIds = []) =>
+    set({
+      viewFilterMode: mode,
+      viewFilterProjectId: mode === "all" ? undefined : projectId,
+      viewFilterImageIds: mode === "all" ? [] : imageIds
+    }),
   resetTableDrafts: (profileId, annotationDrafts, instructionDrafts) =>
     set({
       tableDraftProfileId: profileId,

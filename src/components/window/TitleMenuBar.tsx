@@ -1,4 +1,5 @@
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { Check, ChevronRight } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
@@ -10,7 +11,7 @@ import {
 import { formatAppError } from "../../lib/errors";
 import { hasTauriRuntime } from "../../lib/tauri";
 import { invokeCommand } from "../../lib/tauri";
-import { useDatasetStore } from "../../stores/datasetStore";
+import { useDatasetStore, type ViewFilterMode } from "../../stores/datasetStore";
 import type { DatasetImage, DatasetProject } from "../../types";
 import {
   AnnotationExecutionDialog,
@@ -39,14 +40,21 @@ interface MenuAction {
   type?: "action";
   label: string;
   disabled?: boolean;
+  checked?: boolean;
   onSelect: () => void | Promise<void>;
+}
+
+interface MenuSubmenu {
+  type: "submenu";
+  label: string;
+  entries: MenuAction[];
 }
 
 interface MenuSeparator {
   type: "separator";
 }
 
-type MenuEntry = MenuAction | MenuSeparator;
+type MenuEntry = MenuAction | MenuSubmenu | MenuSeparator;
 
 interface GeminiSettings extends AnnotationPromptSettings {
   model: string;
@@ -181,6 +189,34 @@ function buildGeminiPrompt(basePrompt: string, imageInstruction: string) {
   return prompt ? `${prompt}\n\nAdditional instruction for this image: ${instruction}` : instruction;
 }
 
+function getAnnotationForProfile(image: DatasetImage, profileId: number | undefined) {
+  if (profileId === undefined) return undefined;
+  return image.annotations.find((annotation) => annotation.profileId === profileId);
+}
+
+function hasEffectiveAnnotation(image: DatasetImage, profileId: number | undefined) {
+  if (profileId === undefined) {
+    return image.annotations.some((annotation) => annotation.content.trim());
+  }
+  return Boolean(getAnnotationForProfile(image, profileId)?.content.trim());
+}
+
+function hasUnsavedChange(
+  image: DatasetImage,
+  profileId: number | undefined,
+  tableDraftProfileId: number | undefined,
+  annotationDrafts: Record<number, string>,
+  instructionDrafts: Record<number, string>
+) {
+  if (profileId === undefined || tableDraftProfileId !== profileId) return false;
+
+  const annotation = getAnnotationForProfile(image, profileId);
+  return (
+    (annotationDrafts[image.id] ?? "") !== (annotation?.content ?? "") ||
+    (instructionDrafts[image.id] ?? "") !== (annotation?.instruction ?? "")
+  );
+}
+
 interface TitleMenuBarProps {
   isProjectTreeCollapsed: boolean;
   onToggleProjectTree: () => void;
@@ -196,6 +232,7 @@ export function TitleMenuBar({
     projects,
     profiles,
     search,
+    viewFilterMode,
     activeProfileId,
     selectedProjectId,
     selectedImageIds,
@@ -206,6 +243,7 @@ export function TitleMenuBar({
     isLoading,
     setAppView,
     addAppLog,
+    setViewFilter,
     clearTableSavedCellMarks,
     openImportWizard,
     openExportDialog,
@@ -216,6 +254,7 @@ export function TitleMenuBar({
     setSearch
   } = useDatasetStore();
   const [openMenu, setOpenMenu] = useState<MenuKey>();
+  const [activeSubmenu, setActiveSubmenu] = useState<string>();
   const [dialog, setDialog] = useState<DialogKey>();
   const [isAnnotationRunning, setIsAnnotationRunning] = useState(false);
   const [menuPosition, setMenuPosition] = useState<MenuPosition>();
@@ -231,6 +270,7 @@ export function TitleMenuBar({
     selectedProjectImageIds.has(imageId)
   );
   const selectedTargetImageIdSet = new Set(selectedTargetImageIds);
+  const selectedProfileId = getProjectProfileId(selectedProject, images, activeProfileId);
 
   useEffect(() => {
     const close = (event: MouseEvent) => {
@@ -243,12 +283,14 @@ export function TitleMenuBar({
       }
       setOpenMenu(undefined);
       setMenuPosition(undefined);
+      setActiveSubmenu(undefined);
     };
 
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         setOpenMenu(undefined);
         setMenuPosition(undefined);
+        setActiveSubmenu(undefined);
       }
     };
 
@@ -266,6 +308,29 @@ export function TitleMenuBar({
       return;
     }
     window.close();
+  };
+
+  const createFilterImageIds = (mode: ViewFilterMode) => {
+    if (mode === "all") return [];
+
+    return images
+      .filter((image) => selectedProjectImageIds.size === 0 || selectedProjectImageIds.has(image.id))
+      .filter((image) =>
+        mode === "unannotated"
+          ? !hasEffectiveAnnotation(image, selectedProfileId)
+          : hasUnsavedChange(
+              image,
+              selectedProfileId,
+              tableDraftProfileId,
+              tableAnnotationDrafts,
+              tableInstructionDrafts
+            )
+      )
+      .map((image) => image.id);
+  };
+
+  const selectViewFilter = (mode: ViewFilterMode) => {
+    setViewFilter(mode, selectedProjectId, createFilterImageIds(mode));
   };
 
   const menus: Record<MenuKey, MenuEntry[]> = {
@@ -342,6 +407,27 @@ export function TitleMenuBar({
         label: t("menu.logPage"),
         onSelect: () => setAppView("logs")
       },
+      {
+        type: "submenu",
+        label: t("menu.filterView"),
+        entries: [
+          {
+            label: t("menu.filterUnannotated"),
+            checked: viewFilterMode === "unannotated",
+            onSelect: () => selectViewFilter("unannotated")
+          },
+          {
+            label: t("menu.filterUnsaved"),
+            checked: viewFilterMode === "unsaved",
+            onSelect: () => selectViewFilter("unsaved")
+          },
+          {
+            label: t("menu.filterAll"),
+            checked: viewFilterMode === "all",
+            onSelect: () => selectViewFilter("all")
+          }
+        ]
+      },
       { type: "separator" },
       {
         label: t("menu.clearSavedMarks"),
@@ -369,6 +455,7 @@ export function TitleMenuBar({
     if (action.disabled) return;
     setOpenMenu(undefined);
     setMenuPosition(undefined);
+    setActiveSubmenu(undefined);
     void action.onSelect();
   };
 
@@ -440,12 +527,14 @@ export function TitleMenuBar({
     if (menus[menu].length === 0) {
       setOpenMenu(undefined);
       setMenuPosition(undefined);
+      setActiveSubmenu(undefined);
       return;
     }
 
     if (openMenu === menu) {
       setOpenMenu(undefined);
       setMenuPosition(undefined);
+      setActiveSubmenu(undefined);
       return;
     }
 
@@ -454,6 +543,7 @@ export function TitleMenuBar({
       left: Math.min(rect.left, window.innerWidth - 188),
       top: rect.bottom + 4
     });
+    setActiveSubmenu(undefined);
     setOpenMenu(menu);
   };
 
@@ -631,14 +721,56 @@ export function TitleMenuBar({
                 key={`${openMenu}-separator-${index}`}
                 className="app-dropdown-separator my-1.5 h-px bg-slate-200/90"
               />
+            ) : entry.type === "submenu" ? (
+              <div
+                key={entry.label}
+                className="relative"
+                onMouseEnter={() => setActiveSubmenu(entry.label)}
+              >
+                <button
+                  type="button"
+                  className="app-dropdown-item flex h-9 w-full items-center gap-2 px-3.5 text-left text-[12px] font-medium leading-4 text-slate-700 transition hover:bg-slate-100"
+                  onClick={() =>
+                    setActiveSubmenu((current) =>
+                      current === entry.label ? undefined : entry.label
+                    )
+                  }
+                >
+                  <span className="flex w-4 shrink-0 justify-center" />
+                  <span className="min-w-0 flex-1 truncate">{entry.label}</span>
+                  <ChevronRight size={14} className="shrink-0 text-slate-400" />
+                </button>
+                {activeSubmenu === entry.label ? (
+                  <div className="app-dropdown-menu no-drag absolute left-[calc(100%-4px)] top-0 z-[60] min-w-[180px] rounded-lg py-2">
+                    <div className="app-dropdown-backdrop" />
+                    {entry.entries.map((subEntry) => (
+                      <button
+                        key={subEntry.label}
+                        type="button"
+                        className="app-dropdown-item flex h-9 w-full items-center gap-2 px-3.5 text-left text-[12px] font-medium leading-4 text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:text-slate-400 disabled:hover:bg-transparent"
+                        disabled={subEntry.disabled}
+                        onClick={() => selectAction(subEntry)}
+                      >
+                        <span className="flex w-4 shrink-0 justify-center">
+                          {subEntry.checked ? <Check size={14} /> : null}
+                        </span>
+                        <span className="min-w-0 flex-1 truncate">{subEntry.label}</span>
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
             ) : (
               <button
                 key={entry.label}
                 type="button"
-                className="app-dropdown-item flex h-9 w-full items-center px-3.5 text-left text-[12px] font-medium leading-4 text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:text-slate-400 disabled:hover:bg-transparent"
+                className="app-dropdown-item flex h-9 w-full items-center gap-2 px-3.5 text-left text-[12px] font-medium leading-4 text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:text-slate-400 disabled:hover:bg-transparent"
                 disabled={entry.disabled}
                 onClick={() => selectAction(entry)}
               >
+                <span className="flex w-4 shrink-0 justify-center">
+                  {entry.checked ? <Check size={14} /> : null}
+                </span>
                 <span className="truncate">{entry.label}</span>
               </button>
             )

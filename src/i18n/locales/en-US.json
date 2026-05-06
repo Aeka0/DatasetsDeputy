@@ -47,6 +47,10 @@
     "collapseFileTree": "Hide sidebar",
     "initialPage": "Initial page",
     "logPage": "Log page",
+    "filterView": "Filter view",
+    "filterUnannotated": "Only unannotated items",
+    "filterUnsaved": "Only unsaved changes",
+    "filterAll": "Show all",
     "clearSavedMarks": "Clear saved markers",
     "aboutBody": "Dataset image preview, annotation dimension management, and export tools.",
     "version": "Development build",
@@ -131,7 +135,9 @@
     "problemItems": "Problem items",
     "checkProblemItems": "Check problem items",
     "annotationTypes": "Annotation types",
-    "fileSize": "File size"
+    "fileSize": "File size",
+    "noFilterMatches": "No images match the filter",
+    "filterHiddenHint": "Change View - Filter view to browse hidden items"
   },
   "grid": {
     "annotationCount": "annotations"

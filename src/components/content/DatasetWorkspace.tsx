@@ -3,6 +3,7 @@ import {
   ChevronDown,
   FolderOpen,
   Grid3X3,
+  ImageIcon,
   ImagePlus,
   Info,
   Pencil,
@@ -19,7 +20,7 @@ import { useTranslation } from "react-i18next";
 import { cn } from "../../lib/cn";
 import { formatAppError } from "../../lib/errors";
 import { hasTauriRuntime, invokeCommand } from "../../lib/tauri";
-import { useDatasetStore } from "../../stores/datasetStore";
+import { useDatasetStore, type ViewFilterMode } from "../../stores/datasetStore";
 import type {
   AnnotationProfile,
   DatasetImage,
@@ -128,14 +129,18 @@ function formatBytes(value: number) {
 function getVisibleImages(
   images: DatasetImage[],
   selectedProject: DatasetProject | undefined,
-  search: string
+  search: string,
+  viewFilterMode: ViewFilterMode,
+  viewFilterImageIds: number[]
 ) {
   const projectIds = selectedProject?.imageIds ?? [];
+  const filteredIds = viewFilterMode === "all" ? undefined : new Set(viewFilterImageIds);
   const query = search.trim().toLowerCase();
 
   return images.filter((image) => {
     const inProject = projectIds.length === 0 || projectIds.includes(image.id);
     if (!inProject) return false;
+    if (filteredIds && !filteredIds.has(image.id)) return false;
     if (!query) return true;
 
     return [image.fileName, ...image.annotations.map((annotation) => annotation.content)]
@@ -143,6 +148,97 @@ function getVisibleImages(
       .toLowerCase()
       .includes(query);
   });
+}
+
+function getProjectImages(images: DatasetImage[], selectedProject: DatasetProject | undefined) {
+  const projectIds = selectedProject?.imageIds ?? [];
+  return images.filter((image) => projectIds.length === 0 || projectIds.includes(image.id));
+}
+
+function getAnnotationForProfile(image: DatasetImage, profileId: number | undefined) {
+  if (profileId === undefined) return undefined;
+  return image.annotations.find((annotation) => annotation.profileId === profileId);
+}
+
+function getEffectiveProfileId(
+  images: DatasetImage[],
+  selectedProject: DatasetProject | undefined,
+  activeProfileId: number | undefined
+) {
+  if (!selectedProject) return activeProfileId;
+  const projectImages = images.filter((image) => selectedProject.imageIds.includes(image.id));
+
+  if (selectedProject.sourceKind === "folder") {
+    const projectProfileIds = new Set(
+      projectImages.flatMap((image) => image.annotations.map((annotation) => annotation.profileId))
+    );
+    if (activeProfileId !== undefined && projectProfileIds.has(activeProfileId)) {
+      return activeProfileId;
+    }
+    return projectImages.at(0)?.annotations.at(0)?.profileId;
+  }
+
+  return activeProfileId;
+}
+
+function hasEffectiveAnnotation(image: DatasetImage, profileId: number | undefined) {
+  if (profileId === undefined) {
+    return image.annotations.some((annotation) => annotation.content.trim());
+  }
+  return Boolean(getAnnotationForProfile(image, profileId)?.content.trim());
+}
+
+function hasUnsavedChange(
+  image: DatasetImage,
+  profileId: number | undefined,
+  tableDraftProfileId: number | undefined,
+  annotationDrafts: Record<number, string>,
+  instructionDrafts: Record<number, string>
+) {
+  if (profileId === undefined || tableDraftProfileId !== profileId) return false;
+
+  const annotation = getAnnotationForProfile(image, profileId);
+  return (
+    (annotationDrafts[image.id] ?? "") !== (annotation?.content ?? "") ||
+    (instructionDrafts[image.id] ?? "") !== (annotation?.instruction ?? "")
+  );
+}
+
+function createViewFilterImageIds({
+  mode,
+  images,
+  selectedProject,
+  activeProfileId,
+  tableDraftProfileId,
+  annotationDrafts,
+  instructionDrafts
+}: {
+  mode: ViewFilterMode;
+  images: DatasetImage[];
+  selectedProject: DatasetProject | undefined;
+  activeProfileId: number | undefined;
+  tableDraftProfileId: number | undefined;
+  annotationDrafts: Record<number, string>;
+  instructionDrafts: Record<number, string>;
+}) {
+  if (mode === "all") return [];
+
+  const projectIds = new Set(selectedProject?.imageIds ?? []);
+  const profileId = getEffectiveProfileId(images, selectedProject, activeProfileId);
+  return images
+    .filter((image) => projectIds.size === 0 || projectIds.has(image.id))
+    .filter((image) =>
+      mode === "unannotated"
+        ? !hasEffectiveAnnotation(image, profileId)
+        : hasUnsavedChange(
+            image,
+            profileId,
+            tableDraftProfileId,
+            annotationDrafts,
+            instructionDrafts
+          )
+    )
+    .map((image) => image.id);
 }
 
 function PropertyRow({
@@ -632,8 +728,16 @@ export function DatasetWorkspace() {
     selectedProjectId,
     selectedImageIds,
     search,
+    viewFilterMode,
+    viewFilterProjectId,
+    viewFilterImageIds,
+    activeProfileId,
+    tableDraftProfileId,
+    tableAnnotationDrafts,
+    tableInstructionDrafts,
     isCheckingProblemItems,
     setSearch,
+    setViewFilter,
     setWorkspaceTab,
     refreshImages,
     addAppLog,
@@ -670,9 +774,18 @@ export function DatasetWorkspace() {
           .join("/")}/`
       : "";
   const visibleImages = useMemo(
-    () => getVisibleImages(images, selectedProject, search),
-    [images, search, selectedProject]
+    () => getVisibleImages(images, selectedProject, search, viewFilterMode, viewFilterImageIds),
+    [images, search, selectedProject, viewFilterImageIds, viewFilterMode]
   );
+  const projectImageCount = useMemo(
+    () => getProjectImages(images, selectedProject).length,
+    [images, selectedProject]
+  );
+  const shouldShowFilterEmptyState =
+    activeTab !== "overview" &&
+    viewFilterMode !== "all" &&
+    visibleImages.length === 0 &&
+    projectImageCount > 0;
   const selectedVisibleImageCount = useMemo(() => {
     const visibleImageIds = new Set(visibleImages.map((image) => image.id));
     return selectedImageIds.filter((imageId) => visibleImageIds.has(imageId)).length;
@@ -687,6 +800,35 @@ export function DatasetWorkspace() {
   );
   const canImportImagesToFolder =
     isImportableDatasetChild(selectedProject) && Boolean(selectedProject?.datasetId);
+
+  useEffect(() => {
+    if (viewFilterMode === "all" || viewFilterProjectId === selectedProjectId) return;
+
+    setViewFilter(
+      viewFilterMode,
+      selectedProjectId,
+      createViewFilterImageIds({
+        mode: viewFilterMode,
+        images,
+        selectedProject,
+        activeProfileId,
+        tableDraftProfileId,
+        annotationDrafts: tableAnnotationDrafts,
+        instructionDrafts: tableInstructionDrafts
+      })
+    );
+  }, [
+    activeProfileId,
+    images,
+    selectedProject,
+    selectedProjectId,
+    setViewFilter,
+    tableAnnotationDrafts,
+    tableDraftProfileId,
+    tableInstructionDrafts,
+    viewFilterMode,
+    viewFilterProjectId
+  ]);
 
   useEffect(() => {
     if (!imageContextMenu) return;
@@ -911,6 +1053,16 @@ export function DatasetWorkspace() {
           isCheckingProblemItems={isCheckingProblemItems}
           checkProblemItems={checkProblemItems}
         />
+      ) : shouldShowFilterEmptyState ? (
+        <div className="flex flex-1 flex-col items-center justify-center rounded-lg border border-slate-200 bg-slate-50 p-12 text-center">
+          <ImageIcon size={44} className="mb-4 text-slate-300" />
+          <h2 className="m-0 text-xl font-semibold text-slate-900">
+            {t("workspace.noFilterMatches")}
+          </h2>
+          <p className="mt-2 max-w-md text-sm text-slate-500">
+            {t("workspace.filterHiddenHint")}
+          </p>
+        </div>
       ) : activeTab === "grid" ? (
         <DatasetGrid images={visibleImages} onImageContextMenu={openImageContextMenu} />
       ) : (
