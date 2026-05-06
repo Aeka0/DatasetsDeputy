@@ -176,6 +176,7 @@ pub fn run() {
             commands::delete_dataset_image,
             commands::create_annotation_profile,
             commands::clear_annotation,
+            commands::remove_training_set,
             commands::remove_dataset_folder,
             commands::remove_folder_dataset,
             commands::rename_dataset_folder,

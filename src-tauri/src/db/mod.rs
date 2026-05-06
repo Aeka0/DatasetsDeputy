@@ -271,17 +271,6 @@ impl Database {
         Ok(renamed)
     }
 
-    pub fn dataset_root_path(&self) -> AppResult<Option<String>> {
-        self.conn
-            .query_row(
-                "SELECT value FROM dataset_metadata WHERE key = 'root_path'",
-                [],
-                |row| row.get(0),
-            )
-            .optional()
-            .map_err(Into::into)
-    }
-
     pub fn dataset_source_kind(&self) -> AppResult<String> {
         Ok(self
             .conn
@@ -576,44 +565,74 @@ impl Database {
         Ok(new_path.to_string_lossy().to_string())
     }
 
-    pub fn delete_image(&mut self, image_id: i64) -> AppResult<usize> {
-        let tx = self.conn.transaction()?;
-        let deleted = tx.execute("DELETE FROM images WHERE id = ?1", params![image_id])?;
-        tx.execute(
-            r#"DELETE FROM annotation_profiles
-               WHERE NOT EXISTS (
-                   SELECT 1
-                   FROM annotations
-                   WHERE annotations.profile_id = annotation_profiles.id
-               )"#,
-            [],
-        )?;
-        tx.commit()?;
+    pub fn get_image_storage_path(&self, image_id: i64) -> AppResult<Option<String>> {
+        Ok(self
+            .conn
+            .query_row(
+                "SELECT storage_path FROM images WHERE id = ?1",
+                params![image_id],
+                |row| row.get(0),
+            )
+            .optional()?
+            .flatten())
+    }
 
+    pub fn get_storage_paths_under_path(&self, folder_path: &str) -> AppResult<Vec<String>> {
+        let normalized_path = normalize_dataset_path(folder_path);
+        let child_pattern = format!("{normalized_path}/%");
+        let mut stmt = self.conn.prepare(
+            r#"SELECT storage_path FROM images
+               WHERE storage_path IS NOT NULL
+                 AND (replace(path, '\', '/') = ?1
+                  OR replace(path, '\', '/') LIKE ?2)"#,
+        )?;
+        let paths = stmt
+            .query_map(params![normalized_path, child_pattern], |row| {
+                row.get::<_, String>(0)
+            })?
+            .filter_map(Result::ok)
+            .collect();
+        Ok(paths)
+    }
+
+    pub fn get_all_storage_paths(&self) -> AppResult<Vec<String>> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT storage_path FROM images WHERE storage_path IS NOT NULL")?;
+        let paths = stmt
+            .query_map([], |row| row.get::<_, String>(0))?
+            .filter_map(Result::ok)
+            .collect();
+        Ok(paths)
+    }
+
+    pub fn has_storage_path_reference(&self, storage_path: &str) -> AppResult<bool> {
+        let normalized = storage_path.replace('\\', "/");
+        let count: i64 = self.conn.query_row(
+            r#"SELECT COUNT(*) FROM images
+               WHERE replace(storage_path, '\', '/') = ?1"#,
+            params![normalized],
+            |row| row.get(0),
+        )?;
+        Ok(count > 0)
+    }
+
+    pub fn delete_image(&mut self, image_id: i64) -> AppResult<usize> {
+        let deleted = self
+            .conn
+            .execute("DELETE FROM images WHERE id = ?1", params![image_id])?;
         Ok(deleted)
     }
 
     pub fn delete_images_under_path(&mut self, folder_path: &str) -> AppResult<usize> {
         let normalized_path = normalize_dataset_path(folder_path);
         let child_pattern = format!("{normalized_path}/%");
-        let tx = self.conn.transaction()?;
-        let deleted = tx.execute(
+        let deleted = self.conn.execute(
             r#"DELETE FROM images
                WHERE replace(path, '\', '/') = ?1
                   OR replace(path, '\', '/') LIKE ?2"#,
             params![normalized_path, child_pattern],
         )?;
-        tx.execute(
-            r#"DELETE FROM annotation_profiles
-               WHERE NOT EXISTS (
-                   SELECT 1
-                   FROM annotations
-                   WHERE annotations.profile_id = annotation_profiles.id
-               )"#,
-            [],
-        )?;
-        tx.commit()?;
-
         Ok(deleted)
     }
 

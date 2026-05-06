@@ -248,7 +248,7 @@ function createProjectTree(
   return Array.from(groups.entries()).map(([groupKey, groupImages]) => {
     const sourceKind = groupImages[0]?.sourceKind ?? "database";
     const imageRoot = groupImages.find((image) => image.rootPath)?.rootPath;
-    const groupRootPath = sourceKind === "folder" ? imageRoot : rootPath;
+    const groupRootPath = sourceKind === "folder" ? imageRoot : undefined;
     const groupRootName = sourceKind === "folder"
       ? getPathName(imageRoot ?? "", "Folder")
       : rootName;
@@ -1017,6 +1017,13 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
             folderPath: project.path
           });
         }
+      } else if (
+        project.id.startsWith("dataset-root:") ||
+        project.id.startsWith("asset-root:")
+      ) {
+        await invokeCommand<number>("remove_training_set", {
+          datasetId: project.datasetId
+        });
       } else {
         await invokeCommand<number>("remove_dataset_folder", {
           folderPath: project.path,

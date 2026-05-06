@@ -20,6 +20,16 @@ import type { DatasetProject } from "../../types";
 
 const sidebarLabelClass = "text-[12px] leading-4";
 
+function getEditedAnnotationTypeCount(images: Array<{ annotations: Array<{ profileId: number; content: string; instruction: string }> }>) {
+  return new Set(
+    images.flatMap((image) =>
+      image.annotations
+        .filter((annotation) => annotation.content.trim() || annotation.instruction.trim())
+        .map((annotation) => annotation.profileId)
+    )
+  ).size;
+}
+
 function ProjectNode({
   project,
   depth = 0,
@@ -307,6 +317,10 @@ export function ProjectTree() {
     project.id.startsWith("folder-root:");
   const isWorkspaceFolderChild = (project: DatasetProject) =>
     project.sourceKind === "folder" && !isVirtualRoot(project) && !project.id.startsWith("folder-root:");
+  const isDatabaseLikeTrainingSet = (project: DatasetProject) =>
+    !isVirtualRoot(project) &&
+    !isDatasetRoot(project) &&
+    (project.sourceKind === "database" || project.sourceKind === "asset");
   const canCreateChildFolder = (project: DatasetProject) => isDatasetRoot(project) && Boolean(project.path);
   const runProjectCheck = async (project: DatasetProject) => {
     setContextMenu(undefined);
@@ -328,6 +342,51 @@ export function ProjectTree() {
     () => new Set(images.filter((image) => image.sourceMissing).map((image) => image.id)),
     [images]
   );
+  const pendingRemovalImages = pendingRemoval
+    ? images.filter((image) => pendingRemoval.imageIds.includes(image.id))
+    : [];
+  const pendingRemovalEditedTypeCount = getEditedAnnotationTypeCount(pendingRemovalImages);
+  const pendingRemovalParentName =
+    pendingRemoval && isDatabaseLikeTrainingSet(pendingRemoval)
+      ? projects.find((p) => p.datasetId === pendingRemoval.datasetId)?.name
+      : undefined;
+  const pendingRemovalTitle = pendingRemoval
+    ? isWorkspaceFolderChild(pendingRemoval)
+      ? t("tree.confirmDeleteWorkspaceSubfolderTitle")
+      : isDatabaseLikeTrainingSet(pendingRemoval)
+      ? t("tree.confirmRemoveSubfolderTitle")
+      : pendingRemoval.sourceKind === "folder"
+      ? t("tree.confirmFolderTitle")
+      : t("tree.confirmRemoveTrainingSetTitle")
+    : "";
+  const pendingRemovalDeletedDescription = pendingRemoval
+    ? isWorkspaceFolderChild(pendingRemoval)
+      ? t("tree.deletedWorkspaceSubfolder")
+      : pendingRemoval.sourceKind === "folder"
+      ? t("tree.deletedFolderMount")
+      : isDatabaseLikeTrainingSet(pendingRemoval)
+      ? t(
+          pendingRemoval.sourceKind === "asset"
+            ? "tree.deletedAssetSubfolder"
+            : "tree.deletedDatabaseSubfolder",
+          { count: pendingRemovalEditedTypeCount }
+        )
+      : t(
+          pendingRemoval.sourceKind === "asset"
+            ? "tree.deletedAssetTrainingSet"
+            : "tree.deletedDatabaseTrainingSet",
+          { count: pendingRemovalEditedTypeCount }
+        )
+    : "";
+  const pendingRemovalKeptDescription = pendingRemoval
+    ? isWorkspaceFolderChild(pendingRemoval)
+      ? t("tree.keptWorkspaceSubfolder")
+      : pendingRemoval.sourceKind === "folder"
+      ? t("tree.keptFolderMount")
+      : pendingRemoval.sourceKind === "asset"
+      ? t("tree.keptAssetDatabase")
+      : t("tree.keptDatabase")
+    : "";
   const importingProject: DatasetProject | undefined = pendingImportKind
     ? {
         id: `importing-${pendingImportKind}`,
@@ -486,7 +545,9 @@ export function ProjectTree() {
                     setPendingRemoval(project);
                   }}
                 >
-                  {t("tree.delete")}
+                  {isDatabaseLikeTrainingSet(contextMenu.project)
+                    ? t("tree.removeSubfolder")
+                    : t("tree.delete")}
                 </button>
               ) : null}
               <button
@@ -500,7 +561,7 @@ export function ProjectTree() {
               >
                 {contextMenu.project.sourceKind === "folder"
                   ? t("tree.removeWorkspaceFolderPath")
-                  : t("tree.removeDataset")}
+                  : t("tree.removeTrainingSet")}
               </button>
             </div>,
             document.body
@@ -604,43 +665,31 @@ export function ProjectTree() {
             onClick={(event) => event.stopPropagation()}
           >
             <h2 className="m-0 text-[15px] font-semibold leading-6 text-slate-950">
-              {isWorkspaceFolderChild(pendingRemoval)
-                ? t("tree.confirmDeleteWorkspaceSubfolderTitle")
-                : pendingRemoval.sourceKind === "folder"
-                ? t("tree.confirmFolderTitle")
-                : pendingRemoval.sourceKind === "asset"
-                ? t("tree.confirmAssetTitle")
-                : t("tree.confirmTitle")}
+              {pendingRemovalTitle}
             </h2>
-            <p className="mt-2 text-[13px] leading-5 text-slate-600">
-              {isWorkspaceFolderChild(pendingRemoval) ? (
-                <>
-                  {t("tree.confirmDeleteWorkspaceSubfolderDescriptionPrefix")}
-                  <span className="text-rose-400">
-                    {t("tree.confirmDeleteWorkspaceSubfolderDescriptionScope")}
-                  </span>
-                  {t("tree.confirmDeleteWorkspaceSubfolderDescriptionSuffix")}
-                </>
-              ) : pendingRemoval.sourceKind === "folder" ? (
-                t("tree.confirmFolderDescription")
-              ) : pendingRemoval.sourceKind === "asset" ? (
-                <>
-                  {t("tree.confirmAssetDescriptionPrefix")}
-                  <span className="text-rose-400">{t("tree.confirmAssetDescriptionScope")}</span>
-                  {t("tree.confirmAssetDescriptionSuffix")}
-                </>
-              ) : (
-                <>
-                  {t("tree.confirmDescriptionPrefix")}
-                  <span className="text-rose-400">{t("tree.confirmDescriptionScope")}</span>
-                  {t("tree.confirmDescriptionSuffix")}
-                </>
-              )}
-            </p>
-            <div className="mt-3 rounded-md bg-slate-50 px-3 py-2 text-[12px] leading-5 text-slate-600">
-              <div className="truncate font-medium text-slate-900">{pendingRemoval.name}</div>
-              {pendingRemoval.sourceKind === "folder" ? (
-                <div className="truncate">{pendingRemoval.path}</div>
+            <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-[12px] leading-5">
+              <div className="truncate font-medium text-slate-900">
+                {pendingRemovalParentName ? (
+                  <span className="text-slate-400">{pendingRemovalParentName} / </span>
+                ) : null}
+                {pendingRemoval.name}
+              </div>
+              {pendingRemoval.path &&
+              pendingRemoval.sourceKind !== "database" &&
+              pendingRemoval.sourceKind !== "asset" ? (
+                <div className="truncate text-slate-500">{pendingRemoval.path}</div>
+              ) : null}
+            </div>
+            <div className="mt-4 space-y-3 text-[13px] leading-5">
+              <div>
+                <div className="font-medium text-slate-950">{t("deleteDetails.deletedTitle")}</div>
+                <div className="mt-1 text-rose-400">{pendingRemovalDeletedDescription}</div>
+              </div>
+              {!isWorkspaceFolderChild(pendingRemoval) ? (
+                <div>
+                  <div className="font-medium text-slate-950">{t("deleteDetails.keptTitle")}</div>
+                  <div className="mt-1 text-slate-600">{pendingRemovalKeptDescription}</div>
+                </div>
               ) : null}
             </div>
             <div className="mt-5 flex justify-end gap-2">

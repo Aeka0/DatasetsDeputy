@@ -470,6 +470,23 @@ function ImageDeleteDialog({
   onConfirm: () => void;
 }) {
   const { t } = useTranslation();
+  const editedAnnotationTypeCount = new Set(
+    image.annotations
+      .filter((annotation) => annotation.content.trim() || annotation.instruction.trim())
+      .map((annotation) => annotation.profileId)
+  ).size;
+  const isFolderImage = image.sourceKind === "folder";
+  const isAssetImage = image.sourceKind === "asset";
+  const deletedDescription = isFolderImage
+    ? t("itemMenu.deletedFolderImage")
+    : isAssetImage
+    ? t("itemMenu.deletedAssetImage", { count: editedAnnotationTypeCount })
+    : t("itemMenu.deletedDatabaseImage", { count: editedAnnotationTypeCount });
+  const keptDescription = isFolderImage
+    ? t("itemMenu.keptFolderImage")
+    : isAssetImage
+    ? t("itemMenu.keptAssetImage")
+    : t("itemMenu.keptDatabaseImage");
 
   return createPortal(
     <div className="no-drag fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/24 px-4">
@@ -477,14 +494,21 @@ function ImageDeleteDialog({
         <h2 className="m-0 text-[15px] font-semibold leading-6 text-slate-950">
           {t("itemMenu.deleteTitle")}
         </h2>
-        <p className="mt-2 text-[13px] leading-5 text-slate-600">
-          {t("itemMenu.deleteDescriptionPrefix")}
-          <span className="text-rose-400">{t("itemMenu.deleteDescriptionScope")}</span>
-          {t("itemMenu.deleteDescriptionSuffix")}
-        </p>
-        <div className="mt-3 rounded-md bg-slate-50 px-3 py-2 text-[12px] leading-5 text-slate-600">
+        <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-[12px] leading-5">
           <div className="truncate font-medium text-slate-900">{image.fileName}</div>
-          <div className="truncate">{image.path}</div>
+          <div className="truncate text-slate-500">{image.path}</div>
+        </div>
+        <div className="mt-4 space-y-3 text-[13px] leading-5">
+          <div>
+            <div className="font-medium text-slate-950">{t("deleteDetails.deletedTitle")}</div>
+            <div className="mt-1 text-rose-400">{deletedDescription}</div>
+          </div>
+          {!isFolderImage ? (
+            <div>
+              <div className="font-medium text-slate-950">{t("deleteDetails.keptTitle")}</div>
+              <div className="mt-1 text-slate-600">{keptDescription}</div>
+            </div>
+          ) : null}
         </div>
         {error ? <div className="mt-3 text-[12px] text-red-600">{error}</div> : null}
         <div className="mt-5 flex justify-end gap-2">

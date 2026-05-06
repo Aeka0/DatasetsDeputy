@@ -234,7 +234,6 @@ fn namespace_image(
     mut image: DatasetImage,
     prefix: i64,
     source_kind: &str,
-    root_path: Option<String>,
 ) -> DatasetImage {
     let source_path = if source_kind == "asset" {
         image.storage_path.as_deref().unwrap_or(&image.path)
@@ -250,7 +249,6 @@ fn namespace_image(
     image.source_missing = !Path::new(source_path).is_file();
     image.source_kind = Some(source_kind.to_owned());
     image.dataset_id = Some(format!("{source_kind}:{prefix}"));
-    image.root_path = root_path;
     image
 }
 
@@ -408,6 +406,59 @@ fn remove_sqlite_files(path: &Path) -> AppResult<()> {
         }
     }
     Ok(())
+}
+
+/// Check whether any asset database still references the given `storage_path`.
+/// `skip_db_path` is excluded from the scan (e.g. the database that was just deleted).
+fn is_asset_path_still_referenced(
+    dirs: &app_dirs::AppDirs,
+    storage_path: &str,
+    skip_db_path: Option<&Path>,
+) -> AppResult<bool> {
+    for db_ref in dataset_database_refs(dirs)? {
+        if skip_db_path == Some(db_ref.path.as_path()) {
+            continue;
+        }
+        let db = open_database(&db_ref.path)?;
+        if db.dataset_source_kind()? != "asset" {
+            continue;
+        }
+        if db.has_storage_path_reference(storage_path)? {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
+/// Delete asset library files that are no longer referenced by any asset database.
+/// `skip_db_path` is excluded from the reference scan (for databases that have already
+/// been deleted or will be deleted).
+fn cleanup_unreferenced_asset_files(
+    dirs: &app_dirs::AppDirs,
+    storage_paths: &[String],
+    skip_db_path: Option<&Path>,
+) -> usize {
+    let mut cleaned = 0;
+    for storage_path in storage_paths {
+        match is_asset_path_still_referenced(dirs, storage_path, skip_db_path) {
+            Ok(true) => continue,
+            Ok(false) => {}
+            Err(err) => {
+                tracing::warn!("检查资产引用失败：{err}");
+                continue;
+            }
+        }
+        let file_path = Path::new(storage_path);
+        if file_path.is_file() {
+            if let Err(err) = fs::remove_file(file_path) {
+                tracing::warn!("删除资产文件失败：{storage_path} - {err}");
+            } else {
+                tracing::info!("已清理资产文件：{storage_path}");
+                cleaned += 1;
+            }
+        }
+    }
+    cleaned
 }
 
 fn output_folder_name_from_path(path: &Path) -> String {
@@ -613,15 +664,9 @@ fn list_images_for_dirs(dirs: &app_dirs::AppDirs) -> AppResult<Vec<DatasetImage>
     let mut images = Vec::new();
     for db_ref in dataset_database_refs(dirs)? {
         let db = open_database(&db_ref.path)?;
-        let root_path = db.dataset_root_path()?;
         let source_kind = db.dataset_source_kind()?;
         for image in db.list_images()? {
-            images.push(namespace_image(
-                image,
-                db_ref.prefix,
-                &source_kind,
-                root_path.clone(),
-            ));
+            images.push(namespace_image(image, db_ref.prefix, &source_kind));
         }
     }
     images.extend(folders::list_folder_images(dirs)?);
@@ -1566,7 +1611,21 @@ pub fn delete_dataset_image(
 
     let (prefix, local_image_id) = split_public_id(image_id)?;
     let (mut db, _) = open_database_by_prefix(&state.dirs, prefix)?;
-    db.delete_image(local_image_id)
+
+    let asset_storage_path = if db.dataset_source_kind()? == "asset" {
+        db.get_image_storage_path(local_image_id)?
+    } else {
+        None
+    };
+
+    let deleted = db.delete_image(local_image_id)?;
+    drop(db);
+
+    if let Some(storage_path) = asset_storage_path {
+        cleanup_unreferenced_asset_files(&state.dirs, &[storage_path], None);
+    }
+
+    Ok(deleted)
 }
 
 #[tauri::command]
@@ -1704,29 +1763,76 @@ pub fn clear_annotation(state: State<'_, AppState>, annotation_id: i64) -> AppRe
 }
 
 #[tauri::command]
+pub fn remove_training_set(
+    state: State<'_, AppState>,
+    dataset_id: String,
+) -> AppResult<usize> {
+    tracing::info!("移除训练集：dataset_id={}", dataset_id);
+    let (source_kind, prefix_value) =
+        if let Some(value) = dataset_id.strip_prefix("database:") {
+            ("database", value)
+        } else if let Some(value) = dataset_id.strip_prefix("asset:") {
+            ("asset", value)
+        } else {
+            return Err(AppError::InvalidInput(format!(
+                "不支持的训练集 ID：{dataset_id}"
+            )));
+        };
+    let prefix = prefix_value.parse::<i64>().map_err(|_| {
+        AppError::InvalidInput(format!("无效的训练集 ID：{dataset_id}"))
+    })?;
+
+    let db_ref = dataset_database_refs(&state.dirs)?
+        .into_iter()
+        .find(|db_ref| db_ref.prefix == prefix)
+        .ok_or_else(|| AppError::InvalidInput(format!("未找到训练集数据库：{dataset_id}")))?;
+
+    let db = open_database(&db_ref.path)?;
+    if db.dataset_source_kind()? != source_kind {
+        return Err(AppError::InvalidInput(format!(
+            "训练集类型不匹配：{dataset_id}"
+        )));
+    }
+    let image_count = db.list_images()?.len();
+    let asset_storage_paths = if source_kind == "asset" {
+        db.get_all_storage_paths()?
+    } else {
+        Vec::new()
+    };
+    drop(db);
+
+    let db_path = db_ref.path.clone();
+    remove_sqlite_files(&db_ref.path)?;
+
+    if !asset_storage_paths.is_empty() {
+        let cleaned =
+            cleanup_unreferenced_asset_files(&state.dirs, &asset_storage_paths, Some(&db_path));
+        tracing::info!("移除训练集：清理了 {cleaned} 个资产文件");
+    }
+
+    Ok(image_count)
+}
+
+#[tauri::command]
 pub fn remove_dataset_folder(
     state: State<'_, AppState>,
     folder_path: String,
     source_kind: Option<String>,
 ) -> AppResult<usize> {
-    tracing::info!("Removing dataset folder records for path={}", folder_path);
-    let normalized_folder = normalize_path(&folder_path);
+    tracing::info!("移除数据库子文件夹记录：path={}", folder_path);
     let source_kind = normalize_database_source_kind(source_kind)?;
+    let is_asset = source_kind == "asset";
     let mut removed = 0;
+    let mut asset_storage_paths = Vec::new();
 
     for db_ref in dataset_database_refs(&state.dirs)? {
         let mut db = open_database(&db_ref.path)?;
         if db.dataset_source_kind()? != source_kind {
             continue;
         }
-        let root_path = db.dataset_root_path()?.map(|value| normalize_path(&value));
-        let image_count = db.list_images()?.len();
 
-        if root_path.as_deref() == Some(normalized_folder.as_str()) {
-            drop(db);
-            remove_sqlite_files(&db_ref.path)?;
-            removed += image_count;
-            continue;
+        if is_asset {
+            asset_storage_paths.extend(db.get_storage_paths_under_path(&folder_path)?);
         }
 
         let deleted = db.delete_images_under_path(&folder_path)?;
@@ -1735,6 +1841,11 @@ pub fn remove_dataset_folder(
             drop(db);
             remove_sqlite_files(&db_ref.path)?;
         }
+    }
+
+    if !asset_storage_paths.is_empty() {
+        let cleaned = cleanup_unreferenced_asset_files(&state.dirs, &asset_storage_paths, None);
+        tracing::info!("移除子文件夹：清理了 {cleaned} 个资产文件");
     }
 
     Ok(removed)
