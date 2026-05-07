@@ -12,7 +12,7 @@ import { useTranslation } from "react-i18next";
 import { cn } from "../../lib/cn";
 import { resolveAssetSrc } from "../../lib/tauri";
 import { useDatasetStore } from "../../stores/datasetStore";
-import type { Annotation, AnnotationChange, DatasetImage } from "../../types";
+import type { Annotation, AnnotationChange, AnnotationProfile, DatasetImage } from "../../types";
 
 const rowHeight = 120;
 type CellKind = "annotation" | "instruction";
@@ -90,14 +90,15 @@ function createInstructionDraftMap(images: DatasetImage[], profileId: number) {
 
 export function DatasetTable({
   images,
+  profiles,
   onImageContextMenu
 }: {
   images: DatasetImage[];
+  profiles: AnnotationProfile[];
   onImageContextMenu?: (image: DatasetImage, event: ReactMouseEvent<HTMLElement>) => void;
 }) {
   const { t } = useTranslation();
   const {
-    profiles,
     activeProfileId,
     selectedImageId,
     selectedImageIds,
@@ -135,20 +136,10 @@ export function DatasetTable({
   const [columnWidths, setColumnWidths] = useState(loadColumnWidths);
   const isFolderMode = images.length > 0 && images.every((image) => image.sourceKind === "folder");
   const selectedImageIdSet = useMemo(() => new Set(selectedImageIds), [selectedImageIds]);
-  const visibleDatasetIds = useMemo(
-    () => new Set(images.map((image) => image.datasetId).filter(Boolean)),
-    [images]
-  );
-  const availableProfiles = useMemo(
-    () => profiles.filter((profile) => profile.datasetId !== undefined && visibleDatasetIds.has(profile.datasetId)),
-    [profiles, visibleDatasetIds]
-  );
-  const selectedProfileId = availableProfiles.some((profile) => profile.id === activeProfileId)
+  const selectedProfileId = profiles.some((profile) => profile.id === activeProfileId)
     ? activeProfileId
-    : isFolderMode
-      ? availableProfiles[0]?.id
-      : undefined;
-  const selectedProfile = availableProfiles.find((profile) => profile.id === selectedProfileId);
+    : profiles[0]?.id;
+  const selectedProfile = profiles.find((profile) => profile.id === selectedProfileId);
   useEffect(() => {
     if (!selectedProfileId) return;
 
@@ -519,17 +510,13 @@ export function DatasetTable({
     />
   );
 
-  if (images.length === 0 || availableProfiles.length === 0 || !selectedProfileId) {
+  if (images.length === 0) {
     return (
       <div className="flex flex-1 flex-col items-center justify-center rounded-lg border border-slate-200 bg-slate-50 p-12 text-center">
         <ImageIcon size={44} className="mb-4 text-slate-300" />
-        <h2 className="m-0 text-xl font-semibold text-slate-900">
-          {images.length === 0 ? t("table.emptyTitle") : t("table.noAnnotationType")}
-        </h2>
+        <h2 className="m-0 text-xl font-semibold text-slate-900">{t("table.emptyTitle")}</h2>
         <p className="mt-2 max-w-md text-sm text-slate-500">
-          {images.length === 0
-            ? t("table.emptyDescription")
-            : t("table.noAnnotationTypeDescription")}
+          {t("table.emptyDescription")}
         </p>
       </div>
     );
@@ -670,14 +657,14 @@ export function DatasetTable({
                         cellTextareaRefs.current.delete(key);
                       }
                     }}
-                    value={annotationDrafts[image.id] ?? ""}
+                    value={selectedProfileId ? (annotationDrafts[image.id] ?? "") : ""}
                     onChange={(event) => updateAnnotationDraft(image.id, event.target.value)}
                     onKeyDown={(event) => moveFocusToAdjacentRow(image.id, "annotation", event)}
                     className={cn(
                       "glass-input h-[100px] w-full resize-none rounded-md p-2 text-[13px] leading-5 disabled:cursor-wait disabled:opacity-80",
                       getCellStateClass(image.id, "annotation")
                     )}
-                    disabled={isAnnotating}
+                    disabled={!selectedProfileId || isAnnotating}
                     spellCheck={false}
                   />
                   {isAnnotating ? (
@@ -697,13 +684,14 @@ export function DatasetTable({
                         cellTextareaRefs.current.delete(key);
                       }
                     }}
-                    value={instructionDrafts[image.id] ?? ""}
+                    value={selectedProfileId ? (instructionDrafts[image.id] ?? "") : ""}
                     onChange={(event) => updateInstructionDraft(image.id, event.target.value)}
                     onKeyDown={(event) => moveFocusToAdjacentRow(image.id, "instruction", event)}
                     className={cn(
                       "glass-input h-[100px] w-full resize-none rounded-md p-2 text-[13px] leading-5",
                       getCellStateClass(image.id, "instruction")
                     )}
+                    disabled={!selectedProfileId}
                     spellCheck={false}
                   />
                 </div>
@@ -721,7 +709,7 @@ export function DatasetTable({
           style={{ left: profileMenuPosition.left, top: profileMenuPosition.top }}
         >
           <div className="app-dropdown-backdrop" />
-          {availableProfiles.map((profile) => {
+          {profiles.map((profile) => {
             const isSelectedProfile = profile.id === selectedProfileId;
 
             return (

@@ -798,6 +798,33 @@ export function DatasetWorkspace() {
     () => profiles.filter((profile) => profile.datasetId === selectedProject?.datasetId),
     [profiles, selectedProject?.datasetId]
   );
+  const tableProfiles = useMemo(() => {
+    const projectImages = getProjectImages(images, selectedProject);
+    const projectProfileIds = new Set(
+      projectImages.flatMap((image) => image.annotations.map((annotation) => annotation.profileId))
+    );
+    const projectDatasetIds = new Set(projectImages.map((image) => image.datasetId).filter(Boolean));
+    if (selectedProject?.datasetId) {
+      projectDatasetIds.add(selectedProject.datasetId);
+    }
+
+    const matchedProfiles = profiles.filter(
+      (profile) =>
+        projectProfileIds.has(profile.id) ||
+        (profile.datasetId !== undefined && projectDatasetIds.has(profile.datasetId))
+    );
+    const matchedProfileIds = new Set(matchedProfiles.map((profile) => profile.id));
+    const inferredProfiles: AnnotationProfile[] = Array.from(projectProfileIds)
+      .filter((profileId) => !matchedProfileIds.has(profileId))
+      .map((profileId) => ({
+        id: profileId,
+        name: `Profile ${profileId}`,
+        datasetId: selectedProject?.datasetId
+      }));
+
+    const projectProfiles = [...matchedProfiles, ...inferredProfiles];
+    return projectProfiles.length > 0 ? projectProfiles : profiles;
+  }, [images, profiles, selectedProject]);
   const canImportImagesToFolder =
     isImportableDatasetChild(selectedProject) && Boolean(selectedProject?.datasetId);
 
@@ -1066,7 +1093,11 @@ export function DatasetWorkspace() {
       ) : activeTab === "grid" ? (
         <DatasetGrid images={visibleImages} onImageContextMenu={openImageContextMenu} />
       ) : (
-        <DatasetTable images={visibleImages} onImageContextMenu={openImageContextMenu} />
+        <DatasetTable
+          images={visibleImages}
+          profiles={tableProfiles}
+          onImageContextMenu={openImageContextMenu}
+        />
       )}
 
       {imageContextMenu

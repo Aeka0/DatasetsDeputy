@@ -137,10 +137,15 @@ export default function App() {
               <AnnotationLogView />
             ) : appView === "initial" ? (
               <WelcomeView />
-            ) : previewImageId ? (
-              <ImagePreviewView />
             ) : selectedProjectId ? (
-              <DatasetWorkspace />
+              <>
+                <DatasetWorkspace />
+                {previewImageId ? (
+                  <div className="absolute inset-0 z-10 rounded-lg bg-white p-4">
+                    <ImagePreviewView />
+                  </div>
+                ) : null}
+              </>
             ) : (
               <WelcomeView />
             )}
