@@ -23,13 +23,15 @@ import {
 import { PromptManagementDialog } from "../annotation/PromptManagementDialog";
 import { Wd14TaggerSettingsDialog } from "../annotation/Wd14TaggerSettingsDialog";
 import { SettingsDialog } from "../settings/SettingsDialog";
+import { FormatValidatorDialog } from "../tools/FormatValidatorDialog";
 
-type MenuKey = "file" | "edit" | "annotation" | "view" | "settings" | "about";
+type MenuKey = "file" | "edit" | "annotation" | "view" | "tools" | "settings" | "about";
 type DialogKey =
   | "annotationExecution"
   | "promptManagement"
   | "wd14Settings"
   | "settings"
+  | "formatValidator"
   | "about";
 
 interface MenuPosition {
@@ -72,6 +74,7 @@ const menuLabels: Array<{ key: MenuKey; labelKey: string }> = [
   { key: "edit", labelKey: "menu.edit" },
   { key: "annotation", labelKey: "menu.annotation" },
   { key: "view", labelKey: "menu.view" },
+  { key: "tools", labelKey: "menu.tools" },
   { key: "settings", labelKey: "menu.settings" },
   { key: "about", labelKey: "menu.about" }
 ];
@@ -442,6 +445,18 @@ export function TitleMenuBar({
           clearTableSavedCellMarks();
           addAppLog("已清理保存标记。");
         }
+      }
+    ],
+    tools: [
+      {
+        type: "submenu",
+        label: t("menu.datasetDebug"),
+        entries: [
+          {
+            label: t("menu.formatValidator"),
+            onSelect: () => setDialog("formatValidator")
+          }
+        ]
       }
     ],
     settings: [
@@ -830,6 +845,9 @@ export function TitleMenuBar({
       ) : null}
       {dialog === "wd14Settings" ? (
         <Wd14TaggerSettingsDialog onClose={() => setDialog(undefined)} />
+      ) : null}
+      {dialog === "formatValidator" ? (
+        <FormatValidatorDialog onClose={() => setDialog(undefined)} />
       ) : null}
 
       {dialog === "about"

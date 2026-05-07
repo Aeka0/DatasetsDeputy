@@ -400,7 +400,11 @@ pub fn delete_folder_image(image_path: &str) -> AppResult<usize> {
     let path = PathBuf::from(image_path);
     let mut deleted = 0;
 
-    for target in [path.clone(), annotation_path(&path), instruction_path(&path)] {
+    for target in [
+        path.clone(),
+        annotation_path(&path),
+        instruction_path(&path),
+    ] {
         if target.is_file() {
             fs::remove_file(target)?;
             deleted += 1;

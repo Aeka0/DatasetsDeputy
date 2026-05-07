@@ -238,11 +238,7 @@ fn namespace_profile(
     profile
 }
 
-fn namespace_image(
-    mut image: DatasetImage,
-    prefix: i64,
-    source_kind: &str,
-) -> DatasetImage {
+fn namespace_image(mut image: DatasetImage, prefix: i64, source_kind: &str) -> DatasetImage {
     let source_path = if source_kind == "asset" {
         image.storage_path.as_deref().unwrap_or(&image.path)
     } else {
@@ -961,9 +957,7 @@ pub async fn generate_wd14_annotations(
                     execution_provider,
                 },
             )
-                .map_err(|error| {
-                    AppError::InvalidInput(format!("WD14 progress event failed: {error}"))
-                })
+            .map_err(|error| AppError::InvalidInput(format!("WD14 progress event failed: {error}")))
         })
         .map(|results| {
             results
@@ -1793,24 +1787,20 @@ pub fn clear_annotation(state: State<'_, AppState>, annotation_id: i64) -> AppRe
 }
 
 #[tauri::command]
-pub fn remove_training_set(
-    state: State<'_, AppState>,
-    dataset_id: String,
-) -> AppResult<usize> {
+pub fn remove_training_set(state: State<'_, AppState>, dataset_id: String) -> AppResult<usize> {
     tracing::info!("移除训练集：dataset_id={}", dataset_id);
-    let (source_kind, prefix_value) =
-        if let Some(value) = dataset_id.strip_prefix("database:") {
-            ("database", value)
-        } else if let Some(value) = dataset_id.strip_prefix("asset:") {
-            ("asset", value)
-        } else {
-            return Err(AppError::InvalidInput(format!(
-                "不支持的训练集 ID：{dataset_id}"
-            )));
-        };
-    let prefix = prefix_value.parse::<i64>().map_err(|_| {
-        AppError::InvalidInput(format!("无效的训练集 ID：{dataset_id}"))
-    })?;
+    let (source_kind, prefix_value) = if let Some(value) = dataset_id.strip_prefix("database:") {
+        ("database", value)
+    } else if let Some(value) = dataset_id.strip_prefix("asset:") {
+        ("asset", value)
+    } else {
+        return Err(AppError::InvalidInput(format!(
+            "不支持的训练集 ID：{dataset_id}"
+        )));
+    };
+    let prefix = prefix_value
+        .parse::<i64>()
+        .map_err(|_| AppError::InvalidInput(format!("无效的训练集 ID：{dataset_id}")))?;
 
     let db_ref = dataset_database_refs(&state.dirs)?
         .into_iter()
@@ -2171,4 +2161,213 @@ fn prepare_export(
         "Unsupported dataset id: {}",
         request.dataset_id
     )))
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FormatMismatch {
+    pub file_path: String,
+    pub current_extension: String,
+    pub actual_format: String,
+    pub correct_extension: String,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FormatMismatchScanProgress {
+    pub scan_id: String,
+    pub scanned: usize,
+    pub total: usize,
+    pub done: bool,
+    pub mismatch: Option<FormatMismatch>,
+    pub error: Option<String>,
+}
+
+#[tauri::command]
+pub fn start_format_mismatch_scan(
+    app: AppHandle,
+    scan_id: String,
+    folder: String,
+) -> AppResult<()> {
+    let folder_path = PathBuf::from(&folder);
+    if !folder_path.is_dir() {
+        return Err(AppError::InvalidInput(format!(
+            "路径不是有效的文件夹：{folder}"
+        )));
+    }
+
+    std::thread::spawn(move || {
+        use image::{ImageFormat, ImageReader};
+
+        let image_paths = files::collect_image_paths(&folder_path);
+        let total = image_paths.len();
+        let mut mismatch_count = 0;
+
+        let emit_progress = |payload: FormatMismatchScanProgress| {
+            if let Err(error) = app.emit("format-mismatch-scan-progress", payload) {
+                tracing::warn!("格式校验进度发送失败：{}", error);
+            }
+        };
+
+        emit_progress(FormatMismatchScanProgress {
+            scan_id: scan_id.clone(),
+            scanned: 0,
+            total,
+            done: false,
+            mismatch: None,
+            error: None,
+        });
+
+        for (index, path) in image_paths.iter().enumerate() {
+            let ext_format = path
+                .extension()
+                .and_then(|e| e.to_str())
+                .and_then(ImageFormat::from_extension);
+
+            let detected_format =
+                match ImageReader::open(path).and_then(|r| r.with_guessed_format()) {
+                    Ok(reader) => reader.format(),
+                    Err(error) => {
+                        tracing::warn!("格式校验读取失败：{}：{}", path.display(), error);
+                        continue;
+                    }
+                };
+
+            if let (Some(ext_fmt), Some(det_fmt)) = (ext_format, detected_format) {
+                if ext_fmt != det_fmt {
+                    let correct_ext = format_to_extension(det_fmt);
+                    mismatch_count += 1;
+                    emit_progress(FormatMismatchScanProgress {
+                        scan_id: scan_id.clone(),
+                        scanned: index + 1,
+                        total,
+                        done: false,
+                        mismatch: Some(FormatMismatch {
+                            file_path: path.to_string_lossy().to_string(),
+                            current_extension: path
+                                .extension()
+                                .and_then(|e| e.to_str())
+                                .unwrap_or("")
+                                .to_owned(),
+                            actual_format: format_to_display_name(det_fmt).to_owned(),
+                            correct_extension: correct_ext.to_owned(),
+                        }),
+                        error: None,
+                    });
+                }
+            }
+
+            if (index + 1) % 50 == 0 {
+                emit_progress(FormatMismatchScanProgress {
+                    scan_id: scan_id.clone(),
+                    scanned: index + 1,
+                    total,
+                    done: false,
+                    mismatch: None,
+                    error: None,
+                });
+            }
+        }
+
+        tracing::info!(
+            "格式校验完成：扫描 {} 个文件，发现 {} 个格式不匹配",
+            total,
+            mismatch_count
+        );
+
+        emit_progress(FormatMismatchScanProgress {
+            scan_id,
+            scanned: total,
+            total,
+            done: true,
+            mismatch: None,
+            error: None,
+        });
+    });
+
+    Ok(())
+}
+
+#[tauri::command]
+pub fn fix_format_mismatches(items: Vec<FormatMismatch>) -> AppResult<usize> {
+    let mut fixed = 0;
+
+    for item in &items {
+        let source = PathBuf::from(&item.file_path);
+        if !source.is_file() {
+            tracing::warn!("格式修复跳过（文件不存在）：{}", item.file_path);
+            continue;
+        }
+
+        let target = source.with_extension(&item.correct_extension);
+        if target.exists() {
+            tracing::warn!(
+                "格式修复跳过（目标已存在）：{} → {}",
+                item.file_path,
+                target.display()
+            );
+            continue;
+        }
+
+        if let Some(annotation_path) = find_sidecar_txt(&source) {
+            let new_annotation_path = target.with_extension("txt");
+            if !new_annotation_path.exists() {
+                if let Err(e) = fs::rename(&annotation_path, &new_annotation_path) {
+                    tracing::warn!(
+                        "标注文件重命名失败：{} → {}：{}",
+                        annotation_path.display(),
+                        new_annotation_path.display(),
+                        e
+                    );
+                }
+            }
+        }
+
+        match fs::rename(&source, &target) {
+            Ok(()) => {
+                fixed += 1;
+                tracing::info!("格式修复：{} → {}", item.file_path, target.display());
+            }
+            Err(e) => {
+                tracing::warn!(
+                    "格式修复失败：{} → {}：{}",
+                    item.file_path,
+                    target.display(),
+                    e
+                );
+            }
+        }
+    }
+
+    tracing::info!("格式修复完成：成功修复 {}/{} 个文件", fixed, items.len());
+    Ok(fixed)
+}
+
+fn find_sidecar_txt(image_path: &Path) -> Option<PathBuf> {
+    let txt_path = image_path.with_extension("txt");
+    txt_path.is_file().then_some(txt_path)
+}
+
+fn format_to_extension(fmt: image::ImageFormat) -> &'static str {
+    match fmt {
+        image::ImageFormat::Png => "png",
+        image::ImageFormat::Jpeg => "jpg",
+        image::ImageFormat::WebP => "webp",
+        image::ImageFormat::Gif => "gif",
+        image::ImageFormat::Bmp => "bmp",
+        image::ImageFormat::Tiff => "tiff",
+        _ => "bin",
+    }
+}
+
+fn format_to_display_name(fmt: image::ImageFormat) -> &'static str {
+    match fmt {
+        image::ImageFormat::Png => "PNG",
+        image::ImageFormat::Jpeg => "JPEG",
+        image::ImageFormat::WebP => "WebP",
+        image::ImageFormat::Gif => "GIF",
+        image::ImageFormat::Bmp => "BMP",
+        image::ImageFormat::Tiff => "TIFF",
+        _ => "Unknown",
+    }
 }

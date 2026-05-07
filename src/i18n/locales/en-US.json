@@ -52,9 +52,32 @@
     "filterUnsaved": "Only unsaved changes",
     "filterAll": "Show all",
     "clearSavedMarks": "Clear saved markers",
+    "tools": "Tools",
+    "datasetDebug": "Dataset debugging",
+    "formatValidator": "Format validator",
     "aboutBody": "Dataset image preview, annotation dimension management, and export tools.",
     "version": "Development build",
     "close": "Close"
+  },
+  "tools": {
+    "formatValidator": {
+      "title": "Image format validator",
+      "selectFolder": "Select folder",
+      "noFolderSelected": "Please select a folder containing images",
+      "hint": "Select a folder and click \"Run scan\" to check whether image file extensions match their actual format.",
+      "scanning": "Scanning file formats…",
+      "scanProgress": "Scanned {{scanned}} / {{total}}",
+      "noMismatches": "All image extensions match their actual format. No issues found.",
+      "foundMismatches": "Found {{count}} file(s) with mismatched extensions",
+      "mismatchSummary": "{{count}} file(s) to fix",
+      "colFile": "File path",
+      "colExtension": "Current ext",
+      "colActualFormat": "Actual format",
+      "colCorrectExt": "Correct ext",
+      "scan": "Run scan",
+      "fixAll": "Fix all",
+      "fixComplete": "Done. Renamed {{count}} file(s) to correct extensions."
+    }
   },
   "toolbar": {
     "searchPlaceholder": "Search filename or annotation",

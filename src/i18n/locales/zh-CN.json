@@ -52,9 +52,32 @@
     "filterUnsaved": "只看未保存改动",
     "filterAll": "显示全部",
     "clearSavedMarks": "清理已保存标记",
+    "tools": "工具",
+    "datasetDebug": "训练集除错",
+    "formatValidator": "格式校验",
     "aboutBody": "数据集图片预览、标注维度管理与导出工具。",
     "version": "开发版",
     "close": "关闭"
+  },
+  "tools": {
+    "formatValidator": {
+      "title": "图片格式校验",
+      "selectFolder": "选择文件夹",
+      "noFolderSelected": "请选择一个包含图片的文件夹",
+      "hint": "选择文件夹后点击「执行检测」，将扫描所有图片文件的扩展名与实际格式是否一致。",
+      "scanning": "正在扫描文件格式…",
+      "scanProgress": "已扫描 {{scanned}} / {{total}}",
+      "noMismatches": "所有图片的扩展名与实际格式一致，未发现问题。",
+      "foundMismatches": "发现 {{count}} 个扩展名与实际格式不匹配的文件",
+      "mismatchSummary": "共 {{count}} 个文件需要修复",
+      "colFile": "文件路径",
+      "colExtension": "当前扩展名",
+      "colActualFormat": "实际格式",
+      "colCorrectExt": "正确扩展名",
+      "scan": "执行检测",
+      "fixAll": "一键修复",
+      "fixComplete": "修复完成，已重命名 {{count}} 个文件的扩展名。"
+    }
   },
   "toolbar": {
     "searchPlaceholder": "搜索文件名或标注",

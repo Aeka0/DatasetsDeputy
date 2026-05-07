@@ -183,7 +183,9 @@ pub fn run() {
             commands::create_dataset_subfolder,
             commands::delete_workspace_subfolder,
             commands::prepare_export_dataset,
-            commands::start_export_dataset
+            commands::start_export_dataset,
+            commands::start_format_mismatch_scan,
+            commands::fix_format_mismatches
         ])
         .run(tauri::generate_context!())
         .expect("failed to run Datasets Deputy");

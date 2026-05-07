@@ -414,9 +414,7 @@ where
     F: FnMut(InferenceBatchPayload) -> AppResult<()>,
 {
     let python_path = python_env::resolve_configured_python_path(dirs)?.ok_or_else(|| {
-        AppError::InvalidInput(
-            "Python runtime is not configured or available".to_owned(),
-        )
+        AppError::InvalidInput("Python runtime is not configured or available".to_owned())
     })?;
     let payload = serde_json::json!({
         "modelDir": model_dir,
