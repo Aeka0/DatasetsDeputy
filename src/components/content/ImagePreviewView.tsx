@@ -1,4 +1,5 @@
 import { ArrowLeft, CircleAlert, FileText, LoaderCircle, Plus, Save, Trash2 } from "lucide-react";
+import type { KeyboardEvent as ReactKeyboardEvent } from "react";
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -145,6 +146,18 @@ export function ImagePreviewView() {
     } catch (error) {
       setCreateProfileError(error instanceof Error ? error.message : t("image.createTypeFailed"));
     }
+  };
+
+  const saveCurrentAnnotation = () => {
+    if (isAnnotating) return;
+    void saveAnnotation(selectedImage.id, profileId, content);
+  };
+
+  const saveWithKeyboard = (event: ReactKeyboardEvent<HTMLTextAreaElement>) => {
+    if (!(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== "s") return;
+    event.preventDefault();
+    event.stopPropagation();
+    saveCurrentAnnotation();
   };
 
   return (
@@ -318,6 +331,7 @@ export function ImagePreviewView() {
               <textarea
                 value={content}
                 onChange={(event) => setContent(event.target.value)}
+                onKeyDown={saveWithKeyboard}
                 className="glass-input h-full w-full resize-none p-2 text-[13px] disabled:cursor-wait disabled:opacity-80"
                 disabled={isAnnotating}
               />
@@ -331,7 +345,7 @@ export function ImagePreviewView() {
             <div className="mt-3 flex gap-2">
               <button
                 className="no-drag inline-flex h-8 flex-1 items-center justify-center gap-2 rounded-md border border-slate-900 bg-slate-900 px-3 text-[13px] font-medium text-white transition hover:bg-slate-800"
-                onClick={() => void saveAnnotation(selectedImage.id, profileId, content)}
+                onClick={saveCurrentAnnotation}
                 disabled={isAnnotating}
               >
                 <Save size={15} />

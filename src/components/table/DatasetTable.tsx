@@ -365,6 +365,20 @@ export function DatasetTable({
     }
   };
 
+  const saveImageDirtyCells = async (image: DatasetImage) => {
+    if (!selectedProfileId || isSaving) return;
+    const annotationKey = createCellKey(image.id, "annotation");
+    const instructionKey = createCellKey(image.id, "instruction");
+    if (!dirtyCells.has(annotationKey) && !dirtyCells.has(instructionKey)) return;
+
+    setIsSaving(true);
+    try {
+      await saveDraftsForImages([image]);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   useEffect(() => {
     const saveWithKeyboard = (event: KeyboardEvent) => {
       if (!(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== "s") return;
@@ -449,6 +463,22 @@ export function DatasetTable({
     kind: CellKind,
     event: ReactKeyboardEvent<HTMLTextAreaElement>
   ) => {
+    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s") {
+      event.preventDefault();
+      event.stopPropagation();
+
+      if (event.shiftKey) {
+        void saveDirtyCells();
+        return;
+      }
+
+      const image = images.find((item) => item.id === imageId);
+      if (image) {
+        void saveImageDirtyCells(image);
+      }
+      return;
+    }
+
     if (event.key !== "Tab" || event.ctrlKey || event.metaKey || event.altKey) return;
 
     const currentIndex = images.findIndex((image) => image.id === imageId);

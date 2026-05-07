@@ -1,4 +1,5 @@
 import { CircleAlert, LoaderCircle, Save, X } from "lucide-react";
+import type { KeyboardEvent as ReactKeyboardEvent } from "react";
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -48,6 +49,19 @@ export function DetailPanel() {
     setContent(selectedAnnotation?.content ?? "");
     setInstruction(selectedAnnotation?.instruction ?? "");
   }, [selectedAnnotation]);
+
+  const saveSelectedAnnotation = () => {
+    if (!selectedImage || !selectedProfileId || isAnnotating) return;
+    void saveAnnotation(selectedImage.id, selectedProfileId, content);
+    void saveInstruction(selectedImage.id, selectedProfileId, instruction);
+  };
+
+  const saveWithKeyboard = (event: ReactKeyboardEvent<HTMLTextAreaElement>) => {
+    if (!(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== "s") return;
+    event.preventDefault();
+    event.stopPropagation();
+    saveSelectedAnnotation();
+  };
 
   if (!selectedImage) {
     return (
@@ -109,6 +123,7 @@ export function DetailPanel() {
             <textarea
               value={content}
               onChange={(event) => setContent(event.target.value)}
+              onKeyDown={saveWithKeyboard}
               className="glass-input min-h-32 w-full resize-none rounded-2xl p-3 text-sm disabled:cursor-wait disabled:opacity-80"
               disabled={isAnnotating}
             />
@@ -127,6 +142,7 @@ export function DetailPanel() {
           <textarea
             value={instruction}
             onChange={(event) => setInstruction(event.target.value)}
+            onKeyDown={saveWithKeyboard}
             className="glass-input min-h-28 w-full resize-none rounded-2xl p-3 text-sm"
           />
         </section>
@@ -160,11 +176,7 @@ export function DetailPanel() {
         <Button
           className="w-full"
           disabled={!selectedProfileId || isAnnotating}
-          onClick={() => {
-            if (!selectedProfileId) return;
-            void saveAnnotation(selectedImage.id, selectedProfileId, content);
-            void saveInstruction(selectedImage.id, selectedProfileId, instruction);
-          }}
+          onClick={saveSelectedAnnotation}
         >
           <Save size={16} />
           {t("actions.save")}
