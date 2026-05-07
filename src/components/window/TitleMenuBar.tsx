@@ -1,4 +1,3 @@
-import { getCurrentWindow } from "@tauri-apps/api/window";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { Check, ChevronRight } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
@@ -13,7 +12,7 @@ import { formatAppError } from "../../lib/errors";
 import { hasTauriRuntime } from "../../lib/tauri";
 import { invokeCommand } from "../../lib/tauri";
 import { useDatasetStore, type ViewFilterMode } from "../../stores/datasetStore";
-import type { DatasetImage, DatasetProject } from "../../types";
+import type { AnnotationChange, DatasetImage, DatasetProject } from "../../types";
 import {
   AnnotationExecutionDialog,
   type AnnotationExecutionMode,
@@ -230,11 +229,13 @@ function hasUnsavedChange(
 interface TitleMenuBarProps {
   isProjectTreeCollapsed: boolean;
   onToggleProjectTree: () => void;
+  onExit: () => void;
 }
 
 export function TitleMenuBar({
   isProjectTreeCollapsed,
-  onToggleProjectTree
+  onToggleProjectTree,
+  onExit
 }: TitleMenuBarProps) {
   const { t } = useTranslation();
   const {
@@ -251,6 +252,7 @@ export function TitleMenuBar({
     tableAnnotationDrafts,
     tableInstructionDrafts,
     isLoading,
+    autoSaveAfterAnnotation,
     setAppView,
     addAppLog,
     setViewFilter,
@@ -260,6 +262,7 @@ export function TitleMenuBar({
     load,
     closeImagePreview,
     applyGeneratedAnnotationDraft,
+    saveAnnotationChanges,
     markImageAnnotating,
     setSearch
   } = useDatasetStore();
@@ -312,14 +315,6 @@ export function TitleMenuBar({
     };
   }, []);
 
-  const closeWindow = () => {
-    if (hasTauriRuntime()) {
-      void getCurrentWindow().close();
-      return;
-    }
-    window.close();
-  };
-
   const createFilterImageIds = (mode: ViewFilterMode) => {
     if (mode === "all") return [];
 
@@ -363,7 +358,7 @@ export function TitleMenuBar({
       { type: "separator" },
       {
         label: t("menu.exit"),
-        onSelect: closeWindow
+        onSelect: onExit
       }
     ],
     edit: [
@@ -622,6 +617,23 @@ export function TitleMenuBar({
       selectedProfileId
     ).filter((image): image is DatasetImage => Boolean(image));
     addAppLog(`Filtered annotation targets: ${targets.length}`);
+    const generatedChanges: AnnotationChange[] = [];
+
+    const applyGeneratedContent = (image: DatasetImage, content: string) => {
+      applyGeneratedAnnotationDraft(selectedProfileId, image.id, content);
+      generatedChanges.push({
+        imageId: image.id,
+        profileId: selectedProfileId,
+        content
+      });
+    };
+
+    const saveGeneratedChanges = async () => {
+      if (!autoSaveAfterAnnotation || generatedChanges.length === 0) return;
+
+      await saveAnnotationChanges(generatedChanges);
+      addAppLog(`Auto-saved generated annotations: ${generatedChanges.length}`);
+    };
 
     try {
       if (options.mode === "wd14") {
@@ -647,7 +659,7 @@ export function TitleMenuBar({
                 const image = targets[index];
                 if (!image) continue;
                 generatedContents[index] = content;
-                applyGeneratedAnnotationDraft(selectedProfileId, image.id, content);
+                applyGeneratedContent(image, content);
                 markImageAnnotating(image.id, false);
                 addAppLog(`Generated draft annotation: ${image.fileName}`);
               }
@@ -666,7 +678,7 @@ export function TitleMenuBar({
           for (const [index, image] of targets.entries()) {
             const content = contents[index] ?? "";
             if (generatedContents[index] === undefined) {
-              applyGeneratedAnnotationDraft(selectedProfileId, image.id, content);
+              applyGeneratedContent(image, content);
               addAppLog(`Generated draft annotation: ${image.fileName}`);
             }
           }
@@ -677,6 +689,7 @@ export function TitleMenuBar({
           }
         }
         addAppLog(`WD14 annotation completed: processed ${targets.length} images.`);
+        await saveGeneratedChanges();
         return;
       }
 
@@ -709,7 +722,7 @@ export function TitleMenuBar({
             addAppLog(`Discarded annotation returned after cancellation: ${image.fileName}`, "warning");
             throw new Error(annotationCancelledError);
           }
-          applyGeneratedAnnotationDraft(selectedProfileId, image.id, content);
+          applyGeneratedContent(image, content);
           addAppLog(`Generated draft annotation: ${image.fileName}`);
         } finally {
           markImageAnnotating(image.id, false);
@@ -720,6 +733,7 @@ export function TitleMenuBar({
       if (annotationCancelRef.current) {
         return;
       }
+      await saveGeneratedChanges();
     } catch (error) {
       const message = formatAppError(error);
       if (message === annotationCancelledError) {

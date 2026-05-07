@@ -321,7 +321,9 @@
     "onnxDepsInstallConfirm": "将会自动准备程序管理的内部环境，并联网下载 ONNX Runtime 依赖。是否继续？",
     "pythonEnvInstalling": "正在安装 PyTorch 依赖，这可能需要较长时间...",
     "onnxRuntimeInstalling": "正在安装 ONNX Runtime 依赖...",
-    "pythonEnvActionFailed": "运行时操作失败：{{message}}"
+    "pythonEnvActionFailed": "运行时操作失败：{{message}}",
+    "autoSaveAfterAnnotation": "标注后自动保存",
+    "autoSaveAfterAnnotationDescription": "执行标注完成后自动保存生成的标注内容。"
   },
   "logs": {
     "title": "日志",
@@ -511,5 +513,19 @@
     "importFailed": "文件夹导入失败。",
     "saveFailed": "无法保存标注。",
     "exportFailed": "数据集导出失败。"
+  },
+  "exitGuard": {
+    "title": "存在未保存的改动",
+    "description": "将丢失所有未保存的改动，是否退出？",
+    "unsavedItems": "{{count}} 个未保存条目",
+    "saveAndExit": "保存并退出",
+    "discardAndExit": "放弃并退出",
+    "cancel": "取消",
+    "saving": "正在保存...",
+    "saveFailed": "保存失败：{{message}}",
+    "field": {
+      "annotation": "标注",
+      "instruction": "指令"
+    }
   }
 }

@@ -340,6 +340,7 @@ type PendingImportKind = DatasetSourceKind;
 type AppView = "workspace" | "initial" | "logs";
 export type ViewFilterMode = "all" | "unannotated" | "unsaved";
 const highlightCellStateStorageKey = "datasets-deputy.highlight-cell-state";
+const autoSaveAfterAnnotationStorageKey = "datasets-deputy.auto-save-after-annotation";
 
 export interface AppLogEntry {
   id: number;
@@ -371,6 +372,7 @@ interface DatasetState {
   tableSavedCellKeys: string[];
   annotatingImageIds: number[];
   highlightCellState: boolean;
+  autoSaveAfterAnnotation: boolean;
   activeProfileId?: number;
   isLoading: boolean;
   isCheckingProblemItems: boolean;
@@ -439,6 +441,7 @@ interface DatasetState {
   markTableCellSaved: (key: string) => void;
   clearTableSavedCellMarks: () => void;
   setHighlightCellState: (enabled: boolean) => void;
+  setAutoSaveAfterAnnotation: (enabled: boolean) => void;
   markImageAnnotating: (imageId: number, annotating: boolean) => void;
   setActiveProfile: (id?: number) => void;
   saveAnnotation: (
@@ -475,6 +478,11 @@ function createImageSelection(ids: number[], activeId?: number, anchorId?: numbe
 function getStoredHighlightCellState() {
   if (typeof localStorage === "undefined") return true;
   return localStorage.getItem(highlightCellStateStorageKey) !== "false";
+}
+
+function getStoredAutoSaveAfterAnnotation() {
+  if (typeof localStorage === "undefined") return false;
+  return localStorage.getItem(autoSaveAfterAnnotationStorageKey) === "true";
 }
 
 function getAnnotationContentForProfile(image: DatasetImage, profileId: number) {
@@ -593,6 +601,7 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
   tableSavedCellKeys: [],
   annotatingImageIds: [],
   highlightCellState: getStoredHighlightCellState(),
+  autoSaveAfterAnnotation: getStoredAutoSaveAfterAnnotation(),
   activeProfileId: sampleProfiles[0]?.id,
   isLoading: false,
   isCheckingProblemItems: false,
@@ -1456,6 +1465,12 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
     }
     set({ highlightCellState: enabled });
   },
+  setAutoSaveAfterAnnotation: (enabled) => {
+    if (typeof localStorage !== "undefined") {
+      localStorage.setItem(autoSaveAfterAnnotationStorageKey, String(enabled));
+    }
+    set({ autoSaveAfterAnnotation: enabled });
+  },
   markImageAnnotating: (imageId, annotating) =>
     set((state) => ({
       annotatingImageIds: annotating
@@ -1600,29 +1615,43 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
     if (hasTauriRuntime()) {
       const state = get();
       const imageById = new Map(state.images.map((image) => [image.id, image]));
+      const assetChanges: AnnotationChange[] = [];
       const databaseChanges: AnnotationChange[] = [];
+      const folderChanges: AnnotationChange[] = [];
 
       for (const change of effectiveChanges) {
         const image = imageById.get(change.imageId);
         if (image?.sourceKind === "folder") {
-          if (change.content !== undefined) {
-            await invokeCommand("save_folder_annotation", {
-              imagePath: image.path,
-              content: change.content
-            });
-          }
-          if (change.instruction !== undefined) {
-            await invokeCommand("save_folder_instruction", {
-              imagePath: image.path,
-              instruction: change.instruction
-            });
-          }
+          folderChanges.push(change);
+        } else if (image?.sourceKind === "asset") {
+          assertProfileForDatabaseImage(image, change.profileId);
+          assetChanges.push(change);
         } else {
           assertProfileForDatabaseImage(image, change.profileId);
           databaseChanges.push(change);
         }
       }
 
+      for (const change of folderChanges) {
+        const image = imageById.get(change.imageId);
+        if (!image) continue;
+
+        if (change.content !== undefined) {
+          await invokeCommand("save_folder_annotation", {
+            imagePath: image.path,
+            content: change.content
+          });
+        }
+        if (change.instruction !== undefined) {
+          await invokeCommand("save_folder_instruction", {
+            imagePath: image.path,
+            instruction: change.instruction
+          });
+        }
+      }
+      if (assetChanges.length > 0) {
+        await invokeCommand("save_annotation_changes", { changes: assetChanges });
+      }
       if (databaseChanges.length > 0) {
         await invokeCommand("save_annotation_changes", { changes: databaseChanges });
       }

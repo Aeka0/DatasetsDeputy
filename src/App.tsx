@@ -1,7 +1,8 @@
 import { ChevronsLeft, ChevronsRight } from "lucide-react";
 import type { MouseEvent as ReactMouseEvent } from "react";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { useTranslation } from "react-i18next";
 
 import { AnnotationLogView } from "./components/content/AnnotationLogView";
 import { ImagePreviewView } from "./components/content/ImagePreviewView";
@@ -18,11 +19,92 @@ import { WindowControls } from "./components/window/WindowControls";
 import { useDatasetStore } from "./stores/datasetStore";
 import { hasTauriRuntime, invokeCommand } from "./lib/tauri";
 import { setWindowRenderMode, type WindowRenderingSettings } from "./lib/theme";
+import { formatAppError } from "./lib/errors";
+import type { AnnotationChange, DatasetImage } from "./types";
 
 const STARTUP_PRELOAD_TIMEOUT_MS = 8000;
 
+interface UnsavedExitItem {
+  imageId: number;
+  fileName: string;
+  path: string;
+  fields: Array<"annotation" | "instruction">;
+}
+
+function getAnnotationForProfile(image: DatasetImage, profileId: number) {
+  return image.annotations.find((annotation) => annotation.profileId === profileId);
+}
+
+function getUnsavedAnnotationState(): {
+  changes: AnnotationChange[];
+  items: UnsavedExitItem[];
+} {
+  const {
+    images,
+    tableDraftProfileId,
+    tableAnnotationDrafts,
+    tableInstructionDrafts
+  } = useDatasetStore.getState();
+
+  if (tableDraftProfileId === undefined) {
+    return { changes: [], items: [] };
+  }
+
+  const changes: AnnotationChange[] = [];
+  const items: UnsavedExitItem[] = [];
+
+  for (const image of images) {
+    const annotation = getAnnotationForProfile(image, tableDraftProfileId);
+    const hasContentDraft = Object.prototype.hasOwnProperty.call(
+      tableAnnotationDrafts,
+      image.id
+    );
+    const hasInstructionDraft = Object.prototype.hasOwnProperty.call(
+      tableInstructionDrafts,
+      image.id
+    );
+    const contentDraft = hasContentDraft ? tableAnnotationDrafts[image.id] ?? "" : "";
+    const instructionDraft = hasInstructionDraft ? tableInstructionDrafts[image.id] ?? "" : "";
+    const contentChanged = hasContentDraft && contentDraft !== (annotation?.content ?? "");
+    const instructionChanged =
+      hasInstructionDraft && instructionDraft !== (annotation?.instruction ?? "");
+
+    if (!contentChanged && !instructionChanged) continue;
+
+    const change: AnnotationChange = {
+      imageId: image.id,
+      profileId: tableDraftProfileId
+    };
+    const fields: UnsavedExitItem["fields"] = [];
+
+    if (contentChanged) {
+      change.content = contentDraft;
+      fields.push("annotation");
+    }
+    if (instructionChanged) {
+      change.instruction = instructionDraft;
+      fields.push("instruction");
+    }
+
+    changes.push(change);
+    items.push({
+      imageId: image.id,
+      fileName: image.fileName,
+      path: image.path,
+      fields
+    });
+  }
+
+  return { changes, items };
+}
+
 export default function App() {
+  const { t } = useTranslation();
   const [isProjectTreeCollapsed, setIsProjectTreeCollapsed] = useState(false);
+  const [showUnsavedExitDialog, setShowUnsavedExitDialog] = useState(false);
+  const [isExitSaving, setIsExitSaving] = useState(false);
+  const [exitError, setExitError] = useState("");
+  const allowWindowCloseRef = useRef(false);
   const appView = useDatasetStore((state) => state.appView);
   const selectedProjectId = useDatasetStore((state) => state.selectedProjectId);
   const previewImageId = useDatasetStore((state) => state.previewImageId);
@@ -30,6 +112,56 @@ export default function App() {
   const importProgress = useDatasetStore((state) => state.importProgress);
   const importReport = useDatasetStore((state) => state.importReport);
   const showImportWizard = useDatasetStore((state) => state.showImportWizard);
+  const images = useDatasetStore((state) => state.images);
+  const tableDraftProfileId = useDatasetStore((state) => state.tableDraftProfileId);
+  const tableAnnotationDrafts = useDatasetStore((state) => state.tableAnnotationDrafts);
+  const tableInstructionDrafts = useDatasetStore((state) => state.tableInstructionDrafts);
+  const saveAnnotationChanges = useDatasetStore((state) => state.saveAnnotationChanges);
+
+  const unsavedExitItems = useMemo(
+    () => getUnsavedAnnotationState().items,
+    [images, tableAnnotationDrafts, tableDraftProfileId, tableInstructionDrafts]
+  );
+
+  const closeWindowNow = useCallback(() => {
+    allowWindowCloseRef.current = true;
+    if (hasTauriRuntime()) {
+      const currentWindow = getCurrentWindow();
+      void currentWindow.destroy().catch(() => currentWindow.close());
+      return;
+    }
+    window.close();
+  }, []);
+
+  const requestExit = useCallback(() => {
+    const { items } = getUnsavedAnnotationState();
+    if (items.length === 0) {
+      closeWindowNow();
+      return;
+    }
+
+    setExitError("");
+    setShowUnsavedExitDialog(true);
+  }, [closeWindowNow]);
+
+  const saveAndExit = useCallback(async () => {
+    const { changes } = getUnsavedAnnotationState();
+    setIsExitSaving(true);
+    setExitError("");
+    try {
+      if (changes.length > 0) {
+        await saveAnnotationChanges(changes);
+      }
+      closeWindowNow();
+    } catch (error) {
+      setExitError(formatAppError(error));
+      setIsExitSaving(false);
+    }
+  }, [closeWindowNow, saveAnnotationChanges]);
+
+  const discardAndExit = useCallback(() => {
+    closeWindowNow();
+  }, [closeWindowNow]);
 
   useEffect(() => {
     if (!hasTauriRuntime()) return;
@@ -60,6 +192,36 @@ export default function App() {
       .catch((error) => {
         console.error("显示主窗口失败：", error);
       });
+  }, []);
+
+  useEffect(() => {
+    if (!hasTauriRuntime()) return;
+    if (unsavedExitItems.length === 0) return;
+
+    const currentWindow = getCurrentWindow();
+    const unlistenPromise = currentWindow.onCloseRequested((event) => {
+      if (allowWindowCloseRef.current) return;
+      event.preventDefault();
+      setExitError("");
+      setShowUnsavedExitDialog(true);
+    });
+
+    return () => {
+      unlistenPromise.then((unlisten) => unlisten()).catch(console.error);
+    };
+  }, [unsavedExitItems.length]);
+
+  useEffect(() => {
+    if (hasTauriRuntime()) return;
+
+    const blockBrowserClose = (event: BeforeUnloadEvent) => {
+      if (getUnsavedAnnotationState().items.length === 0) return;
+      event.preventDefault();
+      event.returnValue = "";
+    };
+
+    window.addEventListener("beforeunload", blockBrowserClose);
+    return () => window.removeEventListener("beforeunload", blockBrowserClose);
   }, []);
 
   useEffect(() => {
@@ -100,10 +262,11 @@ export default function App() {
           <TitleMenuBar
             isProjectTreeCollapsed={isProjectTreeCollapsed}
             onToggleProjectTree={() => setIsProjectTreeCollapsed((collapsed) => !collapsed)}
+            onExit={requestExit}
           />
         </div>
         <div className="z-20">
-          <WindowControls />
+          <WindowControls onClose={requestExit} />
         </div>
       </div>
 
@@ -153,6 +316,83 @@ export default function App() {
         </section>
       </div>
       <ExportDialog />
+      {showUnsavedExitDialog ? (
+        <div className="no-drag fixed inset-0 z-[90] flex items-center justify-center bg-slate-950/24 px-5">
+          <section
+            className="flex max-h-[78vh] w-full max-w-[560px] flex-col overflow-hidden rounded-lg border border-slate-200 bg-white shadow-[0_24px_72px_rgba(15,23,42,0.24)]"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="unsaved-exit-title"
+          >
+            <header className="border-b border-slate-200 px-5 py-4">
+              <h2 id="unsaved-exit-title" className="m-0 text-[15px] font-semibold text-slate-950">
+                {t("exitGuard.title")}
+              </h2>
+              <p className="mt-1 text-[13px] text-slate-600">
+                {t("exitGuard.description")}
+              </p>
+            </header>
+
+            <div className="min-h-0 flex-1 overflow-auto px-5 py-3">
+              <div className="mb-2 text-[12px] font-medium text-slate-500">
+                {t("exitGuard.unsavedItems", { count: unsavedExitItems.length })}
+              </div>
+              <div className="max-h-72 overflow-auto rounded-md border border-slate-200">
+                {unsavedExitItems.map((item) => (
+                  <div
+                    key={item.imageId}
+                    className="border-b border-slate-100 px-3 py-2 last:border-b-0"
+                  >
+                    <div className="truncate text-[13px] font-medium text-slate-900">
+                      {item.fileName}
+                    </div>
+                    <div className="mt-0.5 truncate text-[12px] text-slate-500">
+                      {item.path}
+                    </div>
+                    <div className="mt-1 text-[12px] text-slate-500">
+                      {item.fields
+                        .map((field) => t(`exitGuard.field.${field}`))
+                        .join(" / ")}
+                    </div>
+                  </div>
+                ))}
+              </div>
+              {exitError ? (
+                <div className="mt-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-[13px] text-red-700">
+                  {t("exitGuard.saveFailed", { message: exitError })}
+                </div>
+              ) : null}
+            </div>
+
+            <footer className="flex justify-end gap-2 border-t border-slate-200 px-5 py-4">
+              <button
+                type="button"
+                className="no-drag h-8 rounded-md border border-slate-200 bg-white px-3 text-[13px] text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                disabled={isExitSaving}
+                onClick={() => setShowUnsavedExitDialog(false)}
+              >
+                {t("exitGuard.cancel")}
+              </button>
+              <button
+                type="button"
+                className="no-drag h-8 rounded-md border border-red-600 bg-red-600 px-3 text-[13px] font-medium text-white transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
+                disabled={isExitSaving}
+                onClick={discardAndExit}
+              >
+                {t("exitGuard.discardAndExit")}
+              </button>
+              <button
+                type="button"
+                className="no-drag h-8 rounded-md border border-slate-900 bg-slate-900 px-3 text-[13px] font-medium text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+                disabled={isExitSaving}
+                onClick={() => void saveAndExit()}
+              >
+                {isExitSaving ? t("exitGuard.saving") : t("exitGuard.saveAndExit")}
+              </button>
+            </footer>
+          </section>
+        </div>
+      ) : null}
     </main>
   );
 }

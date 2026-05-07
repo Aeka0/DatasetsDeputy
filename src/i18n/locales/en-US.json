@@ -212,6 +212,8 @@
     "themeDark": "Dark mode",
     "highlightCellState": "Highlight changed/saved cells",
     "highlightCellStateDescription": "Use color in table view to mark unsaved changes and recently saved content.",
+    "autoSaveAfterAnnotation": "Auto-save after annotation",
+    "autoSaveAfterAnnotationDescription": "Save generated annotations automatically after an annotation run completes.",
     "thumbnailCache": "Thumbnail cache",
     "thumbnailCacheDescription": "Shows current thumbnail cache usage and can clear it to free local disk space.",
     "thumbnailCacheCleared": "Thumbnail cache cleared",
@@ -511,5 +513,19 @@
     "importFailed": "Folder import failed.",
     "saveFailed": "Could not save annotations.",
     "exportFailed": "Dataset export failed."
+  },
+  "exitGuard": {
+    "title": "Unsaved changes",
+    "description": "All unsaved changes will be lost. Exit?",
+    "unsavedItems": "{{count}} unsaved item(s)",
+    "saveAndExit": "Save and exit",
+    "discardAndExit": "Discard and exit",
+    "cancel": "Cancel",
+    "saving": "Saving...",
+    "saveFailed": "Save failed: {{message}}",
+    "field": {
+      "annotation": "Annotation",
+      "instruction": "Instruction"
+    }
   }
 }

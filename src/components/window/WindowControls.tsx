@@ -8,7 +8,11 @@ function setDocumentMaximizedState(isMaximized: boolean) {
   document.documentElement.dataset.windowMaximized = isMaximized ? "true" : "false";
 }
 
-export function WindowControls() {
+interface WindowControlsProps {
+  onClose: () => void;
+}
+
+export function WindowControls({ onClose }: WindowControlsProps) {
   const [isMaximized, setIsMaximized] = useState(false);
 
   useEffect(() => {
@@ -34,7 +38,7 @@ export function WindowControls() {
     };
   }, []);
 
-  const withWindow = (action: "minimize" | "toggleMaximize" | "close") => {
+  const withWindow = (action: "minimize" | "toggleMaximize") => {
     if (!hasTauriRuntime()) {
       return;
     }
@@ -42,10 +46,8 @@ export function WindowControls() {
     const currentWindow = getCurrentWindow();
     if (action === "minimize") {
       void currentWindow.minimize();
-    } else if (action === "toggleMaximize") {
-      void currentWindow.toggleMaximize();
     } else {
-      void currentWindow.close();
+      void currentWindow.toggleMaximize();
     }
   };
 
@@ -75,7 +77,7 @@ export function WindowControls() {
         aria-label="Close"
         type="button"
         className="fluent-control-button close flex h-10 w-12 items-center justify-center"
-        onClick={() => withWindow("close")}
+        onClick={onClose}
       >
         <X size={16} />
       </button>

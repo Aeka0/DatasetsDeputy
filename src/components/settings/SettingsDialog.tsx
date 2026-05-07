@@ -350,7 +350,13 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
   const [modelSettingsMessage, setModelSettingsMessage] = useState("");
   const [isModelSettingsBusy, setIsModelSettingsBusy] = useState(false);
   const [hasLoadedModelSettings, setHasLoadedModelSettings] = useState(false);
-  const { highlightCellState, setHighlightCellState, refreshImages } = useDatasetStore();
+  const {
+    highlightCellState,
+    autoSaveAfterAnnotation,
+    setHighlightCellState,
+    setAutoSaveAfterAnnotation,
+    refreshImages
+  } = useDatasetStore();
   const [thumbnailCacheInfo, setThumbnailCacheInfo] =
     useState<ThumbnailCacheInfo>({ sizeBytes: 0 });
   const [logFilesInfo, setLogFilesInfo] = useState<LogFilesInfo>({ sizeBytes: 0 });
@@ -839,10 +845,26 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
                     className="no-drag h-4 w-4 shrink-0"
                     checked={highlightCellState}
                     onChange={(event) => setHighlightCellState(event.target.checked)}
-                  />
-                </label>
-              </div>
-            ) : activeSection === "language" ? (
+                    />
+                  </label>
+                  <label className="flex min-h-12 items-center justify-between gap-4 border-t border-slate-100 px-4 py-3">
+                    <div className="min-w-0">
+                      <div className="text-[13px] font-medium text-slate-900">
+                        {t("settings.autoSaveAfterAnnotation")}
+                      </div>
+                      <div className="mt-0.5 text-[12px] text-slate-500">
+                        {t("settings.autoSaveAfterAnnotationDescription")}
+                      </div>
+                    </div>
+                    <input
+                      type="checkbox"
+                      className="no-drag h-4 w-4 shrink-0"
+                      checked={autoSaveAfterAnnotation}
+                      onChange={(event) => setAutoSaveAfterAnnotation(event.target.checked)}
+                    />
+                  </label>
+                </div>
+              ) : activeSection === "language" ? (
               <div className="rounded-lg border border-slate-200 bg-white">
                 <div className="flex min-h-12 items-center justify-between gap-4 border-b border-slate-100 px-4 py-3 last:border-b-0">
                   <div className="min-w-0">
