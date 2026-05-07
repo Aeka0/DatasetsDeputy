@@ -1,4 +1,5 @@
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { Check, ChevronRight } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -58,6 +59,12 @@ type MenuEntry = MenuAction | MenuSubmenu | MenuSeparator;
 
 interface GeminiSettings extends AnnotationPromptSettings {
   model: string;
+}
+
+interface Wd14AnnotationProgress {
+  start: number;
+  contents: string[];
+  executionProvider: string;
 }
 
 const menuLabels: Array<{ key: MenuKey; labelKey: string }> = [
@@ -606,8 +613,31 @@ export function TitleMenuBar({
         for (const image of targets) {
           markImageAnnotating(image.id, true);
         }
+        const generatedContents = new Array<string | undefined>(targets.length);
+        let loggedWd14Provider = "";
+        let unlistenWd14Progress: UnlistenFn | undefined;
         try {
           addAppLog(`WD14 batch inference started: ${targets.length} images.`);
+          unlistenWd14Progress = await listen<Wd14AnnotationProgress>(
+            "wd14-annotation-progress",
+            (event) => {
+              if (annotationCancelRef.current) return;
+              const { start, contents, executionProvider } = event.payload;
+              if (executionProvider && executionProvider !== loggedWd14Provider) {
+                loggedWd14Provider = executionProvider;
+                addAppLog(`WD14 execution provider: ${executionProvider}`);
+              }
+              for (const [offset, content] of contents.entries()) {
+                const index = start + offset;
+                const image = targets[index];
+                if (!image) continue;
+                generatedContents[index] = content;
+                applyGeneratedAnnotationDraft(selectedProfileId, image.id, content);
+                markImageAnnotating(image.id, false);
+                addAppLog(`Generated draft annotation: ${image.fileName}`);
+              }
+            }
+          );
           const contents = await invokeCommand<string[]>("generate_wd14_annotations", {
             imagePaths: targets.map((image) => image.storagePath ?? image.path)
           });
@@ -619,10 +649,14 @@ export function TitleMenuBar({
             throw new Error(annotationCancelledError);
           }
           for (const [index, image] of targets.entries()) {
-            applyGeneratedAnnotationDraft(selectedProfileId, image.id, contents[index] ?? "");
-            addAppLog(`Generated draft annotation: ${image.fileName}`);
+            const content = contents[index] ?? "";
+            if (generatedContents[index] === undefined) {
+              applyGeneratedAnnotationDraft(selectedProfileId, image.id, content);
+              addAppLog(`Generated draft annotation: ${image.fileName}`);
+            }
           }
         } finally {
+          unlistenWd14Progress?.();
           for (const image of targets) {
             markImageAnnotating(image.id, false);
           }

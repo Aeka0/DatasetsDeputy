@@ -122,6 +122,14 @@ pub struct ModelPathSelection {
     pub model_type: String,
 }
 
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Wd14AnnotationProgress {
+    pub start: usize,
+    pub contents: Vec<String>,
+    pub execution_provider: String,
+}
+
 #[derive(Clone, Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SaveAnnotationChange {
@@ -926,6 +934,7 @@ pub async fn generate_wd14_annotation(
 
 #[tauri::command]
 pub async fn generate_wd14_annotations(
+    app: AppHandle,
     state: State<'_, AppState>,
     image_paths: Vec<String>,
 ) -> AppResult<Vec<String>> {
@@ -935,7 +944,28 @@ pub async fn generate_wd14_annotations(
             .into_iter()
             .map(PathBuf::from)
             .collect::<Vec<_>>();
-        wd14_tagger::generate_annotations(&dirs, &paths).map(|results| {
+        wd14_tagger::generate_annotations_streaming(&dirs, &paths, |start, results| {
+            let contents = results
+                .iter()
+                .map(|result| result.positive_prompt.clone())
+                .collect::<Vec<_>>();
+            let execution_provider = results
+                .first()
+                .map(|result| result.execution_provider.clone())
+                .unwrap_or_default();
+            app.emit(
+                "wd14-annotation-progress",
+                Wd14AnnotationProgress {
+                    start,
+                    contents,
+                    execution_provider,
+                },
+            )
+                .map_err(|error| {
+                    AppError::InvalidInput(format!("WD14 progress event failed: {error}"))
+                })
+        })
+        .map(|results| {
             results
                 .into_iter()
                 .map(|result| result.positive_prompt)

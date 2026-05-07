@@ -1,8 +1,10 @@
 use serde::Deserialize;
 use std::{
     fs,
+    io::{BufRead, BufReader, Read},
     path::{Path, PathBuf},
-    process::Command,
+    process::{Command, Stdio},
+    thread,
 };
 
 use crate::{
@@ -12,7 +14,8 @@ use crate::{
     python_env,
 };
 
-const INFERENCE_BATCH_SIZE: usize = 16;
+const INFERENCE_BATCH_SIZE: usize = 1;
+const CPU_INFERENCE_THREADS: usize = 2;
 
 const INFERENCE_SCRIPT: &str = r#"
 import json
@@ -27,6 +30,11 @@ model_type = payload["modelType"]
 input_paths = payload.get("inputPaths") or [payload["inputPath"]]
 tag_count = int(payload["tagCount"])
 batch_size = max(1, int(payload.get("batchSize", 16)))
+stream = bool(payload.get("stream", False))
+cpu_threads = max(1, int(payload.get("cpuThreads", 4)))
+
+def emit_batch(start, scores, provider):
+    print(json.dumps({"start": start, "scores": scores, "provider": provider}, ensure_ascii=False), flush=True)
 
 def first_file(extensions):
     matches = []
@@ -114,10 +122,15 @@ if model_type == "onnx":
     if not providers:
         providers = ["CPUExecutionProvider"]
 
-    session = ort.InferenceSession(model_path, providers=providers)
+    session_options = ort.SessionOptions()
+    session_options.intra_op_num_threads = cpu_threads
+    session_options.inter_op_num_threads = 1
+
+    session = ort.InferenceSession(model_path, sess_options=session_options, providers=providers)
     input_meta = session.get_inputs()[0]
     shape = input_meta.shape
     all_scores = []
+    provider = session.get_providers()[0]
     for start in range(0, len(input_paths), batch_size):
         chunk_paths = input_paths[start:start + batch_size]
         input_nchw = load_image_batch(chunk_paths)
@@ -125,11 +138,18 @@ if model_type == "onnx":
         if len(shape) == 4 and shape[-1] == 3:
             model_input = np.transpose(input_nchw, (0, 2, 3, 1))
         outputs = session.run(None, {input_meta.name: model_input})
-        all_scores.extend(select_score_matrix(outputs, len(chunk_paths)).tolist())
-    print(json.dumps({"scores": all_scores, "provider": session.get_providers()[0]}, ensure_ascii=False))
+        scores = select_score_matrix(outputs, len(chunk_paths)).tolist()
+        if stream:
+            emit_batch(start, scores, provider)
+        else:
+            all_scores.extend(scores)
+    if not stream:
+        print(json.dumps({"scores": all_scores, "provider": provider}, ensure_ascii=False))
 elif model_type == "pytorch":
     import torch
 
+    torch.set_num_threads(cpu_threads)
+    torch.set_num_interop_threads(1)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     if device.type == "cuda":
         torch.backends.cudnn.benchmark = True
@@ -149,7 +169,11 @@ elif model_type == "pytorch":
                 chunk_paths = input_paths[start:start + batch_size]
                 tensor = torch.from_numpy(load_image_batch(chunk_paths)).to(device, non_blocking=True)
                 output = model(pixel_values=tensor)
-                all_scores.extend(as_numpy(getattr(output, "logits", output)).reshape(len(chunk_paths), -1).tolist())
+                scores = as_numpy(getattr(output, "logits", output)).reshape(len(chunk_paths), -1).tolist()
+                if stream:
+                    emit_batch(start, scores, str(device))
+                else:
+                    all_scores.extend(scores)
     else:
         model_path = first_file({".pt", ".pth"})
         if model_path is None:
@@ -166,9 +190,14 @@ elif model_type == "pytorch":
             for start in range(0, len(input_paths), batch_size):
                 chunk_paths = input_paths[start:start + batch_size]
                 tensor = torch.from_numpy(load_image_batch(chunk_paths)).to(device, non_blocking=True)
-                all_scores.extend(as_numpy(model(tensor)).reshape(len(chunk_paths), -1).tolist())
+                scores = as_numpy(model(tensor)).reshape(len(chunk_paths), -1).tolist()
+                if stream:
+                    emit_batch(start, scores, str(device))
+                else:
+                    all_scores.extend(scores)
 
-    print(json.dumps({"scores": all_scores, "provider": str(device)}, ensure_ascii=False))
+    if not stream:
+        print(json.dumps({"scores": all_scores, "provider": str(device)}, ensure_ascii=False))
 else:
     raise RuntimeError("Unknown WD14 model type. Select a folder containing ONNX or PyTorch weights.")
 "#;
@@ -187,7 +216,14 @@ struct InferencePayload {
     provider: Option<String>,
 }
 
-#[derive(Debug, serde::Serialize)]
+#[derive(Debug, Deserialize)]
+struct InferenceBatchPayload {
+    start: usize,
+    scores: Vec<Vec<f32>>,
+    provider: Option<String>,
+}
+
+#[derive(Clone, Debug, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Wd14TaggerResult {
     pub positive_prompt: String,
@@ -238,6 +274,75 @@ pub fn generate_annotations(
         .collect()
 }
 
+pub fn generate_annotations_streaming<F>(
+    dirs: &AppDirs,
+    image_paths: &[PathBuf],
+    mut on_batch: F,
+) -> AppResult<Vec<Wd14TaggerResult>>
+where
+    F: FnMut(usize, &[Wd14TaggerResult]) -> AppResult<()>,
+{
+    if image_paths.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let model_settings = model_settings::load_settings(dirs)?;
+    let tagger_settings = model_settings.wd14_tagger;
+    let model_dir = resolve_model_dir(&tagger_settings)?;
+    let tags = load_tag_definitions(&model_dir)?;
+    let mut results = Vec::<Option<Wd14TaggerResult>>::with_capacity(image_paths.len());
+    results.resize_with(image_paths.len(), || None);
+
+    run_python_inference_streaming(
+        dirs,
+        &tagger_settings,
+        &model_dir,
+        image_paths,
+        tags.len(),
+        |batch| {
+            if batch.start + batch.scores.len() > image_paths.len() {
+                return Err(AppError::InvalidInput(format!(
+                    "WD14 returned a batch outside the target list: {} + {} / {}",
+                    batch.start,
+                    batch.scores.len(),
+                    image_paths.len()
+                )));
+            }
+
+            let execution_provider = batch
+                .provider
+                .unwrap_or_else(|| tagger_settings.model_type.clone());
+            let batch_results = batch
+                .scores
+                .iter()
+                .map(|scores| {
+                    build_prompt(scores, &tags, &tagger_settings).map(|positive_prompt| {
+                        Wd14TaggerResult {
+                            positive_prompt,
+                            execution_provider: execution_provider.clone(),
+                        }
+                    })
+                })
+                .collect::<AppResult<Vec<_>>>()?;
+
+            for (offset, result) in batch_results.iter().cloned().enumerate() {
+                results[batch.start + offset] = Some(result);
+            }
+            on_batch(batch.start, &batch_results)
+        },
+    )?;
+
+    results
+        .into_iter()
+        .enumerate()
+        .map(|(index, result)| {
+            result.ok_or_else(|| {
+                AppError::InvalidInput(format!("WD14 did not return a result for image {index}"))
+            })
+        })
+        .collect()
+}
+
 fn resolve_model_dir(settings: &Wd14TaggerSettings) -> AppResult<PathBuf> {
     if settings.model_path.trim().is_empty() {
         return Err(AppError::InvalidInput("WD14 模型文件夹尚未设置".to_owned()));
@@ -275,6 +380,7 @@ fn run_python_inference(
         "modelType": settings.model_type,
         "inputPaths": input_paths,
         "batchSize": INFERENCE_BATCH_SIZE,
+        "cpuThreads": CPU_INFERENCE_THREADS,
         "tagCount": tag_count,
     });
     let output = Command::new(&python_path)
@@ -294,6 +400,81 @@ fn run_python_inference(
     }
     serde_json::from_str(&stdout)
         .map_err(|error| AppError::InvalidInput(format!("WD14 推理结果解析失败：{error}")))
+}
+
+fn run_python_inference_streaming<F>(
+    dirs: &AppDirs,
+    settings: &Wd14TaggerSettings,
+    model_dir: &Path,
+    input_paths: &[PathBuf],
+    tag_count: usize,
+    mut on_batch: F,
+) -> AppResult<()>
+where
+    F: FnMut(InferenceBatchPayload) -> AppResult<()>,
+{
+    let python_path = python_env::resolve_configured_python_path(dirs)?.ok_or_else(|| {
+        AppError::InvalidInput(
+            "Python runtime is not configured or available".to_owned(),
+        )
+    })?;
+    let payload = serde_json::json!({
+        "modelDir": model_dir,
+        "modelType": settings.model_type,
+        "inputPaths": input_paths,
+        "batchSize": INFERENCE_BATCH_SIZE,
+        "cpuThreads": CPU_INFERENCE_THREADS,
+        "tagCount": tag_count,
+        "stream": true,
+    });
+    let mut child = Command::new(&python_path)
+        .arg("-c")
+        .arg(INFERENCE_SCRIPT)
+        .arg(payload.to_string())
+        .env("PYTHONIOENCODING", "utf-8")
+        .env("OMP_NUM_THREADS", CPU_INFERENCE_THREADS.to_string())
+        .env("MKL_NUM_THREADS", CPU_INFERENCE_THREADS.to_string())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()?;
+
+    let stderr = child.stderr.take();
+    let stderr_reader = thread::spawn(move || {
+        let mut text = String::new();
+        if let Some(mut stderr) = stderr {
+            let _ = stderr.read_to_string(&mut text);
+        }
+        text
+    });
+
+    let stdout = child.stdout.take().ok_or_else(|| {
+        AppError::InvalidInput("WD14 inference process did not expose stdout".to_owned())
+    })?;
+    for line in BufReader::new(stdout).lines() {
+        let line = line?;
+        let line = line.trim();
+        if line.is_empty() {
+            continue;
+        }
+        let batch = serde_json::from_str::<InferenceBatchPayload>(line).map_err(|error| {
+            AppError::InvalidInput(format!(
+                "WD14 streaming result parse failed: {error}; line={line}"
+            ))
+        })?;
+        on_batch(batch)?;
+    }
+
+    let status = child.wait()?;
+    let stderr = stderr_reader.join().unwrap_or_default().trim().to_owned();
+    if !status.success() {
+        return Err(AppError::InvalidInput(if stderr.is_empty() {
+            "WD14 inference failed".to_owned()
+        } else {
+            stderr
+        }));
+    }
+
+    Ok(())
 }
 
 fn load_tag_definitions(model_dir: &Path) -> AppResult<Vec<TagDefinition>> {
