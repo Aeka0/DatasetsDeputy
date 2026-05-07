@@ -66,8 +66,20 @@ fn folder_profile_id(root: &Path) -> i64 {
     -(folder_prefix(root) * ID_NAMESPACE_SIZE)
 }
 
-fn folder_image_id(root: &Path, local_index: usize) -> i64 {
-    -(folder_prefix(root) * ID_NAMESPACE_SIZE + local_index as i64 + 1)
+fn folder_image_id(root: &Path, image_path: &Path) -> i64 {
+    let normalized_root = normalize_path(root).to_ascii_lowercase();
+    let normalized_path = normalize_path(image_path).to_ascii_lowercase();
+    let relative_path = normalized_path
+        .strip_prefix(&normalized_root)
+        .map(|path| path.trim_start_matches('/'))
+        .unwrap_or(normalized_path.as_str());
+    let mut hasher = Sha256::new();
+    hasher.update(relative_path.as_bytes());
+    let digest = hasher.finalize();
+    let mut bytes = [0_u8; 8];
+    bytes.copy_from_slice(&digest[..8]);
+    let local_id = (u64::from_le_bytes(bytes) % (ID_NAMESPACE_SIZE as u64 - 1)) as i64 + 1;
+    -(folder_prefix(root) * ID_NAMESPACE_SIZE + local_id)
 }
 
 fn dataset_id(root: &Path) -> String {
@@ -257,8 +269,8 @@ pub fn list_folder_images(dirs: &AppDirs) -> AppResult<Vec<DatasetImage>> {
             .collect::<Vec<_>>();
         entries.extend(orphan_paths.into_iter().map(|path| (path, true)));
 
-        for (index, (path, source_missing)) in entries.iter().enumerate() {
-            let id = folder_image_id(&root, index);
+        for (path, source_missing) in entries.iter() {
+            let id = folder_image_id(&root, path);
             let metadata = (!source_missing).then(|| fs::metadata(path).ok()).flatten();
             let thumbnail_path = if *source_missing {
                 None

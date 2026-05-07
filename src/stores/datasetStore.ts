@@ -1389,16 +1389,34 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
       tableSavedCellKeys: []
     }),
   mergeTableDrafts: (annotationDrafts, instructionDrafts) =>
-    set((state) => ({
-      tableAnnotationDrafts: {
-        ...annotationDrafts,
-        ...state.tableAnnotationDrafts
-      },
-      tableInstructionDrafts: {
-        ...instructionDrafts,
-        ...state.tableInstructionDrafts
-      }
-    })),
+    set((state) => {
+      const imageIds = new Set(state.images.map((image) => image.id));
+      const currentAnnotationDrafts = Object.fromEntries(
+        Object.entries(state.tableAnnotationDrafts)
+          .map(([imageId, value]) => [Number(imageId), value] as const)
+          .filter(([imageId]) => imageIds.has(imageId))
+      );
+      const currentInstructionDrafts = Object.fromEntries(
+        Object.entries(state.tableInstructionDrafts)
+          .map(([imageId, value]) => [Number(imageId), value] as const)
+          .filter(([imageId]) => imageIds.has(imageId))
+      );
+
+      return {
+        tableAnnotationDrafts: {
+          ...annotationDrafts,
+          ...currentAnnotationDrafts
+        },
+        tableInstructionDrafts: {
+          ...instructionDrafts,
+          ...currentInstructionDrafts
+        },
+        tableSavedCellKeys: state.tableSavedCellKeys.filter((key) => {
+          const imageId = Number(key.split(":")[0]);
+          return imageIds.has(imageId);
+        })
+      };
+    }),
   applyGeneratedAnnotationDraft: (profileId, imageId, content) =>
     set((state) => {
       const annotationDrafts =
