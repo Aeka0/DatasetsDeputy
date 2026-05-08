@@ -276,10 +276,6 @@ fn namespace_image(mut image: DatasetImage, prefix: i64, source_kind: &str) -> D
     image
 }
 
-fn normalize_path(value: &str) -> String {
-    value.replace('\\', "/").trim_end_matches('/').to_owned()
-}
-
 fn normalize_database_source_kind(value: Option<String>) -> AppResult<String> {
     match value
         .as_deref()
@@ -302,10 +298,19 @@ fn validate_child_target(root: &Path, folder_path: &str) -> AppResult<PathBuf> {
         )));
     }
 
-    let normalized_root = normalize_path(&root.to_string_lossy());
-    let normalized_target = normalize_path(&target.to_string_lossy());
-    let child_prefix = format!("{normalized_root}/");
-    if normalized_target == normalized_root || !normalized_target.starts_with(&child_prefix) {
+    let canonical_root = dunce::canonicalize(root).map_err(|_| {
+        AppError::InvalidInput(format!(
+            "无法解析根路径：{}",
+            root.to_string_lossy()
+        ))
+    })?;
+    let canonical_target = dunce::canonicalize(&target).map_err(|_| {
+        AppError::InvalidInput(format!(
+            "无法解析目标路径：{folder_path}"
+        ))
+    })?;
+
+    if canonical_target == canonical_root || !canonical_target.starts_with(&canonical_root) {
         return Err(AppError::InvalidInput(
             "Images can only be imported into a dataset subfolder".to_owned(),
         ));
@@ -1616,13 +1621,21 @@ pub fn start_import_folder(
 }
 
 #[tauri::command]
-pub fn save_folder_annotation(image_path: String, content: String) -> AppResult<()> {
-    folders::save_folder_annotation(&image_path, &content)
+pub fn save_folder_annotation(
+    state: State<'_, AppState>,
+    image_path: String,
+    content: String,
+) -> AppResult<()> {
+    folders::save_folder_annotation(&state.dirs, &image_path, &content)
 }
 
 #[tauri::command]
-pub fn save_folder_instruction(image_path: String, instruction: String) -> AppResult<()> {
-    folders::save_folder_instruction(&image_path, &instruction)
+pub fn save_folder_instruction(
+    state: State<'_, AppState>,
+    image_path: String,
+    instruction: String,
+) -> AppResult<()> {
+    folders::save_folder_instruction(&state.dirs, &image_path, &instruction)
 }
 
 #[tauri::command]
@@ -1955,13 +1968,18 @@ pub fn create_dataset_subfolder(folder_path: String, name: String) -> AppResult<
 }
 
 #[tauri::command]
-pub fn delete_workspace_subfolder(folder_path: String) -> AppResult<()> {
+pub fn delete_workspace_subfolder(
+    state: State<'_, AppState>,
+    folder_path: String,
+) -> AppResult<()> {
     let path = PathBuf::from(&folder_path);
     if !path.is_dir() {
         return Err(AppError::InvalidInput(format!(
             "工作文件夹子目录不存在：{folder_path}"
         )));
     }
+
+    folders::require_subfolder_of_registered(&state.dirs, &path)?;
 
     tracing::info!("正在删除工作文件夹子目录及其全部内容：{:?}", path);
     fs::remove_dir_all(path)?;
@@ -2309,13 +2327,43 @@ pub fn start_format_mismatch_scan(
 }
 
 #[tauri::command]
-pub fn fix_format_mismatches(items: Vec<FormatMismatch>) -> AppResult<usize> {
+pub fn fix_format_mismatches(
+    folder: String,
+    items: Vec<FormatMismatch>,
+) -> AppResult<usize> {
+    let folder_path = PathBuf::from(&folder);
+    let canonical_folder = dunce::canonicalize(&folder_path).map_err(|_| {
+        AppError::InvalidInput(format!("无法解析扫描文件夹路径：{folder}"))
+    })?;
+
     let mut fixed = 0;
 
     for item in &items {
         let source = PathBuf::from(&item.file_path);
         if !source.is_file() {
             tracing::warn!("格式修复跳过（文件不存在）：{}", item.file_path);
+            continue;
+        }
+
+        let canonical_source = dunce::canonicalize(&source).map_err(|_| {
+            AppError::InvalidInput(format!(
+                "无法解析文件路径：{}",
+                item.file_path
+            ))
+        })?;
+        if !canonical_source.starts_with(&canonical_folder) {
+            tracing::warn!(
+                "格式修复跳过（文件不在扫描文件夹内）：{}",
+                item.file_path
+            );
+            continue;
+        }
+
+        if item.correct_extension.contains('/') || item.correct_extension.contains('\\') || item.correct_extension.contains("..") {
+            tracing::warn!(
+                "格式修复跳过（扩展名包含非法字符）：{}",
+                item.correct_extension
+            );
             continue;
         }
 

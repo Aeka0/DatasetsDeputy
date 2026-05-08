@@ -127,6 +127,7 @@ export function FormatValidatorDialog({ onClose }: FormatValidatorDialogProps) {
     setIsFixing(true);
     try {
       const count = await invokeCommand<number>("fix_format_mismatches", {
+        folder: folderPath,
         items: mismatches
       });
       setFixedCount(count ?? 0);

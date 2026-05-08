@@ -579,19 +579,18 @@ impl Database {
 
     pub fn get_storage_paths_under_path(&self, folder_path: &str) -> AppResult<Vec<String>> {
         let normalized_path = normalize_dataset_path(folder_path);
-        let child_pattern = format!("{normalized_path}/%");
+        let child_pattern = format!("{}/%", escape_like_pattern(&normalized_path));
         let mut stmt = self.conn.prepare(
             r#"SELECT storage_path FROM images
                WHERE storage_path IS NOT NULL
                  AND (replace(path, '\', '/') = ?1
-                  OR replace(path, '\', '/') LIKE ?2)"#,
+                  OR replace(path, '\', '/') LIKE ?2 ESCAPE '\')"#,
         )?;
         let paths = stmt
             .query_map(params![normalized_path, child_pattern], |row| {
                 row.get::<_, String>(0)
             })?
-            .filter_map(Result::ok)
-            .collect();
+            .collect::<Result<Vec<_>, _>>()?;
         Ok(paths)
     }
 
@@ -601,8 +600,7 @@ impl Database {
             .prepare("SELECT storage_path FROM images WHERE storage_path IS NOT NULL")?;
         let paths = stmt
             .query_map([], |row| row.get::<_, String>(0))?
-            .filter_map(Result::ok)
-            .collect();
+            .collect::<Result<Vec<_>, _>>()?;
         Ok(paths)
     }
 
@@ -626,11 +624,11 @@ impl Database {
 
     pub fn delete_images_under_path(&mut self, folder_path: &str) -> AppResult<usize> {
         let normalized_path = normalize_dataset_path(folder_path);
-        let child_pattern = format!("{normalized_path}/%");
+        let child_pattern = format!("{}/%", escape_like_pattern(&normalized_path));
         let deleted = self.conn.execute(
             r#"DELETE FROM images
                WHERE replace(path, '\', '/') = ?1
-                  OR replace(path, '\', '/') LIKE ?2"#,
+                  OR replace(path, '\', '/') LIKE ?2 ESCAPE '\'"#,
             params![normalized_path, child_pattern],
         )?;
         Ok(deleted)
@@ -811,4 +809,11 @@ impl Database {
 
 fn normalize_dataset_path(path: &str) -> String {
     path.replace('\\', "/").trim_end_matches('/').to_owned()
+}
+
+fn escape_like_pattern(value: &str) -> String {
+    value
+        .replace('\\', "\\\\")
+        .replace('%', "\\%")
+        .replace('_', "\\_")
 }

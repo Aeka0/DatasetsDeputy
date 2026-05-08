@@ -326,8 +326,74 @@ pub fn list_folder_images(dirs: &AppDirs) -> AppResult<Vec<DatasetImage>> {
     Ok(images)
 }
 
-pub fn save_folder_annotation(image_path: &str, content: &str) -> AppResult<()> {
+pub fn is_path_within_registered_folder(dirs: &AppDirs, target: &Path) -> AppResult<bool> {
+    let registry = read_registry(dirs)?;
+    let canonical_target = dunce::canonicalize(target)
+        .or_else(|_| {
+            target
+                .parent()
+                .and_then(|p| dunce::canonicalize(p).ok())
+                .map(|p| p.join(target.file_name().unwrap_or_default()))
+                .ok_or_else(|| {
+                    std::io::Error::new(std::io::ErrorKind::NotFound, "无法解析目标路径")
+                })
+        })
+        .map(|p| normalize_path(&p))?;
+
+    for folder in &registry.folders {
+        if let Ok(canonical_folder) = dunce::canonicalize(folder) {
+            let normalized_folder = normalize_path(&canonical_folder);
+            if canonical_target == normalized_folder
+                || canonical_target.starts_with(&format!("{normalized_folder}/"))
+            {
+                return Ok(true);
+            }
+        }
+    }
+
+    Ok(false)
+}
+
+fn require_path_within_registered_folder(dirs: &AppDirs, target: &Path) -> AppResult<()> {
+    if !is_path_within_registered_folder(dirs, target)? {
+        return Err(AppError::InvalidInput(
+            "目标路径不在已注册的工作文件夹范围内".to_owned(),
+        ));
+    }
+    Ok(())
+}
+
+pub fn require_subfolder_of_registered(dirs: &AppDirs, target: &Path) -> AppResult<()> {
+    let registry = read_registry(dirs)?;
+    let canonical_target = dunce::canonicalize(target).map_err(|_| {
+        AppError::InvalidInput(format!(
+            "无法解析目标路径：{}",
+            target.to_string_lossy()
+        ))
+    })?;
+    let normalized_target = normalize_path(&canonical_target);
+
+    for folder in &registry.folders {
+        if let Ok(canonical_folder) = dunce::canonicalize(folder) {
+            let normalized_folder = normalize_path(&canonical_folder);
+            if normalized_target.starts_with(&format!("{normalized_folder}/")) {
+                return Ok(());
+            }
+        }
+    }
+
+    Err(AppError::InvalidInput(
+        "目标路径必须是已注册工作文件夹的子目录".to_owned(),
+    ))
+}
+
+pub fn save_folder_annotation(
+    dirs: &AppDirs,
+    image_path: &str,
+    content: &str,
+) -> AppResult<()> {
     let path = PathBuf::from(image_path);
+    require_path_within_registered_folder(dirs, &path)?;
     if !path.is_file() && path.parent().is_none_or(|parent| !parent.is_dir()) {
         return Err(AppError::InvalidInput(format!(
             "图片路径所在目录不存在：{image_path}"
@@ -336,8 +402,13 @@ pub fn save_folder_annotation(image_path: &str, content: &str) -> AppResult<()> 
     write_sidecar(annotation_path(&path), content)
 }
 
-pub fn save_folder_instruction(image_path: &str, instruction: &str) -> AppResult<()> {
+pub fn save_folder_instruction(
+    dirs: &AppDirs,
+    image_path: &str,
+    instruction: &str,
+) -> AppResult<()> {
     let path = PathBuf::from(image_path);
+    require_path_within_registered_folder(dirs, &path)?;
     if !path.is_file() && path.parent().is_none_or(|parent| !parent.is_dir()) {
         return Err(AppError::InvalidInput(format!(
             "图片路径所在目录不存在：{image_path}"
