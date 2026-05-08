@@ -16,6 +16,7 @@ import { useTranslation } from "react-i18next";
 import { useShallow } from "zustand/react/shallow";
 
 import { cn } from "../../lib/cn";
+import { formatAppError } from "../../lib/errors";
 import { useDatasetStore } from "../../stores/datasetStore";
 import type { DatasetProject } from "../../types";
 
@@ -205,7 +206,8 @@ export function ProjectTree() {
     checkProblemItems,
     removeDataset,
     renameDatasetFolder,
-    createDatasetSubfolder
+    createDatasetSubfolder,
+    addAppLog
   } = useDatasetStore(
     useShallow((state) => ({
       images: state.images,
@@ -217,7 +219,8 @@ export function ProjectTree() {
       checkProblemItems: state.checkProblemItems,
       removeDataset: state.removeDataset,
       renameDatasetFolder: state.renameDatasetFolder,
-      createDatasetSubfolder: state.createDatasetSubfolder
+      createDatasetSubfolder: state.createDatasetSubfolder,
+      addAppLog: state.addAppLog
     }))
   );
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
@@ -230,7 +233,9 @@ export function ProjectTree() {
   const [pendingRename, setPendingRename] = useState<DatasetProject>();
   const [pendingNewChild, setPendingNewChild] = useState<DatasetProject>();
   const [renameValue, setRenameValue] = useState("");
+  const [renameError, setRenameError] = useState("");
   const [newChildName, setNewChildName] = useState("");
+  const [newChildError, setNewChildError] = useState("");
 
   useEffect(() => {
     if (!contextMenu) return;
@@ -294,20 +299,31 @@ export function ProjectTree() {
     setContextMenu(undefined);
     setPendingRename(project);
     setRenameValue(project.name);
+    setRenameError("");
   };
 
   const submitRename = async () => {
     if (!pendingRename) return;
-    await renameDatasetFolder(pendingRename, renameValue);
-    setPendingRename(undefined);
-    setRenameValue("");
+    setRenameError("");
+    try {
+      await renameDatasetFolder(pendingRename, renameValue);
+      setPendingRename(undefined);
+      setRenameValue("");
+    } catch (error) {
+      setRenameError(formatAppError(error));
+    }
   };
 
   const submitNewChild = async () => {
     if (!pendingNewChild) return;
-    await createDatasetSubfolder(pendingNewChild, newChildName);
-    setPendingNewChild(undefined);
-    setNewChildName("");
+    setNewChildError("");
+    try {
+      await createDatasetSubfolder(pendingNewChild, newChildName);
+      setPendingNewChild(undefined);
+      setNewChildName("");
+    } catch (error) {
+      setNewChildError(formatAppError(error));
+    }
   };
 
   const setProjectExpanded = (project: DatasetProject, expanded: boolean) => {
@@ -604,9 +620,15 @@ export function ProjectTree() {
             <input
               autoFocus
               value={renameValue}
-              onChange={(event) => setRenameValue(event.target.value)}
+              onChange={(event) => {
+                setRenameValue(event.target.value);
+                setRenameError("");
+              }}
               className="glass-input mt-1 h-9 w-full px-3 text-[13px]"
             />
+            {renameError ? (
+              <div className="mt-2 text-[12px] leading-4 text-rose-600">{renameError}</div>
+            ) : null}
             <div className="mt-5 flex justify-end gap-2">
               <button
                 type="button"
@@ -648,9 +670,15 @@ export function ProjectTree() {
             <input
               autoFocus
               value={newChildName}
-              onChange={(event) => setNewChildName(event.target.value)}
+              onChange={(event) => {
+                setNewChildName(event.target.value);
+                setNewChildError("");
+              }}
               className="glass-input mt-1 h-9 w-full px-3 text-[13px]"
             />
+            {newChildError ? (
+              <div className="mt-2 text-[12px] leading-4 text-rose-600">{newChildError}</div>
+            ) : null}
             <div className="mt-5 flex justify-end gap-2">
               <button
                 type="button"
@@ -719,7 +747,9 @@ export function ProjectTree() {
                 onClick={() => {
                   const project = pendingRemoval;
                   setPendingRemoval(undefined);
-                  void removeDataset(project);
+                  removeDataset(project).catch((error) => {
+                    addAppLog(`移除数据集失败：${formatAppError(error)}`, "error");
+                  });
                 }}
               >
                 {isWorkspaceFolderChild(pendingRemoval)

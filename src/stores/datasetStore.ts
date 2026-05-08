@@ -733,6 +733,8 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
         activeProfileId: profiles[0]?.id
       });
       get().addAppLog(`刷新完成：已加载 ${images.length} 张图片和 ${profiles.length} 个标注类型。`);
+    } catch (error) {
+      get().addAppLog(`刷新数据集状态失败：${formatAppError(error)}`, "error");
     } finally {
       set({ isLoading: false });
     }
@@ -742,29 +744,33 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
       return;
     }
 
-    const images = await invokeCommand<DatasetImage[]>("list_images");
-    set((state) => {
-      const imageIds = new Set(images.map((image) => image.id));
-      const selectedImageIds = state.selectedImageIds.filter((imageId) => imageIds.has(imageId));
-      const selectedImageId =
-        state.selectedImageId !== undefined && imageIds.has(state.selectedImageId)
-          ? state.selectedImageId
-          : undefined;
-      const selectionAnchorImageId =
-        state.selectionAnchorImageId !== undefined && imageIds.has(state.selectionAnchorImageId)
-          ? state.selectionAnchorImageId
-          : undefined;
+    try {
+      const images = await invokeCommand<DatasetImage[]>("list_images");
+      set((state) => {
+        const imageIds = new Set(images.map((image) => image.id));
+        const selectedImageIds = state.selectedImageIds.filter((imageId) => imageIds.has(imageId));
+        const selectedImageId =
+          state.selectedImageId !== undefined && imageIds.has(state.selectedImageId)
+            ? state.selectedImageId
+            : undefined;
+        const selectionAnchorImageId =
+          state.selectionAnchorImageId !== undefined && imageIds.has(state.selectionAnchorImageId)
+            ? state.selectionAnchorImageId
+            : undefined;
 
-      return {
-        images,
-        projects: createProjectTree(images),
-        ...createImageSelection(selectedImageIds, selectedImageId, selectionAnchorImageId),
-        previewImageId:
-          state.previewImageId !== undefined && imageIds.has(state.previewImageId)
-            ? state.previewImageId
-            : undefined
-      };
-    });
+        return {
+          images,
+          projects: createProjectTree(images),
+          ...createImageSelection(selectedImageIds, selectedImageId, selectionAnchorImageId),
+          previewImageId:
+            state.previewImageId !== undefined && imageIds.has(state.previewImageId)
+              ? state.previewImageId
+              : undefined
+        };
+      });
+    } catch (error) {
+      get().addAppLog(`刷新图片列表失败：${formatAppError(error)}`, "error");
+    }
   },
   checkProblemItems: async (project) => {
     if (!hasTauriRuntime() || !project?.datasetId) {
@@ -792,7 +798,7 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
       return summary;
     } catch (error) {
       get().addAppLog(`问题条目检查失败：${formatAppError(error)}`, "error");
-      throw error;
+      return undefined;
     } finally {
       set({ isCheckingProblemItems: false });
     }
@@ -850,9 +856,9 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
       const payload = error as { code?: string };
       if (payload.code !== "dialog_cancelled") {
         get().addAppLog(`资产数据库导入准备失败：${formatAppError(error)}`, "error");
-        throw error;
+      } else {
+        get().addAppLog("用户已取消资产数据库导入准备。", "warning");
       }
-      get().addAppLog("用户已取消资产数据库导入准备。", "warning");
     } finally {
       set({ isLoading: false });
     }
@@ -890,9 +896,9 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
       const payload = error as { code?: string };
       if (payload.code !== "dialog_cancelled") {
         get().addAppLog(`动态链接数据库导入准备失败：${formatAppError(error)}`, "error");
-        throw error;
+      } else {
+        get().addAppLog("用户已取消动态链接数据库导入准备。", "warning");
       }
-      get().addAppLog("用户已取消动态链接数据库导入准备。", "warning");
     } finally {
       set({ isLoading: false });
     }
@@ -953,9 +959,9 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
       set({ importProgress: undefined, pendingImportKind: undefined });
       if (payload.code !== "dialog_cancelled") {
         get().addAppLog(`工作文件夹挂载失败：${formatAppError(error)}`, "error");
-        throw error;
+      } else {
+        get().addAppLog("用户已取消工作文件夹挂载。", "warning");
       }
-      get().addAppLog("用户已取消工作文件夹挂载。", "warning");
     } finally {
       set({ isLoading: false, importProgress: undefined, pendingImportKind: undefined });
     }
@@ -1000,7 +1006,6 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
         preparedImportKind: undefined
       });
       get().addAppLog(`已准备的导入失败：${formatAppError(error)}`, "error");
-      throw error;
     }
   },
   browseImportedDataset: async () => {
@@ -1035,6 +1040,8 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
         importReport: undefined
       });
       get().addAppLog(`已打开导入数据集：加载 ${images.length} 张图片。`);
+    } catch (error) {
+      get().addAppLog(`打开已导入数据集失败：${formatAppError(error)}`, "error");
     } finally {
       set({ isLoading: false });
     }
@@ -1067,24 +1074,29 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
           sourceKind: getProjectSourceKind(project)
         });
       }
-      const [images, profiles] = await Promise.all([
-        invokeCommand<DatasetImage[]>("list_images"),
-        invokeCommand<AnnotationProfile[]>("list_annotation_profiles")
-      ]);
-      set({
-        images,
-        profiles,
-        projects: createProjectTree(images),
-        appView: "initial",
-        selectedProjectId: undefined,
-        ...createImageSelection([]),
-        previewImageId: undefined,
-        activeProfileId: profiles[0]?.id,
-        importPreview: undefined,
-        importProgress: undefined,
-        importReport: undefined,
-        pendingImportKind: undefined
-      });
+
+      try {
+        const [images, profiles] = await Promise.all([
+          invokeCommand<DatasetImage[]>("list_images"),
+          invokeCommand<AnnotationProfile[]>("list_annotation_profiles")
+        ]);
+        set({
+          images,
+          profiles,
+          projects: createProjectTree(images),
+          appView: "initial",
+          selectedProjectId: undefined,
+          ...createImageSelection([]),
+          previewImageId: undefined,
+          activeProfileId: profiles[0]?.id,
+          importPreview: undefined,
+          importProgress: undefined,
+          importReport: undefined,
+          pendingImportKind: undefined
+        });
+      } catch (refreshError) {
+        get().addAppLog(`移除操作已完成，但刷新数据失败：${formatAppError(refreshError)}`, "error");
+      }
       return;
     }
 
@@ -1238,9 +1250,17 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
         imagePath: image.path,
         sourceKind: image.sourceKind
       });
-      const profiles = await invokeCommand<AnnotationProfile[]>("list_annotation_profiles");
-      set({ profiles });
-      await get().refreshImages();
+      try {
+        const profiles = await invokeCommand<AnnotationProfile[]>("list_annotation_profiles");
+        set({ profiles });
+      } catch (error) {
+        get().addAppLog(`删除图片后刷新标注类型失败：${formatAppError(error)}`, "error");
+      }
+      try {
+        await get().refreshImages();
+      } catch (error) {
+        get().addAppLog(`删除图片后刷新图片列表失败：${formatAppError(error)}`, "error");
+      }
       return;
     }
 
@@ -1359,10 +1379,12 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
   selectProject: (id) =>
     set((state) => {
       const project = flattenProjects(state.projects).find((project) => project.id === id);
-      const projectProfiles = project?.datasetId
+      if (!project) return state;
+
+      const projectProfiles = project.datasetId
         ? state.profiles.filter((profile) => profile.datasetId === project.datasetId)
         : [];
-      const activeProfileId = project?.datasetId
+      const activeProfileId = project.datasetId
         ? projectProfiles.some((profile) => profile.id === state.activeProfileId)
           ? state.activeProfileId
           : projectProfiles[0]?.id ?? state.activeProfileId
@@ -1824,21 +1846,27 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
         }
       }
 
+      let folderSaveFailures = 0;
       for (const change of folderChanges) {
         const image = imageById.get(change.imageId);
         if (!image) continue;
 
-        if (change.content !== undefined) {
-          await invokeCommand("save_folder_annotation", {
-            imagePath: image.path,
-            content: change.content
-          });
-        }
-        if (change.instruction !== undefined) {
-          await invokeCommand("save_folder_instruction", {
-            imagePath: image.path,
-            instruction: change.instruction
-          });
+        try {
+          if (change.content !== undefined) {
+            await invokeCommand("save_folder_annotation", {
+              imagePath: image.path,
+              content: change.content
+            });
+          }
+          if (change.instruction !== undefined) {
+            await invokeCommand("save_folder_instruction", {
+              imagePath: image.path,
+              instruction: change.instruction
+            });
+          }
+        } catch (error) {
+          folderSaveFailures++;
+          get().addAppLog(`保存文件夹标注失败 (${image.fileName})：${formatAppError(error)}`, "error");
         }
       }
       if (assetChanges.length > 0) {
@@ -1856,6 +1884,9 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
         previewImageId: current.previewImageId,
         selectedProjectId: current.selectedProjectId
       }));
+      if (folderSaveFailures > 0) {
+        throw new Error(`${folderSaveFailures} 个文件夹标注保存失败，请查看日志。`);
+      }
       return;
     }
 

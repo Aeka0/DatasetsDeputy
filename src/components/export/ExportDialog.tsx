@@ -142,15 +142,19 @@ export function ExportDialog() {
   if (!showExportDialog) return null;
 
   const chooseOutputDir = async () => {
-    const selected = await open({
-      directory: true,
-      multiple: false,
-      title: t("export.selectFolder")
-    });
+    try {
+      const selected = await open({
+        directory: true,
+        multiple: false,
+        title: t("export.selectFolder")
+      });
 
-    if (!selected || Array.isArray(selected)) return;
-    setOutputDir(selected);
-    setError("");
+      if (!selected || Array.isArray(selected)) return;
+      setOutputDir(selected);
+      setError("");
+    } catch {
+      // dialog cancelled or failed
+    }
   };
 
   const startExport = async () => {

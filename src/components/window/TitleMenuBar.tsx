@@ -459,7 +459,9 @@ export function TitleMenuBar({
     setOpenMenu(undefined);
     setMenuPosition(undefined);
     setActiveSubmenu(undefined);
-    void action.onSelect();
+    Promise.resolve(action.onSelect()).catch((error) => {
+      addAppLog(`菜单操作失败：${formatAppError(error)}`, "error");
+    });
   };
 
   const getAnnotationTargetCount = (

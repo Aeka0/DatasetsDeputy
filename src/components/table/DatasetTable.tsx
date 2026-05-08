@@ -394,6 +394,8 @@ export function DatasetTable({
     setIsSaving(true);
     try {
       await saveDraftsForImages(images);
+    } catch {
+      // errors are logged by the store
     } finally {
       setIsSaving(false);
     }
@@ -410,6 +412,8 @@ export function DatasetTable({
     setIsSaving(true);
     try {
       await saveDraftsForImages([image]);
+    } catch {
+      // errors are logged by the store
     } finally {
       setIsSaving(false);
     }
@@ -424,6 +428,8 @@ export function DatasetTable({
     setIsSaving(true);
     try {
       await saveDraftsForImages([image]);
+    } catch {
+      // errors are logged by the store
     } finally {
       setIsSaving(false);
     }

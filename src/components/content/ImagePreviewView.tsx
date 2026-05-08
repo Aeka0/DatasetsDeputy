@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useShallow } from "zustand/react/shallow";
 
+import { formatAppError } from "../../lib/errors";
 import { formatBytes } from "../../lib/format";
 import { resolveAssetSrc } from "../../lib/tauri";
 import { getTableDraftProfileMaps } from "../../lib/tableDrafts";
@@ -31,7 +32,8 @@ export function ImagePreviewView() {
     saveInstruction,
     createAnnotationProfile,
     clearAnnotation,
-    applyTableDraft
+    applyTableDraft,
+    addAppLog
   } = useDatasetStore(
     useShallow((state) => ({
       images: state.images,
@@ -50,7 +52,8 @@ export function ImagePreviewView() {
       saveInstruction: state.saveInstruction,
       createAnnotationProfile: state.createAnnotationProfile,
       clearAnnotation: state.clearAnnotation,
-      applyTableDraft: state.applyTableDraft
+      applyTableDraft: state.applyTableDraft,
+      addAppLog: state.addAppLog
     }))
   );
   const selectedImage = useMemo(
@@ -223,8 +226,12 @@ export function ImagePreviewView() {
 
   const saveCurrentAnnotation = () => {
     if (isAnnotating || selectedProfileId === undefined) return;
-    void saveAnnotation(selectedImage.id, selectedProfileId, content);
-    void saveInstruction(selectedImage.id, selectedProfileId, instruction);
+    saveAnnotation(selectedImage.id, selectedProfileId, content).catch((error) => {
+      addAppLog(`保存标注失败：${formatAppError(error)}`, "error");
+    });
+    saveInstruction(selectedImage.id, selectedProfileId, instruction).catch((error) => {
+      addAppLog(`保存指令失败：${formatAppError(error)}`, "error");
+    });
   };
 
   const saveWithKeyboard = (event: ReactKeyboardEvent<HTMLTextAreaElement>) => {
@@ -465,7 +472,11 @@ export function ImagePreviewView() {
               {selectedAnnotation ? (
                 <button
                   className="no-drag inline-flex h-8 w-8 items-center justify-center rounded-md border border-rose-200 bg-white text-rose-700 transition hover:bg-rose-50"
-                  onClick={() => void clearAnnotation(selectedAnnotation.id)}
+                  onClick={() => {
+                    clearAnnotation(selectedAnnotation.id).catch((error) => {
+                      addAppLog(`清除标注失败：${formatAppError(error)}`, "error");
+                    });
+                  }}
                   title={t("image.delete")}
                 >
                   <Trash2 size={15} />
