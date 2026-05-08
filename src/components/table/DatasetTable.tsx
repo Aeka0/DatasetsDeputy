@@ -9,11 +9,12 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 
+import { getAnnotationForProfile, getAnnotationText, getInstructionText } from "../../lib/annotations";
 import { cn } from "../../lib/cn";
 import { getUnsavedTableDraftState } from "../../lib/tableDrafts";
 import { resolveAssetSrc } from "../../lib/tauri";
 import { useDatasetStore } from "../../stores/datasetStore";
-import type { Annotation, AnnotationChange, AnnotationProfile, DatasetImage } from "../../types";
+import type { AnnotationChange, AnnotationProfile, DatasetImage } from "../../types";
 
 const rowHeight = 120;
 type CellKind = "annotation" | "instruction";
@@ -57,23 +58,6 @@ function loadColumnWidths() {
   } catch {
     return defaultColumnWidths;
   }
-}
-
-function getAnnotationForProfile(image: DatasetImage, profileId: number) {
-  return image.annotations.find((annotation) => annotation.profileId === profileId);
-}
-
-function getAnnotationText(image: DatasetImage, profileId: number) {
-  const annotation = getAnnotationForProfile(image, profileId);
-  if (annotation) {
-    return annotation.content;
-  }
-
-  return "";
-}
-
-function getInstructionText(annotation: Annotation | undefined) {
-  return annotation?.instruction ?? "";
 }
 
 function createAnnotationDraftMap(images: DatasetImage[], profileId: number) {
@@ -433,14 +417,6 @@ export function DatasetTable({
     return () => window.removeEventListener("keydown", saveWithKeyboard);
   });
 
-  const updateAnnotationDraft = (imageId: number, value: string) => {
-    updateTableAnnotationDraft(imageId, value);
-  };
-
-  const updateInstructionDraft = (imageId: number, value: string) => {
-    updateTableInstructionDraft(imageId, value);
-  };
-
   const trimmedNewProfileName = newProfileName.trim();
   const normalizedNewProfileName = trimmedNewProfileName.toLocaleLowerCase();
   const targetDatasetId = images[0]?.datasetId;
@@ -705,7 +681,7 @@ export function DatasetTable({
                       }
                     }}
                     value={selectedProfileId ? (annotationDrafts[image.id] ?? "") : ""}
-                    onChange={(event) => updateAnnotationDraft(image.id, event.target.value)}
+                    onChange={(event) => updateTableAnnotationDraft(image.id, event.target.value)}
                     onKeyDown={(event) => moveFocusToAdjacentRow(image.id, "annotation", event)}
                     className={cn(
                       "glass-input h-[100px] w-full resize-none rounded-md p-2 text-[13px] leading-5 disabled:cursor-wait disabled:opacity-80",
@@ -732,7 +708,7 @@ export function DatasetTable({
                       }
                     }}
                     value={selectedProfileId ? (instructionDrafts[image.id] ?? "") : ""}
-                    onChange={(event) => updateInstructionDraft(image.id, event.target.value)}
+                    onChange={(event) => updateTableInstructionDraft(image.id, event.target.value)}
                     onKeyDown={(event) => moveFocusToAdjacentRow(image.id, "instruction", event)}
                     className={cn(
                       "glass-input h-[100px] w-full resize-none rounded-md p-2 text-[13px] leading-5",

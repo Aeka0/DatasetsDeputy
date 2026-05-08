@@ -18,6 +18,8 @@ use tauri::{Manager, WebviewWindowBuilder, WindowEvent};
 #[cfg(target_os = "windows")]
 use tauri::{PhysicalSize, Size};
 
+pub(crate) const ID_NAMESPACE_SIZE: i64 = 1_000_000;
+
 const STARTUP_FALLBACK_SECONDS: u64 = 10;
 const MIN_SPLASH_MILLISECONDS: u64 = 1800;
 const MAIN_PAGE_READY_DELAY_MILLISECONDS: u64 = 250;

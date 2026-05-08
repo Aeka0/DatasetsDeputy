@@ -2,6 +2,7 @@ import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { create } from "zustand";
 
 import { formatAppError } from "../lib/errors";
+import { flattenProjects } from "../lib/projects";
 import { hasTauriRuntime, invokeCommand } from "../lib/tauri";
 import type { TableDraftMap } from "../lib/tableDrafts";
 import type {
@@ -330,10 +331,6 @@ function createProjectTree(
 
     return pruneEmptyChildren(root);
   });
-}
-
-function flattenProjects(projects: DatasetProject[]): DatasetProject[] {
-  return projects.flatMap((project) => [project, ...flattenProjects(project.children ?? [])]);
 }
 
 type WorkspaceTab = "overview" | "grid" | "table";

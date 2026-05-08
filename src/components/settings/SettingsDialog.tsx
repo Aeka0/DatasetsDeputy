@@ -16,6 +16,7 @@ import { useTranslation } from "react-i18next";
 import i18next from "../../i18n";
 import { cn } from "../../lib/cn";
 import { formatAppError } from "../../lib/errors";
+import { formatBytes } from "../../lib/format";
 import { hasTauriRuntime, invokeCommand } from "../../lib/tauri";
 import {
   getBottomUiOpacity,
@@ -214,17 +215,6 @@ const convertFormatOptions = [
   { value: "jpeg", labelKey: "settings.geminiFormatJpeg" }
 ];
 
-function formatByteSize(value: number) {
-  if (!value) return "0 B";
-  const units = ["B", "KB", "MB", "GB", "TB"];
-  let size = value;
-  let index = 0;
-  while (size >= 1024 && index < units.length - 1) {
-    size /= 1024;
-    index += 1;
-  }
-  return `${size.toFixed(index === 0 ? 0 : 1)} ${units[index]}`;
-}
 
 interface SettingsDialogProps {
   onClose: () => void;
@@ -1215,7 +1205,7 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
                   </div>
                   <div className="flex shrink-0 items-center gap-2">
                     <span className="min-w-20 text-right text-[13px] font-medium text-slate-700">
-                      {formatByteSize(thumbnailCacheInfo.sizeBytes)}
+                      {formatBytes(thumbnailCacheInfo.sizeBytes)}
                     </span>
                     <button
                       type="button"
@@ -1246,7 +1236,7 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
                   </div>
                   <div className="flex shrink-0 items-center gap-2">
                     <span className="min-w-20 text-right text-[13px] font-medium text-slate-700">
-                      {formatByteSize(logFilesInfo.sizeBytes)}
+                      {formatBytes(logFilesInfo.sizeBytes)}
                     </span>
                     <button
                       type="button"

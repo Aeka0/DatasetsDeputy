@@ -3,19 +3,13 @@ import type { KeyboardEvent as ReactKeyboardEvent } from "react";
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
+import { formatBytes } from "../../lib/format";
 import { resolveAssetSrc } from "../../lib/tauri";
 import { getTableDraftProfileMaps } from "../../lib/tableDrafts";
 import { useDatasetStore } from "../../stores/datasetStore";
 import type { AnnotationProfile } from "../../types";
 
 type DraftTab = "annotation" | "instruction";
-
-function formatBytes(bytes?: number) {
-  if (!bytes) return "-";
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
-}
 
 export function ImagePreviewView() {
   const { t } = useTranslation();

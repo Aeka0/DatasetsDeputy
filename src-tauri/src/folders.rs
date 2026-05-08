@@ -13,11 +13,10 @@ use crate::{
     app_dirs::AppDirs,
     db::{Annotation, AnnotationProfile, DatasetImage},
     errors::{AppError, AppResult},
-    files,
+    files, ID_NAMESPACE_SIZE,
 };
 
 const FOLDER_PROFILE_NAME: &str = "TXT";
-const ID_NAMESPACE_SIZE: i64 = 1_000_000;
 
 #[derive(Default, Serialize, Deserialize)]
 struct FolderRegistry {

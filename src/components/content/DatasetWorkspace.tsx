@@ -19,6 +19,8 @@ import { useTranslation } from "react-i18next";
 
 import { cn } from "../../lib/cn";
 import { formatAppError } from "../../lib/errors";
+import { formatBytes } from "../../lib/format";
+import { findProjectTrail, flattenProjects } from "../../lib/projects";
 import { hasTauriRuntime, invokeCommand } from "../../lib/tauri";
 import { useDatasetStore, type ViewFilterMode } from "../../stores/datasetStore";
 import type {
@@ -66,28 +68,6 @@ const folderImageImportCopy = {
   importFailed: "导入图片失败"
 };
 
-function flattenProjects(projects: DatasetProject[]): DatasetProject[] {
-  return projects.flatMap((project) => [project, ...flattenProjects(project.children ?? [])]);
-}
-
-function findProjectTrail(
-  projects: DatasetProject[],
-  projectId: string | undefined,
-  parents: DatasetProject[] = []
-): DatasetProject[] {
-  if (!projectId) return [];
-
-  for (const project of projects) {
-    const trail = [...parents, project];
-    if (project.id === projectId) return trail;
-
-    const childTrail = findProjectTrail(project.children ?? [], projectId, trail);
-    if (childTrail.length) return childTrail;
-  }
-
-  return [];
-}
-
 function isVirtualProjectRoot(project: DatasetProject | undefined) {
   return (
     project?.id === "asset-database-group" ||
@@ -112,18 +92,6 @@ function isImportableDatasetChild(project: DatasetProject | undefined) {
     !isVirtualProjectRoot(project) &&
     !isDatasetRoot(project)
   );
-}
-
-function formatBytes(value: number) {
-  if (!value) return "0 B";
-  const units = ["B", "KB", "MB", "GB", "TB"];
-  let size = value;
-  let index = 0;
-  while (size >= 1024 && index < units.length - 1) {
-    size /= 1024;
-    index += 1;
-  }
-  return `${size.toFixed(index === 0 ? 0 : 1)} ${units[index]}`;
 }
 
 function getVisibleImages(

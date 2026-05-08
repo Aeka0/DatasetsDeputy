@@ -4,13 +4,14 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 
+import { getAnnotationForProfile } from "../../lib/annotations";
 import {
   generateAnnotationPrompt,
   type AnnotationPromptSettings
 } from "../../lib/annotationPrompt";
 import { formatAppError } from "../../lib/errors";
-import { hasTauriRuntime } from "../../lib/tauri";
-import { invokeCommand } from "../../lib/tauri";
+import { findProject, formatProjectPath } from "../../lib/projects";
+import { hasTauriRuntime, invokeCommand } from "../../lib/tauri";
 import { useDatasetStore, type ViewFilterMode } from "../../stores/datasetStore";
 import type { AnnotationChange, DatasetImage, DatasetProject } from "../../types";
 import {
@@ -79,50 +80,6 @@ const menuLabels: Array<{ key: MenuKey; labelKey: string }> = [
 ];
 
 const annotationCancelledError = "annotation_cancelled";
-
-function findProject(projects: DatasetProject[], id?: string): DatasetProject | undefined {
-  if (!id) return undefined;
-
-  for (const project of projects) {
-    if (project.id === id) {
-      return project;
-    }
-    const child = findProject(project.children ?? [], id);
-    if (child) {
-      return child;
-    }
-  }
-
-  return undefined;
-}
-
-function findProjectPath(
-  projects: DatasetProject[],
-  id?: string,
-  trail: DatasetProject[] = []
-): DatasetProject[] | undefined {
-  if (!id) return undefined;
-
-  for (const project of projects) {
-    const nextTrail = [...trail, project];
-    if (project.id === id) {
-      return nextTrail;
-    }
-    const childPath = findProjectPath(project.children ?? [], id, nextTrail);
-    if (childPath) {
-      return childPath;
-    }
-  }
-
-  return undefined;
-}
-
-function formatProjectPath(projects: DatasetProject[], id?: string) {
-  return findProjectPath(projects, id)
-    ?.map((project) => project.name)
-    .filter(Boolean)
-    .join(" / ");
-}
 
 function isAnnotatableProject(project: DatasetProject | undefined) {
   if (!project) return false;
@@ -196,11 +153,6 @@ function buildGeminiPrompt(basePrompt: string, imageInstruction: string) {
   }
 
   return prompt ? `${prompt}\n\nAdditional instruction for this image: ${instruction}` : instruction;
-}
-
-function getAnnotationForProfile(image: DatasetImage, profileId: number | undefined) {
-  if (profileId === undefined) return undefined;
-  return image.annotations.find((annotation) => annotation.profileId === profileId);
 }
 
 function hasEffectiveAnnotation(image: DatasetImage, profileId: number | undefined) {

@@ -22,10 +22,8 @@ use crate::{
     python_env::{self, PythonEnvInstallResult, PythonEnvProbeReport, PythonEnvSettings},
     thumbnail, wd14_tagger,
     window_rendering::{self, WindowRenderingSettings},
-    AppState,
+    AppState, ID_NAMESPACE_SIZE,
 };
-
-const ID_NAMESPACE_SIZE: i64 = 1_000_000;
 
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]

@@ -5,38 +5,10 @@ import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 
 import { formatAppError } from "../../lib/errors";
+import { formatBytes } from "../../lib/format";
+import { findProject, findProjectTrail } from "../../lib/projects";
 import { useDatasetStore } from "../../stores/datasetStore";
 import type { DatasetProject, ExportDatasetRequest } from "../../types";
-
-function findProject(projects: DatasetProject[], id?: string): DatasetProject | undefined {
-  if (!id) return undefined;
-
-  for (const project of projects) {
-    if (project.id === id) return project;
-    const child = findProject(project.children ?? [], id);
-    if (child) return child;
-  }
-
-  return undefined;
-}
-
-function findProjectTrail(
-  projects: DatasetProject[],
-  projectId: string | undefined,
-  parents: DatasetProject[] = []
-): DatasetProject[] {
-  if (!projectId) return [];
-
-  for (const project of projects) {
-    const trail = [...parents, project];
-    if (project.id === projectId) return trail;
-
-    const childTrail = findProjectTrail(project.children ?? [], projectId, trail);
-    if (childTrail.length) return childTrail;
-  }
-
-  return [];
-}
 
 function firstExportableProject(projects: DatasetProject[]): DatasetProject | undefined {
   for (const project of projects) {
@@ -55,14 +27,6 @@ function firstExportableProject(projects: DatasetProject[]): DatasetProject | un
   }
 
   return undefined;
-}
-
-function formatBytes(bytes?: number) {
-  if (!bytes) return "-";
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  if (bytes < 1024 * 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
-  return `${(bytes / 1024 / 1024 / 1024).toFixed(2)} GB`;
 }
 
 function getDatasetScopeLabel(

@@ -1,5 +1,7 @@
 import type { AnnotationChange, DatasetImage } from "../types";
 
+import { getAnnotationForProfile } from "./annotations";
+
 export type TableDraftMap = Record<number, string>;
 export type TableDraftProfileMaps = Record<number, TableDraftMap>;
 export type TableDraftField = "annotation" | "instruction";
@@ -31,10 +33,6 @@ export interface TableDraftStateInput {
 
 function hasDraft(drafts: TableDraftMap, imageId: number) {
   return Object.prototype.hasOwnProperty.call(drafts, imageId);
-}
-
-function getAnnotationForProfile(image: DatasetImage, profileId: number) {
-  return image.annotations.find((annotation) => annotation.profileId === profileId);
 }
 
 export function getTableDraftProfileMaps({
