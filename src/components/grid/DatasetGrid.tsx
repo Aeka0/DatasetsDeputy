@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { resolveAssetSrc } from "../../lib/tauri";
+import { cn } from "../../lib/cn";
 import { useDatasetStore } from "../../stores/datasetStore";
 import type { DatasetImage } from "../../types";
 
@@ -20,7 +21,15 @@ export function DatasetGrid({
   onImageContextMenu?: (image: DatasetImage, event: ReactMouseEvent<HTMLElement>) => void;
 }) {
   const { t } = useTranslation();
-  const openImagePreview = useDatasetStore((state) => state.openImagePreview);
+  const {
+    activeProfileId,
+    tableDraftProfileId,
+    tableAnnotationDrafts,
+    tableSavedCellKeys,
+    tableFailedCellKeys,
+    highlightCellState,
+    openImagePreview
+  } = useDatasetStore();
   const parentRef = useRef<HTMLDivElement>(null);
   const [containerWidth, setContainerWidth] = useState(0);
   const profiles = useDatasetStore((state) => state.profiles);
@@ -29,6 +38,27 @@ export function DatasetGrid({
     return profiles.filter((profile) => profile.datasetId !== undefined && datasetIds.has(profile.datasetId)).length;
   }, [images, profiles]);
   const isFolderMode = images.length > 0 && images.every((image) => image.sourceKind === "folder");
+  const selectedProfileId = profiles.some((profile) => profile.id === activeProfileId)
+    ? activeProfileId
+    : profiles[0]?.id;
+  const getAnnotationStateClass = (image: DatasetImage) => {
+    if (!highlightCellState || selectedProfileId === undefined) return "";
+
+    const key = `${image.id}:annotation`;
+    const annotation = image.annotations.find(
+      (item) => item.profileId === selectedProfileId
+    );
+    const hasDraft =
+      tableDraftProfileId === selectedProfileId &&
+      Object.prototype.hasOwnProperty.call(tableAnnotationDrafts, image.id);
+    const draftContent = hasDraft ? tableAnnotationDrafts[image.id] ?? "" : "";
+    const isDirty = hasDraft && draftContent !== (annotation?.content ?? "");
+
+    if (isDirty) return "dataset-grid-card-dirty";
+    if (tableSavedCellKeys.includes(key)) return "dataset-grid-card-saved";
+    if (tableFailedCellKeys.includes(key)) return "dataset-grid-card-failed";
+    return "";
+  };
   const columnCount = useMemo(() => {
     if (containerWidth <= 0) return 1;
     return Math.max(1, Math.floor((containerWidth + gridGap) / (minCardWidth + gridGap)));
@@ -91,7 +121,10 @@ export function DatasetGrid({
               {rowImages.map((image) => (
                 <button
                   key={image.id}
-                  className="no-drag group min-w-0 overflow-hidden rounded-lg border border-slate-200 bg-white p-1.5 text-left transition hover:border-slate-300 hover:bg-slate-50"
+                  className={cn(
+                    "no-drag group min-w-0 overflow-hidden rounded-lg border border-slate-200 bg-white p-1.5 text-left transition hover:border-slate-300 hover:bg-slate-50",
+                    getAnnotationStateClass(image)
+                  )}
                   onClick={() => openImagePreview(image.id)}
                   onContextMenu={(event) => onImageContextMenu?.(image, event)}
                 >

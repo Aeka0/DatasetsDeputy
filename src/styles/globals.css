@@ -168,6 +168,18 @@ textarea {
   outline-color: rgba(239, 68, 68, 0.18);
 }
 
+.dataset-grid-card-dirty {
+  border-color: #f59e0b;
+}
+
+.dataset-grid-card-saved {
+  border-color: #10b981;
+}
+
+.dataset-grid-card-failed {
+  border-color: #ef4444;
+}
+
 .fluent-shell {
   border: 1px solid rgba(31, 35, 40, 0.16);
   background: transparent;
@@ -438,6 +450,18 @@ html[data-theme="dark"] .glass-input.dataset-cell-failed {
 html[data-theme="dark"] .glass-input.dataset-cell-failed:focus {
   border-color: #ef4444;
   outline-color: rgba(239, 68, 68, 0.24);
+}
+
+html[data-theme="dark"] .dataset-grid-card-dirty {
+  border-color: #d97706;
+}
+
+html[data-theme="dark"] .dataset-grid-card-saved {
+  border-color: #059669;
+}
+
+html[data-theme="dark"] .dataset-grid-card-failed {
+  border-color: #dc2626;
 }
 
 html[data-theme="dark"] .shadow-lg,
