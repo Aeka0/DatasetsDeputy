@@ -379,6 +379,8 @@
     "noAnnotations": "这张图片还没有标注",
     "profile": "标注类型",
     "content": "标注内容",
+    "annotationTab": "标注",
+    "instructionTab": "指令",
     "newAnnotation": "新增标注类型",
     "newTypeName": "新标注类型名称",
     "createType": "创建类型",

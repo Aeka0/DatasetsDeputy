@@ -4,8 +4,11 @@ import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { resolveAssetSrc } from "../../lib/tauri";
+import { getTableDraftProfileMaps } from "../../lib/tableDrafts";
 import { useDatasetStore } from "../../stores/datasetStore";
-import type { Annotation } from "../../types";
+import type { AnnotationProfile } from "../../types";
+
+type DraftTab = "annotation" | "instruction";
 
 function formatBytes(bytes?: number) {
   if (!bytes) return "-";
@@ -20,72 +23,132 @@ export function ImagePreviewView() {
     images,
     profiles,
     previewImageId,
+    activeProfileId,
+    tableDraftProfileId,
+    tableAnnotationDrafts,
+    tableInstructionDrafts,
+    tableProfileAnnotationDrafts,
+    tableProfileInstructionDrafts,
     annotatingImageIds,
     closeImagePreview,
+    setActiveProfile,
     saveAnnotation,
+    saveInstruction,
     createAnnotationProfile,
-    clearAnnotation
+    clearAnnotation,
+    applyTableDraft
   } = useDatasetStore();
   const selectedImage = useMemo(
     () => images.find((image) => image.id === previewImageId),
     [images, previewImageId]
   );
-  const [selectedAnnotationId, setSelectedAnnotationId] = useState<number | "new">("new");
-  const [profileId, setProfileId] = useState<number>(profiles[0]?.id ?? 1);
+  const [selectedProfileId, setSelectedProfileId] = useState<number>();
   const [content, setContent] = useState("");
+  const [instruction, setInstruction] = useState("");
+  const [activeDraftTab, setActiveDraftTab] = useState<DraftTab>("annotation");
   const [isCreatingProfile, setIsCreatingProfile] = useState(false);
   const [newProfileName, setNewProfileName] = useState("");
   const [createProfileError, setCreateProfileError] = useState("");
   const [pendingProfileId, setPendingProfileId] = useState<number>();
 
+  const availableProfiles = useMemo(() => {
+    if (!selectedImage?.datasetId) return [];
+
+    const matchedProfiles = profiles.filter(
+      (profile) => profile.datasetId === selectedImage.datasetId
+    );
+    const matchedProfileIds = new Set(matchedProfiles.map((profile) => profile.id));
+    const inferredProfiles: AnnotationProfile[] = selectedImage.annotations
+      .filter((annotation) => !matchedProfileIds.has(annotation.profileId))
+      .map((annotation) => ({
+        id: annotation.profileId,
+        name: `#${annotation.profileId}`,
+        datasetId: selectedImage.datasetId,
+        sourceKind: selectedImage.sourceKind
+      }));
+
+    return [...matchedProfiles, ...inferredProfiles];
+  }, [profiles, selectedImage]);
   const selectedAnnotation = useMemo(
     () =>
-      selectedAnnotationId === "new"
+      selectedProfileId === undefined
         ? undefined
-        : selectedImage?.annotations.find((annotation) => annotation.id === selectedAnnotationId),
-    [selectedAnnotationId, selectedImage]
+        : selectedImage?.annotations.find((annotation) => annotation.profileId === selectedProfileId),
+    [selectedProfileId, selectedImage]
+  );
+  const { annotationDraftsByProfile, instructionDraftsByProfile } = useMemo(
+    () =>
+      getTableDraftProfileMaps({
+        tableDraftProfileId,
+        tableAnnotationDrafts,
+        tableInstructionDrafts,
+        tableProfileAnnotationDrafts,
+        tableProfileInstructionDrafts
+      }),
+    [
+      tableAnnotationDrafts,
+      tableDraftProfileId,
+      tableInstructionDrafts,
+      tableProfileAnnotationDrafts,
+      tableProfileInstructionDrafts
+    ]
   );
 
   useEffect(() => {
     if (!selectedImage) return;
 
-    if (pendingProfileId) {
-      const pendingAnnotation = selectedImage.annotations.find(
-        (annotation) => annotation.profileId === pendingProfileId
-      );
-      if (pendingAnnotation) {
-        setSelectedAnnotationId(pendingAnnotation.id);
-        setProfileId(pendingAnnotation.profileId);
-        setContent(pendingAnnotation.content);
-        setPendingProfileId(undefined);
-        return;
+    const availableProfileIds = new Set(availableProfiles.map((profile) => profile.id));
+    const nextProfileId =
+      pendingProfileId && availableProfileIds.has(pendingProfileId)
+        ? pendingProfileId
+        : selectedProfileId && availableProfileIds.has(selectedProfileId)
+          ? selectedProfileId
+          : activeProfileId && availableProfileIds.has(activeProfileId)
+            ? activeProfileId
+            : selectedImage.annotations[0]?.profileId ?? availableProfiles[0]?.id;
+
+    if (nextProfileId !== selectedProfileId) {
+      setSelectedProfileId(nextProfileId);
+      if (nextProfileId !== undefined) {
+        setActiveProfile(nextProfileId);
       }
     }
+    if (pendingProfileId && nextProfileId === pendingProfileId) {
+      setPendingProfileId(undefined);
+    }
+  }, [
+    activeProfileId,
+    availableProfiles,
+    pendingProfileId,
+    selectedImage,
+    selectedProfileId,
+    setActiveProfile
+  ]);
 
-    if (
-      selectedAnnotationId !== "new" &&
-      selectedImage.annotations.some((annotation) => annotation.id === selectedAnnotationId)
-    ) {
+  useEffect(() => {
+    if (!selectedImage || selectedProfileId === undefined) {
+      setContent("");
+      setInstruction("");
       return;
     }
 
-    const firstAnnotation = selectedImage.annotations[0];
-    if (firstAnnotation) {
-      setSelectedAnnotationId(firstAnnotation.id);
-      setProfileId(firstAnnotation.profileId);
-      setContent(firstAnnotation.content);
-    } else {
-      setSelectedAnnotationId("new");
-      setProfileId(profiles[0]?.id ?? 1);
-      setContent("");
-    }
-  }, [pendingProfileId, profiles, selectedAnnotationId, selectedImage]);
-
-  useEffect(() => {
-    if (!selectedAnnotation) return;
-    setProfileId(selectedAnnotation.profileId);
-    setContent(selectedAnnotation.content);
-  }, [selectedAnnotation]);
+    const annotationDrafts = annotationDraftsByProfile[selectedProfileId] ?? {};
+    const instructionDrafts = instructionDraftsByProfile[selectedProfileId] ?? {};
+    const nextContent = Object.prototype.hasOwnProperty.call(annotationDrafts, selectedImage.id)
+      ? annotationDrafts[selectedImage.id] ?? ""
+      : selectedAnnotation?.content ?? "";
+    const nextInstruction = Object.prototype.hasOwnProperty.call(instructionDrafts, selectedImage.id)
+      ? instructionDrafts[selectedImage.id] ?? ""
+      : selectedAnnotation?.instruction ?? "";
+    setContent(nextContent);
+    setInstruction(nextInstruction);
+  }, [
+    annotationDraftsByProfile,
+    instructionDraftsByProfile,
+    selectedAnnotation,
+    selectedImage,
+    selectedProfileId
+  ]);
 
   if (!selectedImage) {
     return null;
@@ -93,25 +156,20 @@ export function ImagePreviewView() {
 
   const isFolderImage = selectedImage.sourceKind === "folder";
   const isAnnotating = annotatingImageIds.includes(selectedImage.id);
-  const profileById = new Map(profiles.map((profile) => [profile.id, profile]));
   const previewSrc = selectedImage.sourceMissing
     ? undefined
     : resolveAssetSrc(selectedImage.storagePath ?? selectedImage.path) ??
       resolveAssetSrc(selectedImage.thumbnailPath);
-  const selectedImageProfileIds = new Set(
-    selectedImage.annotations.map((annotation) => annotation.profileId)
-  );
   const filledAnnotationCount = selectedImage.annotations.filter((annotation) =>
     annotation.content.trim()
   ).length;
   const annotationCountLabel = isFolderImage
     ? `${filledAnnotationCount} ${t("image.annotations")}`
-    : `${selectedImageProfileIds.size} ${t("image.annotationTypes")}`;
+    : `${availableProfiles.length} ${t("image.annotationTypes")}`;
 
-  const selectAnnotation = (annotation: Annotation) => {
-    setSelectedAnnotationId(annotation.id);
-    setProfileId(annotation.profileId);
-    setContent(annotation.content);
+  const selectProfile = (profileId: number) => {
+    setSelectedProfileId(profileId);
+    setActiveProfile(profileId);
   };
 
   const startNewAnnotationType = () => {
@@ -149,8 +207,9 @@ export function ImagePreviewView() {
   };
 
   const saveCurrentAnnotation = () => {
-    if (isAnnotating) return;
-    void saveAnnotation(selectedImage.id, profileId, content);
+    if (isAnnotating || selectedProfileId === undefined) return;
+    void saveAnnotation(selectedImage.id, selectedProfileId, content);
+    void saveInstruction(selectedImage.id, selectedProfileId, instruction);
   };
 
   const saveWithKeyboard = (event: ReactKeyboardEvent<HTMLTextAreaElement>) => {
@@ -158,6 +217,18 @@ export function ImagePreviewView() {
     event.preventDefault();
     event.stopPropagation();
     saveCurrentAnnotation();
+  };
+
+  const updateContent = (value: string) => {
+    setContent(value);
+    if (selectedProfileId === undefined) return;
+    applyTableDraft(selectedProfileId, selectedImage.id, { content: value });
+  };
+
+  const updateInstruction = (value: string) => {
+    setInstruction(value);
+    if (selectedProfileId === undefined) return;
+    applyTableDraft(selectedProfileId, selectedImage.id, { instruction: value });
   };
 
   return (
@@ -273,26 +344,40 @@ export function ImagePreviewView() {
                   </div>
                 ) : null}
 
-                {selectedImage.annotations.length > 0 ? (
+                {availableProfiles.length > 0 ? (
                   <div className="space-y-1">
-                    {selectedImage.annotations.map((annotation) => (
-                      <button
-                        key={annotation.id}
-                        className={`no-drag w-full rounded-md px-2 py-1.5 text-left transition ${
-                          selectedAnnotationId === annotation.id
-                            ? "bg-slate-900/[0.07] text-slate-950"
-                            : "text-slate-700 hover:bg-slate-100"
-                        }`}
-                        onClick={() => selectAnnotation(annotation)}
-                      >
-                        <div className="truncate text-[12px] font-medium">
-                          {profileById.get(annotation.profileId)?.name ?? `#${annotation.profileId}`}
-                        </div>
-                        <div className="mt-0.5 line-clamp-1 text-[12px] text-slate-500">
-                          {annotation.content || "-"}
-                        </div>
-                      </button>
-                    ))}
+                    {availableProfiles.map((profile) => {
+                      const annotation = selectedImage.annotations.find(
+                        (item) => item.profileId === profile.id
+                      );
+                      const annotationDrafts = annotationDraftsByProfile[profile.id] ?? {};
+                      const displayContent = Object.prototype.hasOwnProperty.call(
+                        annotationDrafts,
+                        selectedImage.id
+                      )
+                        ? annotationDrafts[selectedImage.id] ?? ""
+                        : annotation?.content ?? "";
+                      const isSelected = selectedProfileId === profile.id;
+
+                      return (
+                        <button
+                          key={profile.id}
+                          className={`no-drag w-full rounded-md px-2 py-1.5 text-left transition ${
+                            isSelected
+                              ? "bg-slate-900/[0.07] text-slate-950"
+                              : "text-slate-700 hover:bg-slate-100"
+                          }`}
+                          onClick={() => selectProfile(profile.id)}
+                        >
+                          <div className="truncate text-[12px] font-medium">
+                            {profile.name}
+                          </div>
+                          <div className="mt-0.5 line-clamp-1 text-[12px] text-slate-500">
+                            {displayContent || "-"}
+                          </div>
+                        </button>
+                      );
+                    })}
                   </div>
                 ) : (
                   <div className="rounded-md bg-slate-50 px-3 py-2 text-[13px] text-slate-500">
@@ -304,38 +389,49 @@ export function ImagePreviewView() {
           )}
 
           <div className="flex min-h-0 flex-1 flex-col p-3">
-            {selectedAnnotation ? (
+            {selectedProfileId !== undefined ? (
               <>
-            {isFolderImage ? null : (
-              <>
-                <label className="mb-1 block text-[12px] font-medium text-slate-600">
-                  {t("image.profile")}
-                </label>
-                <select
-                  value={profileId}
-                  onChange={(event) => setProfileId(Number(event.target.value))}
-                  disabled={Boolean(selectedAnnotation)}
-                  className="glass-input mb-3 h-8 w-full px-2 text-[13px]"
-                >
-                  {profiles.map((profile) => (
-                    <option key={profile.id} value={profile.id}>
-                      {profile.name}
-                    </option>
-                  ))}
-                </select>
-              </>
-            )}
+            <div className="mb-3 flex shrink-0 items-center gap-1 border-b border-slate-100">
+              {[
+                { id: "annotation" as const, label: t("image.annotationTab") },
+                { id: "instruction" as const, label: t("image.instructionTab") }
+              ].map((tab) => {
+                const isActive = activeDraftTab === tab.id;
 
-            <label className="mb-1 block text-[12px] font-medium text-slate-600">{t("image.content")}</label>
+                return (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    className={`no-drag flex h-9 items-center border-b-2 px-3 text-[13px] transition ${
+                      isActive
+                        ? "border-slate-900 text-slate-950"
+                        : "border-transparent text-slate-500 hover:text-slate-900"
+                    }`}
+                    onClick={() => setActiveDraftTab(tab.id)}
+                  >
+                    {tab.label}
+                  </button>
+                );
+              })}
+            </div>
             <div className="relative min-h-0 flex-1">
-              <textarea
-                value={content}
-                onChange={(event) => setContent(event.target.value)}
-                onKeyDown={saveWithKeyboard}
-                className="glass-input h-full w-full resize-none p-2 text-[13px] disabled:cursor-wait disabled:opacity-80"
-                disabled={isAnnotating}
-              />
-              {isAnnotating ? (
+              {activeDraftTab === "annotation" ? (
+                <textarea
+                  value={content}
+                  onChange={(event) => updateContent(event.target.value)}
+                  onKeyDown={saveWithKeyboard}
+                  className="glass-input h-full w-full resize-none p-2 text-[13px] disabled:cursor-wait disabled:opacity-80"
+                  disabled={isAnnotating}
+                />
+              ) : (
+                <textarea
+                  value={instruction}
+                  onChange={(event) => updateInstruction(event.target.value)}
+                  onKeyDown={saveWithKeyboard}
+                  className="glass-input h-full w-full resize-none p-2 text-[13px]"
+                />
+              )}
+              {activeDraftTab === "annotation" && isAnnotating ? (
                 <div className="pointer-events-none absolute right-3 top-3">
                   <LoaderCircle className="h-5 w-5 animate-spin text-slate-500" />
                 </div>

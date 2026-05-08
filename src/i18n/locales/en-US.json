@@ -379,6 +379,8 @@
     "noAnnotations": "This image has no annotations yet",
     "profile": "Annotation type",
     "content": "Annotation content",
+    "annotationTab": "Annotation",
+    "instructionTab": "Instruction",
     "newAnnotation": "Add annotation type",
     "newTypeName": "New annotation type name",
     "createType": "Create type",

@@ -439,6 +439,11 @@ interface DatasetState {
     imageId: number,
     content: string
   ) => void;
+  applyTableDraft: (
+    profileId: number,
+    imageId: number,
+    draft: { content?: string; instruction?: string }
+  ) => void;
   updateTableAnnotationDraft: (imageId: number, value: string) => void;
   updateTableInstructionDraft: (imageId: number, value: string) => void;
   markTableCellSaved: (key: string) => void;
@@ -1488,6 +1493,8 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
       };
     }),
   applyGeneratedAnnotationDraft: (profileId, imageId, content) =>
+    get().applyTableDraft(profileId, imageId, { content }),
+  applyTableDraft: (profileId, imageId, draft) =>
     set((state) => {
       const imageIds = new Set(state.images.map((image) => image.id));
       const cachedAnnotationDrafts = filterTableDraftsForImageIds(
@@ -1524,7 +1531,11 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
             };
       const nextAnnotationDrafts = {
         ...annotationDrafts,
-        [imageId]: content
+        ...(draft.content !== undefined ? { [imageId]: draft.content } : {})
+      };
+      const nextInstructionDrafts = {
+        ...instructionDrafts,
+        ...(draft.instruction !== undefined ? { [imageId]: draft.instruction } : {})
       };
       const tableProfileAnnotationDrafts = {
         ...state.tableProfileAnnotationDrafts,
@@ -1532,7 +1543,7 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
       };
       const tableProfileInstructionDrafts = {
         ...state.tableProfileInstructionDrafts,
-        [profileId]: instructionDrafts
+        [profileId]: nextInstructionDrafts
       };
 
       if (state.tableDraftProfileId !== undefined && state.tableDraftProfileId !== profileId) {
@@ -1549,12 +1560,14 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
       return {
         tableDraftProfileId: profileId,
         tableAnnotationDrafts: nextAnnotationDrafts,
-        tableInstructionDrafts: instructionDrafts,
+        tableInstructionDrafts: nextInstructionDrafts,
         tableProfileAnnotationDrafts,
         tableProfileInstructionDrafts,
-        tableSavedCellKeys: state.tableSavedCellKeys.filter(
-          (key) => key !== `${imageId}:annotation`
-        )
+        tableSavedCellKeys: state.tableSavedCellKeys.filter((key) => {
+          if (draft.content !== undefined && key === `${imageId}:annotation`) return false;
+          if (draft.instruction !== undefined && key === `${imageId}:instruction`) return false;
+          return true;
+        })
       };
     }),
   updateTableAnnotationDraft: (imageId, value) =>
