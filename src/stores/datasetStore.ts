@@ -3,6 +3,7 @@ import { create } from "zustand";
 
 import { formatAppError } from "../lib/errors";
 import { hasTauriRuntime, invokeCommand } from "../lib/tauri";
+import type { TableDraftMap } from "../lib/tableDrafts";
 import type {
   AnnotationChange,
   AnnotationProfile,
@@ -367,8 +368,10 @@ interface DatasetState {
   viewFilterProjectId?: string;
   viewFilterImageIds: number[];
   tableDraftProfileId?: number;
-  tableAnnotationDrafts: Record<number, string>;
-  tableInstructionDrafts: Record<number, string>;
+  tableAnnotationDrafts: TableDraftMap;
+  tableInstructionDrafts: TableDraftMap;
+  tableProfileAnnotationDrafts: Record<number, TableDraftMap>;
+  tableProfileInstructionDrafts: Record<number, TableDraftMap>;
   tableSavedCellKeys: string[];
   annotatingImageIds: number[];
   highlightCellState: boolean;
@@ -424,12 +427,12 @@ interface DatasetState {
   setViewFilter: (mode: ViewFilterMode, projectId?: string, imageIds?: number[]) => void;
   resetTableDrafts: (
     profileId: number,
-    annotationDrafts: Record<number, string>,
-    instructionDrafts: Record<number, string>
+    annotationDrafts: TableDraftMap,
+    instructionDrafts: TableDraftMap
   ) => void;
   mergeTableDrafts: (
-    annotationDrafts: Record<number, string>,
-    instructionDrafts: Record<number, string>
+    annotationDrafts: TableDraftMap,
+    instructionDrafts: TableDraftMap
   ) => void;
   applyGeneratedAnnotationDraft: (
     profileId: number,
@@ -473,6 +476,14 @@ function createImageSelection(ids: number[], activeId?: number, anchorId?: numbe
     selectedImageIds,
     selectionAnchorImageId
   };
+}
+
+function filterTableDraftsForImageIds(drafts: TableDraftMap, imageIds: Set<number>) {
+  return Object.fromEntries(
+    Object.entries(drafts)
+      .map(([imageId, value]) => [Number(imageId), value] as const)
+      .filter(([imageId]) => imageIds.has(imageId))
+  );
 }
 
 function getStoredHighlightCellState() {
@@ -598,6 +609,8 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
   tableDraftProfileId: undefined,
   tableAnnotationDrafts: {},
   tableInstructionDrafts: {},
+  tableProfileAnnotationDrafts: {},
+  tableProfileInstructionDrafts: {},
   tableSavedCellKeys: [],
   annotatingImageIds: [],
   highlightCellState: getStoredHighlightCellState(),
@@ -1339,9 +1352,13 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
   selectProject: (id) =>
     set((state) => {
       const project = flattenProjects(state.projects).find((project) => project.id === id);
+      const projectProfiles = project?.datasetId
+        ? state.profiles.filter((profile) => profile.datasetId === project.datasetId)
+        : [];
       const activeProfileId = project?.datasetId
-        ? state.profiles.find((profile) => profile.datasetId === project.datasetId)?.id ??
-          state.activeProfileId
+        ? projectProfiles.some((profile) => profile.id === state.activeProfileId)
+          ? state.activeProfileId
+          : projectProfiles[0]?.id ?? state.activeProfileId
         : state.activeProfileId;
 
       return {
@@ -1382,35 +1399,88 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
       viewFilterImageIds: mode === "all" ? [] : imageIds
     }),
   resetTableDrafts: (profileId, annotationDrafts, instructionDrafts) =>
-    set({
-      tableDraftProfileId: profileId,
-      tableAnnotationDrafts: annotationDrafts,
-      tableInstructionDrafts: instructionDrafts,
-      tableSavedCellKeys: []
+    set((state) => {
+      const imageIds = new Set(state.images.map((image) => image.id));
+      const nextAnnotationDrafts = {
+        ...annotationDrafts,
+        ...filterTableDraftsForImageIds(
+          state.tableProfileAnnotationDrafts[profileId] ?? {},
+          imageIds
+        )
+      };
+      const nextInstructionDrafts = {
+        ...instructionDrafts,
+        ...filterTableDraftsForImageIds(
+          state.tableProfileInstructionDrafts[profileId] ?? {},
+          imageIds
+        )
+      };
+      const tableProfileAnnotationDrafts = {
+        ...state.tableProfileAnnotationDrafts,
+        [profileId]: nextAnnotationDrafts
+      };
+      const tableProfileInstructionDrafts = {
+        ...state.tableProfileInstructionDrafts,
+        [profileId]: nextInstructionDrafts
+      };
+
+      if (state.tableDraftProfileId !== undefined) {
+        tableProfileAnnotationDrafts[state.tableDraftProfileId] = filterTableDraftsForImageIds(
+          state.tableAnnotationDrafts,
+          imageIds
+        );
+        tableProfileInstructionDrafts[state.tableDraftProfileId] = filterTableDraftsForImageIds(
+          state.tableInstructionDrafts,
+          imageIds
+        );
+      }
+
+      return {
+        tableDraftProfileId: profileId,
+        tableAnnotationDrafts: nextAnnotationDrafts,
+        tableInstructionDrafts: nextInstructionDrafts,
+        tableProfileAnnotationDrafts,
+        tableProfileInstructionDrafts,
+        tableSavedCellKeys: []
+      };
     }),
   mergeTableDrafts: (annotationDrafts, instructionDrafts) =>
     set((state) => {
       const imageIds = new Set(state.images.map((image) => image.id));
-      const currentAnnotationDrafts = Object.fromEntries(
-        Object.entries(state.tableAnnotationDrafts)
-          .map(([imageId, value]) => [Number(imageId), value] as const)
-          .filter(([imageId]) => imageIds.has(imageId))
+      const currentAnnotationDrafts = filterTableDraftsForImageIds(
+        state.tableAnnotationDrafts,
+        imageIds
       );
-      const currentInstructionDrafts = Object.fromEntries(
-        Object.entries(state.tableInstructionDrafts)
-          .map(([imageId, value]) => [Number(imageId), value] as const)
-          .filter(([imageId]) => imageIds.has(imageId))
+      const currentInstructionDrafts = filterTableDraftsForImageIds(
+        state.tableInstructionDrafts,
+        imageIds
       );
+      const nextAnnotationDrafts = {
+        ...annotationDrafts,
+        ...currentAnnotationDrafts
+      };
+      const nextInstructionDrafts = {
+        ...instructionDrafts,
+        ...currentInstructionDrafts
+      };
 
       return {
-        tableAnnotationDrafts: {
-          ...annotationDrafts,
-          ...currentAnnotationDrafts
-        },
-        tableInstructionDrafts: {
-          ...instructionDrafts,
-          ...currentInstructionDrafts
-        },
+        tableAnnotationDrafts: nextAnnotationDrafts,
+        tableInstructionDrafts: nextInstructionDrafts,
+        tableProfileAnnotationDrafts:
+          state.tableDraftProfileId === undefined
+            ? state.tableProfileAnnotationDrafts
+            : {
+                ...state.tableProfileAnnotationDrafts,
+                [state.tableDraftProfileId]: nextAnnotationDrafts
+              },
+        tableProfileInstructionDrafts:
+          state.tableDraftProfileId === undefined
+            ? state.tableProfileInstructionDrafts
+            : {
+                ...state.tableProfileInstructionDrafts,
+                [state.tableDraftProfileId]: nextInstructionDrafts
+              },
         tableSavedCellKeys: state.tableSavedCellKeys.filter((key) => {
           const imageId = Number(key.split(":")[0]);
           return imageIds.has(imageId);
@@ -1419,32 +1489,69 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
     }),
   applyGeneratedAnnotationDraft: (profileId, imageId, content) =>
     set((state) => {
+      const imageIds = new Set(state.images.map((image) => image.id));
+      const cachedAnnotationDrafts = filterTableDraftsForImageIds(
+        state.tableProfileAnnotationDrafts[profileId] ?? {},
+        imageIds
+      );
+      const cachedInstructionDrafts = filterTableDraftsForImageIds(
+        state.tableProfileInstructionDrafts[profileId] ?? {},
+        imageIds
+      );
       const annotationDrafts =
         state.tableDraftProfileId === profileId
           ? state.tableAnnotationDrafts
-          : Object.fromEntries(
-              state.images.map((image) => [
-                image.id,
-                getAnnotationContentForProfile(image, profileId)
-              ])
-            );
+          : {
+              ...Object.fromEntries(
+                state.images.map((image) => [
+                  image.id,
+                  getAnnotationContentForProfile(image, profileId)
+                ])
+              ),
+              ...cachedAnnotationDrafts
+            };
       const instructionDrafts =
         state.tableDraftProfileId === profileId
           ? state.tableInstructionDrafts
-          : Object.fromEntries(
-              state.images.map((image) => [
-                image.id,
-                getInstructionForProfile(image, profileId)
-              ])
-            );
+          : {
+              ...Object.fromEntries(
+                state.images.map((image) => [
+                  image.id,
+                  getInstructionForProfile(image, profileId)
+                ])
+              ),
+              ...cachedInstructionDrafts
+            };
+      const nextAnnotationDrafts = {
+        ...annotationDrafts,
+        [imageId]: content
+      };
+      const tableProfileAnnotationDrafts = {
+        ...state.tableProfileAnnotationDrafts,
+        [profileId]: nextAnnotationDrafts
+      };
+      const tableProfileInstructionDrafts = {
+        ...state.tableProfileInstructionDrafts,
+        [profileId]: instructionDrafts
+      };
+
+      if (state.tableDraftProfileId !== undefined && state.tableDraftProfileId !== profileId) {
+        tableProfileAnnotationDrafts[state.tableDraftProfileId] = filterTableDraftsForImageIds(
+          state.tableAnnotationDrafts,
+          imageIds
+        );
+        tableProfileInstructionDrafts[state.tableDraftProfileId] = filterTableDraftsForImageIds(
+          state.tableInstructionDrafts,
+          imageIds
+        );
+      }
 
       return {
         tableDraftProfileId: profileId,
-        tableAnnotationDrafts: {
-          ...annotationDrafts,
-          [imageId]: content
-        },
+        tableAnnotationDrafts: nextAnnotationDrafts,
         tableInstructionDrafts: instructionDrafts,
+        tableProfileAnnotationDrafts,
+        tableProfileInstructionDrafts,
         tableSavedCellKeys: state.tableSavedCellKeys.filter(
           (key) => key !== `${imageId}:annotation`
         )
@@ -1456,6 +1563,16 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
         ...state.tableAnnotationDrafts,
         [imageId]: value
       },
+      tableProfileAnnotationDrafts:
+        state.tableDraftProfileId === undefined
+          ? state.tableProfileAnnotationDrafts
+          : {
+              ...state.tableProfileAnnotationDrafts,
+              [state.tableDraftProfileId]: {
+                ...state.tableAnnotationDrafts,
+                [imageId]: value
+              }
+            },
       tableSavedCellKeys: state.tableSavedCellKeys.filter(
         (key) => key !== `${imageId}:annotation`
       )
@@ -1466,6 +1583,16 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
         ...state.tableInstructionDrafts,
         [imageId]: value
       },
+      tableProfileInstructionDrafts:
+        state.tableDraftProfileId === undefined
+          ? state.tableProfileInstructionDrafts
+          : {
+              ...state.tableProfileInstructionDrafts,
+              [state.tableDraftProfileId]: {
+                ...state.tableInstructionDrafts,
+                [imageId]: value
+              }
+            },
       tableSavedCellKeys: state.tableSavedCellKeys.filter(
         (key) => key !== `${imageId}:instruction`
       )

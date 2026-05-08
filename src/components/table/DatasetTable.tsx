@@ -10,6 +10,7 @@ import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 
 import { cn } from "../../lib/cn";
+import { getUnsavedTableDraftState } from "../../lib/tableDrafts";
 import { resolveAssetSrc } from "../../lib/tauri";
 import { useDatasetStore } from "../../stores/datasetStore";
 import type { Annotation, AnnotationChange, AnnotationProfile, DatasetImage } from "../../types";
@@ -106,6 +107,8 @@ export function DatasetTable({
     tableDraftProfileId,
     tableAnnotationDrafts: annotationDrafts,
     tableInstructionDrafts: instructionDrafts,
+    tableProfileAnnotationDrafts,
+    tableProfileInstructionDrafts,
     tableSavedCellKeys,
     annotatingImageIds,
     highlightCellState,
@@ -294,6 +297,48 @@ export function DatasetTable({
     },
     [annotationDrafts, images, instructionDrafts, selectedProfileId]
   );
+  const unsavedDraftState = useMemo(
+    () =>
+      getUnsavedTableDraftState({
+        images,
+        tableDraftProfileId,
+        tableAnnotationDrafts: annotationDrafts,
+        tableInstructionDrafts: instructionDrafts,
+        tableProfileAnnotationDrafts,
+        tableProfileInstructionDrafts
+      }),
+    [
+      annotationDrafts,
+      images,
+      instructionDrafts,
+      tableDraftProfileId,
+      tableProfileAnnotationDrafts,
+      tableProfileInstructionDrafts
+    ]
+  );
+  const otherUnsavedCellCount = Object.entries(unsavedDraftState.cellsByProfileId).reduce(
+    (count, [profileId, cellCount]) =>
+      Number(profileId) === selectedProfileId ? count : count + cellCount,
+    0
+  );
+  const otherUnsavedProfileCount = Object.keys(unsavedDraftState.cellsByProfileId).filter(
+    (profileId) => Number(profileId) !== selectedProfileId
+  ).length;
+  const unsavedStatus =
+    dirtyCells.size > 0 && otherUnsavedCellCount > 0
+      ? t("table.unsavedCellsWithOther", {
+          count: dirtyCells.size,
+          otherCount: otherUnsavedCellCount,
+          profileCount: otherUnsavedProfileCount
+        })
+      : dirtyCells.size > 0
+      ? t("table.unsavedCells", { count: dirtyCells.size })
+      : otherUnsavedCellCount > 0
+      ? t("table.otherUnsavedCells", {
+          count: otherUnsavedCellCount,
+          profileCount: otherUnsavedProfileCount
+        })
+      : t("table.ready");
 
   const saveDraftsForImages = async (targetImages: DatasetImage[]) => {
     if (!selectedProfileId) return;
@@ -526,9 +571,7 @@ export function DatasetTable({
     <div className="flex min-h-0 flex-1 flex-col overflow-visible rounded-lg border border-slate-200 bg-white">
       <div className="flex h-10 items-center justify-between border-b border-slate-100 bg-slate-50 px-4">
         <div className="text-[13px] text-slate-500">
-          {dirtyCells.size > 0
-            ? t("table.unsavedCells", { count: dirtyCells.size })
-            : t("table.ready")}
+          {unsavedStatus}
         </div>
         <div className="flex items-center gap-3">
           <button

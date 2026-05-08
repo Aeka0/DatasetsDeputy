@@ -457,6 +457,8 @@
     "instructionMode": "Instruction mode",
     "ready": "Ready",
     "unsavedCells": "{{count}} unsaved cells",
+    "unsavedCellsWithOther": "{{count}} unsaved cells here, plus {{otherCount}} in {{profileCount}} other annotation type(s)",
+    "otherUnsavedCells": "{{count}} unsaved cells in {{profileCount}} other annotation type(s)",
     "saveChanges": "Save changes",
     "saving": "Saving...",
     "dimensions": "Dimensions",

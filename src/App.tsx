@@ -20,82 +20,47 @@ import { useDatasetStore } from "./stores/datasetStore";
 import { hasTauriRuntime, invokeCommand } from "./lib/tauri";
 import { setWindowRenderMode, type WindowRenderingSettings } from "./lib/theme";
 import { formatAppError } from "./lib/errors";
-import type { AnnotationChange, DatasetImage } from "./types";
+import {
+  getUnsavedTableDraftState,
+  type UnsavedTableDraftItem
+} from "./lib/tableDrafts";
 
 const STARTUP_PRELOAD_TIMEOUT_MS = 8000;
 
-interface UnsavedExitItem {
-  imageId: number;
-  fileName: string;
-  path: string;
-  fields: Array<"annotation" | "instruction">;
-}
-
-function getAnnotationForProfile(image: DatasetImage, profileId: number) {
-  return image.annotations.find((annotation) => annotation.profileId === profileId);
+interface UnsavedExitItem extends UnsavedTableDraftItem {
+  profileName: string;
 }
 
 function getUnsavedAnnotationState(): {
-  changes: AnnotationChange[];
+  changes: ReturnType<typeof getUnsavedTableDraftState>["changes"];
   items: UnsavedExitItem[];
 } {
   const {
     images,
+    profiles,
     tableDraftProfileId,
     tableAnnotationDrafts,
-    tableInstructionDrafts
+    tableInstructionDrafts,
+    tableProfileAnnotationDrafts,
+    tableProfileInstructionDrafts
   } = useDatasetStore.getState();
+  const profileNames = new Map(profiles.map((profile) => [profile.id, profile.name]));
+  const unsavedState = getUnsavedTableDraftState({
+    images,
+    tableDraftProfileId,
+    tableAnnotationDrafts,
+    tableInstructionDrafts,
+    tableProfileAnnotationDrafts,
+    tableProfileInstructionDrafts
+  });
 
-  if (tableDraftProfileId === undefined) {
-    return { changes: [], items: [] };
-  }
-
-  const changes: AnnotationChange[] = [];
-  const items: UnsavedExitItem[] = [];
-
-  for (const image of images) {
-    const annotation = getAnnotationForProfile(image, tableDraftProfileId);
-    const hasContentDraft = Object.prototype.hasOwnProperty.call(
-      tableAnnotationDrafts,
-      image.id
-    );
-    const hasInstructionDraft = Object.prototype.hasOwnProperty.call(
-      tableInstructionDrafts,
-      image.id
-    );
-    const contentDraft = hasContentDraft ? tableAnnotationDrafts[image.id] ?? "" : "";
-    const instructionDraft = hasInstructionDraft ? tableInstructionDrafts[image.id] ?? "" : "";
-    const contentChanged = hasContentDraft && contentDraft !== (annotation?.content ?? "");
-    const instructionChanged =
-      hasInstructionDraft && instructionDraft !== (annotation?.instruction ?? "");
-
-    if (!contentChanged && !instructionChanged) continue;
-
-    const change: AnnotationChange = {
-      imageId: image.id,
-      profileId: tableDraftProfileId
-    };
-    const fields: UnsavedExitItem["fields"] = [];
-
-    if (contentChanged) {
-      change.content = contentDraft;
-      fields.push("annotation");
-    }
-    if (instructionChanged) {
-      change.instruction = instructionDraft;
-      fields.push("instruction");
-    }
-
-    changes.push(change);
-    items.push({
-      imageId: image.id,
-      fileName: image.fileName,
-      path: image.path,
-      fields
-    });
-  }
-
-  return { changes, items };
+  return {
+    changes: unsavedState.changes,
+    items: unsavedState.items.map((item) => ({
+      ...item,
+      profileName: profileNames.get(item.profileId) ?? `#${item.profileId}`
+    }))
+  };
 }
 
 export default function App() {
@@ -113,14 +78,29 @@ export default function App() {
   const importReport = useDatasetStore((state) => state.importReport);
   const showImportWizard = useDatasetStore((state) => state.showImportWizard);
   const images = useDatasetStore((state) => state.images);
+  const profiles = useDatasetStore((state) => state.profiles);
   const tableDraftProfileId = useDatasetStore((state) => state.tableDraftProfileId);
   const tableAnnotationDrafts = useDatasetStore((state) => state.tableAnnotationDrafts);
   const tableInstructionDrafts = useDatasetStore((state) => state.tableInstructionDrafts);
+  const tableProfileAnnotationDrafts = useDatasetStore(
+    (state) => state.tableProfileAnnotationDrafts
+  );
+  const tableProfileInstructionDrafts = useDatasetStore(
+    (state) => state.tableProfileInstructionDrafts
+  );
   const saveAnnotationChanges = useDatasetStore((state) => state.saveAnnotationChanges);
 
   const unsavedExitItems = useMemo(
     () => getUnsavedAnnotationState().items,
-    [images, tableAnnotationDrafts, tableDraftProfileId, tableInstructionDrafts]
+    [
+      images,
+      profiles,
+      tableAnnotationDrafts,
+      tableDraftProfileId,
+      tableInstructionDrafts,
+      tableProfileAnnotationDrafts,
+      tableProfileInstructionDrafts
+    ]
   );
 
   const closeWindowNow = useCallback(() => {
@@ -340,11 +320,16 @@ export default function App() {
               <div className="max-h-72 overflow-auto rounded-md border border-slate-200">
                 {unsavedExitItems.map((item) => (
                   <div
-                    key={item.imageId}
+                    key={`${item.profileId}:${item.imageId}`}
                     className="border-b border-slate-100 px-3 py-2 last:border-b-0"
                   >
-                    <div className="truncate text-[13px] font-medium text-slate-900">
-                      {item.fileName}
+                    <div className="flex min-w-0 items-center gap-2">
+                      <div className="min-w-0 flex-1 truncate text-[13px] font-medium text-slate-900">
+                        {item.fileName}
+                      </div>
+                      <div className="max-w-[180px] shrink-0 truncate rounded bg-slate-100 px-1.5 py-0.5 text-[11px] text-slate-600">
+                        {item.profileName}
+                      </div>
                     </div>
                     <div className="mt-0.5 truncate text-[12px] text-slate-500">
                       {item.path}

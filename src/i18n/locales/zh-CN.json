@@ -457,6 +457,8 @@
     "instructionMode": "指令模式",
     "ready": "就绪",
     "unsavedCells": "{{count}} 个单元格未保存",
+    "unsavedCellsWithOther": "当前 {{count}} 个单元格未保存，另有 {{profileCount}} 个其他标注类型共 {{otherCount}} 个单元格未保存",
+    "otherUnsavedCells": "其他 {{profileCount}} 个标注类型共 {{count}} 个单元格未保存",
     "saveChanges": "保存改动",
     "saving": "保存中...",
     "dimensions": "尺寸",
