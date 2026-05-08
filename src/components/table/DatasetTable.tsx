@@ -110,6 +110,7 @@ export function DatasetTable({
     tableProfileAnnotationDrafts,
     tableProfileInstructionDrafts,
     tableSavedCellKeys,
+    tableFailedCellKeys,
     annotatingImageIds,
     highlightCellState,
     selectImage,
@@ -542,6 +543,9 @@ export function DatasetTable({
     }
     if (tableSavedCellKeys.includes(key)) {
       return "dataset-cell-saved";
+    }
+    if (tableFailedCellKeys.includes(key)) {
+      return "dataset-cell-failed";
     }
     return "";
   };

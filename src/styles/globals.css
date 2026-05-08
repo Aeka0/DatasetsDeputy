@@ -159,6 +159,15 @@ textarea {
   outline-color: rgba(16, 185, 129, 0.18);
 }
 
+.glass-input.dataset-cell-failed {
+  border-color: #ef4444;
+}
+
+.glass-input.dataset-cell-failed:focus {
+  border-color: #dc2626;
+  outline-color: rgba(239, 68, 68, 0.18);
+}
+
 .fluent-shell {
   border: 1px solid rgba(31, 35, 40, 0.16);
   background: transparent;
@@ -422,6 +431,15 @@ html[data-theme="dark"] .glass-input.dataset-cell-saved:focus {
   outline-color: rgba(16, 185, 129, 0.24);
 }
 
+html[data-theme="dark"] .glass-input.dataset-cell-failed {
+  border-color: #dc2626;
+}
+
+html[data-theme="dark"] .glass-input.dataset-cell-failed:focus {
+  border-color: #ef4444;
+  outline-color: rgba(239, 68, 68, 0.24);
+}
+
 html[data-theme="dark"] .shadow-lg,
 html[data-theme="dark"] .shadow-xl {
   box-shadow: 0 18px 48px rgba(0, 0, 0, 0.42);
@@ -569,4 +587,3 @@ html[data-theme="dark"] .text-amber-700,
 html[data-theme="dark"] .text-amber-600 {
   color: #e0a840;
 }
-

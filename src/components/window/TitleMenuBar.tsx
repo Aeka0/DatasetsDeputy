@@ -264,6 +264,8 @@ export function TitleMenuBar({
     applyGeneratedAnnotationDraft,
     saveAnnotationChanges,
     markImageAnnotating,
+    markTableCellFailed,
+    clearTableCellFailure,
     setSearch
   } = useDatasetStore();
   const [openMenu, setOpenMenu] = useState<MenuKey>();
@@ -618,8 +620,10 @@ export function TitleMenuBar({
     ).filter((image): image is DatasetImage => Boolean(image));
     addAppLog(`Filtered annotation targets: ${targets.length}`);
     const generatedChanges: AnnotationChange[] = [];
+    const failedAnnotationImageIds = new Set<number>();
 
     const applyGeneratedContent = (image: DatasetImage, content: string) => {
+      clearTableCellFailure(`${image.id}:annotation`);
       applyGeneratedAnnotationDraft(selectedProfileId, image.id, content);
       generatedChanges.push({
         imageId: image.id,
@@ -629,10 +633,34 @@ export function TitleMenuBar({
     };
 
     const saveGeneratedChanges = async () => {
-      if (!autoSaveAfterAnnotation || generatedChanges.length === 0) return;
+      if (!autoSaveAfterAnnotation) return;
 
-      await saveAnnotationChanges(generatedChanges);
-      addAppLog(`Auto-saved generated annotations: ${generatedChanges.length}`);
+      const successfulChanges = generatedChanges.filter(
+        (change) => !failedAnnotationImageIds.has(change.imageId)
+      );
+      if (successfulChanges.length === 0) return;
+      if (successfulChanges.length !== generatedChanges.length) {
+        addAppLog(
+          `Auto-save skipped ${generatedChanges.length - successfulChanges.length} failed annotations.`,
+          "warning"
+        );
+      }
+
+      await saveAnnotationChanges(successfulChanges);
+      addAppLog(`Auto-saved generated annotations: ${successfulChanges.length}`);
+    };
+
+    const markAnnotationFailed = (image: DatasetImage) => {
+      failedAnnotationImageIds.add(image.id);
+      markTableCellFailed(`${image.id}:annotation`);
+    };
+
+    const markWd14MissingResultsFailed = (generatedContents: Array<string | undefined>) => {
+      for (const [index, image] of targets.entries()) {
+        if (generatedContents[index] === undefined) {
+          markAnnotationFailed(image);
+        }
+      }
     };
 
     try {
@@ -669,6 +697,7 @@ export function TitleMenuBar({
             imagePaths: targets.map((image) => image.storagePath ?? image.path)
           });
           if (contents.length !== targets.length) {
+            markWd14MissingResultsFailed(generatedContents);
             throw new Error(`WD14 returned ${contents.length} results for ${targets.length} images.`);
           }
           if (annotationCancelRef.current) {
@@ -682,6 +711,11 @@ export function TitleMenuBar({
               addAppLog(`Generated draft annotation: ${image.fileName}`);
             }
           }
+        } catch (error) {
+          if (!annotationCancelRef.current) {
+            markWd14MissingResultsFailed(generatedContents);
+          }
+          throw error;
         } finally {
           unlistenWd14Progress?.();
           for (const image of targets) {
@@ -724,6 +758,13 @@ export function TitleMenuBar({
           }
           applyGeneratedContent(image, content);
           addAppLog(`Generated draft annotation: ${image.fileName}`);
+        } catch (error) {
+          const message = formatAppError(error);
+          if (message === annotationCancelledError) {
+            throw error;
+          }
+          markAnnotationFailed(image);
+          addAppLog(`Annotation failed: ${image.fileName}: ${message}`, "error");
         } finally {
           markImageAnnotating(image.id, false);
         }

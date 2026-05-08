@@ -373,6 +373,7 @@ interface DatasetState {
   tableProfileAnnotationDrafts: Record<number, TableDraftMap>;
   tableProfileInstructionDrafts: Record<number, TableDraftMap>;
   tableSavedCellKeys: string[];
+  tableFailedCellKeys: string[];
   annotatingImageIds: number[];
   highlightCellState: boolean;
   autoSaveAfterAnnotation: boolean;
@@ -447,6 +448,9 @@ interface DatasetState {
   updateTableAnnotationDraft: (imageId: number, value: string) => void;
   updateTableInstructionDraft: (imageId: number, value: string) => void;
   markTableCellSaved: (key: string) => void;
+  markTableCellFailed: (key: string) => void;
+  clearTableCellFailure: (key: string) => void;
+  clearTableFailedCellMarks: () => void;
   clearTableSavedCellMarks: () => void;
   setHighlightCellState: (enabled: boolean) => void;
   setAutoSaveAfterAnnotation: (enabled: boolean) => void;
@@ -617,6 +621,7 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
   tableProfileAnnotationDrafts: {},
   tableProfileInstructionDrafts: {},
   tableSavedCellKeys: [],
+  tableFailedCellKeys: [],
   annotatingImageIds: [],
   highlightCellState: getStoredHighlightCellState(),
   autoSaveAfterAnnotation: getStoredAutoSaveAfterAnnotation(),
@@ -1446,7 +1451,11 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
         tableInstructionDrafts: nextInstructionDrafts,
         tableProfileAnnotationDrafts,
         tableProfileInstructionDrafts,
-        tableSavedCellKeys: []
+        tableSavedCellKeys: [],
+        tableFailedCellKeys: state.tableFailedCellKeys.filter((key) => {
+          const imageId = Number(key.split(":")[0]);
+          return imageIds.has(imageId);
+        })
       };
     }),
   mergeTableDrafts: (annotationDrafts, instructionDrafts) =>
@@ -1487,6 +1496,10 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
                 [state.tableDraftProfileId]: nextInstructionDrafts
               },
         tableSavedCellKeys: state.tableSavedCellKeys.filter((key) => {
+          const imageId = Number(key.split(":")[0]);
+          return imageIds.has(imageId);
+        }),
+        tableFailedCellKeys: state.tableFailedCellKeys.filter((key) => {
           const imageId = Number(key.split(":")[0]);
           return imageIds.has(imageId);
         })
@@ -1567,6 +1580,11 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
           if (draft.content !== undefined && key === `${imageId}:annotation`) return false;
           if (draft.instruction !== undefined && key === `${imageId}:instruction`) return false;
           return true;
+        }),
+        tableFailedCellKeys: state.tableFailedCellKeys.filter((key) => {
+          if (draft.content !== undefined && key === `${imageId}:annotation`) return false;
+          if (draft.instruction !== undefined && key === `${imageId}:instruction`) return false;
+          return true;
         })
       };
     }),
@@ -1588,6 +1606,9 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
             },
       tableSavedCellKeys: state.tableSavedCellKeys.filter(
         (key) => key !== `${imageId}:annotation`
+      ),
+      tableFailedCellKeys: state.tableFailedCellKeys.filter(
+        (key) => key !== `${imageId}:annotation`
       )
     })),
   updateTableInstructionDraft: (imageId, value) =>
@@ -1608,14 +1629,30 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
             },
       tableSavedCellKeys: state.tableSavedCellKeys.filter(
         (key) => key !== `${imageId}:instruction`
+      ),
+      tableFailedCellKeys: state.tableFailedCellKeys.filter(
+        (key) => key !== `${imageId}:instruction`
       )
     })),
   markTableCellSaved: (key) =>
     set((state) => ({
       tableSavedCellKeys: state.tableSavedCellKeys.includes(key)
         ? state.tableSavedCellKeys
-        : [...state.tableSavedCellKeys, key]
+        : [...state.tableSavedCellKeys, key],
+      tableFailedCellKeys: state.tableFailedCellKeys.filter((failedKey) => failedKey !== key)
     })),
+  markTableCellFailed: (key) =>
+    set((state) => ({
+      tableFailedCellKeys: state.tableFailedCellKeys.includes(key)
+        ? state.tableFailedCellKeys
+        : [...state.tableFailedCellKeys, key],
+      tableSavedCellKeys: state.tableSavedCellKeys.filter((savedKey) => savedKey !== key)
+    })),
+  clearTableCellFailure: (key) =>
+    set((state) => ({
+      tableFailedCellKeys: state.tableFailedCellKeys.filter((failedKey) => failedKey !== key)
+    })),
+  clearTableFailedCellMarks: () => set({ tableFailedCellKeys: [] }),
   clearTableSavedCellMarks: () => set({ tableSavedCellKeys: [] }),
   setHighlightCellState: (enabled) => {
     if (typeof localStorage !== "undefined") {
