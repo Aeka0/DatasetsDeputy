@@ -6,6 +6,7 @@ use std::{
 
 use serde::Deserialize;
 use serde::Serialize;
+use sha2::{Digest, Sha256};
 use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_dialog::DialogExt;
 
@@ -177,6 +178,20 @@ struct DatasetDatabaseRef {
     path: PathBuf,
 }
 
+fn stable_database_prefix(path: &Path) -> i64 {
+    let normalized = path
+        .file_name()
+        .unwrap_or_else(|| path.as_os_str())
+        .to_string_lossy()
+        .to_ascii_lowercase();
+    let mut hasher = Sha256::new();
+    hasher.update(normalized.as_bytes());
+    let digest = hasher.finalize();
+    let mut bytes = [0_u8; 8];
+    bytes.copy_from_slice(&digest[..8]);
+    10_000 + (u64::from_le_bytes(bytes) % 9_000_000) as i64
+}
+
 fn dataset_database_refs(dirs: &app_dirs::AppDirs) -> AppResult<Vec<DatasetDatabaseRef>> {
     let mut paths = fs::read_dir(&dirs.dataset_databases)?
         .filter_map(Result::ok)
@@ -185,14 +200,19 @@ fn dataset_database_refs(dirs: &app_dirs::AppDirs) -> AppResult<Vec<DatasetDatab
         .collect::<Vec<_>>();
     paths.sort_by_key(|path| path.to_string_lossy().to_ascii_lowercase());
 
-    Ok(paths
+    let mut used_prefixes = HashSet::new();
+    let refs = paths
         .into_iter()
-        .enumerate()
-        .map(|(index, path)| DatasetDatabaseRef {
-            prefix: index as i64 + 1,
-            path,
+        .map(|path| {
+            let mut prefix = stable_database_prefix(&path);
+            while used_prefixes.contains(&prefix) {
+                prefix += 1;
+            }
+            used_prefixes.insert(prefix);
+            DatasetDatabaseRef { prefix, path }
         })
-        .collect())
+        .collect();
+    Ok(refs)
 }
 
 fn to_public_id(prefix: i64, local_id: i64) -> i64 {
