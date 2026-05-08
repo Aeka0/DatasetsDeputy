@@ -255,18 +255,18 @@ export function ImagePreviewView() {
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="mb-3 flex h-10 items-center gap-3 border-b border-slate-100 pb-3">
+      <div className="mb-3 flex h-10 items-center gap-3 border-b border-neutral-100 pb-3">
         <button
-          className="no-drag inline-flex h-8 items-center gap-2 rounded-md border border-slate-200 bg-white px-3 text-[13px] text-slate-700 transition hover:bg-slate-50"
+          className="no-drag inline-flex h-8 items-center gap-2 rounded-md border border-neutral-200 bg-white px-3 text-[13px] text-neutral-700 transition hover:bg-neutral-50"
           onClick={closeImagePreview}
         >
           <ArrowLeft size={16} />
           {t("actions.back")}
         </button>
         <div className="min-w-0">
-          <h2 className="m-0 flex min-w-0 items-center gap-2 text-[14px] font-semibold text-slate-900">
+          <h2 className="m-0 flex min-w-0 items-center gap-2 text-[14px] font-semibold text-neutral-900">
             <span className="min-w-0 truncate">{selectedImage.fileName}</span>
-            <span className="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-normal text-slate-500">
+            <span className="shrink-0 rounded-full bg-neutral-100 px-2 py-0.5 text-[11px] font-normal text-neutral-500">
               {annotationCountLabel}
             </span>
           </h2>
@@ -274,7 +274,7 @@ export function ImagePreviewView() {
       </div>
 
       <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_352px] gap-3">
-        <section className="flex min-h-0 flex-col rounded-lg border border-slate-200 bg-slate-50">
+        <section className="flex min-h-0 flex-col rounded-lg border border-neutral-200 bg-neutral-50">
           <div className="flex min-h-0 flex-1 items-center justify-center overflow-hidden p-3">
             {selectedImage.sourceMissing ? (
               <CircleAlert size={72} className="text-red-600" />
@@ -285,14 +285,14 @@ export function ImagePreviewView() {
                 className="max-h-full max-w-full object-contain"
               />
             ) : (
-              <div className="text-sm text-slate-400">{selectedImage.fileName}</div>
+              <div className="text-sm text-neutral-400">{selectedImage.fileName}</div>
             )}
           </div>
-          <div className="border-t border-slate-200 bg-white p-3">
-            <div className="mb-2 text-[12px] font-medium text-slate-700">{t("image.metadata")}</div>
-            <dl className="grid gap-2 text-[12px] text-slate-500 sm:grid-cols-3">
+          <div className="border-t border-neutral-200 bg-white p-3">
+            <div className="mb-2 text-[12px] font-medium text-neutral-700">{t("image.metadata")}</div>
+            <dl className="grid gap-2 text-[12px] text-neutral-500 sm:grid-cols-3">
               <div>
-                <dt className="text-slate-400">{t("image.dimensions")}</dt>
+                <dt className="text-neutral-400">{t("image.dimensions")}</dt>
                 <dd className="m-0">
                   {selectedImage.width && selectedImage.height
                     ? `${selectedImage.width} x ${selectedImage.height}`
@@ -300,11 +300,11 @@ export function ImagePreviewView() {
                 </dd>
               </div>
               <div>
-                <dt className="text-slate-400">{t("image.fileSize")}</dt>
+                <dt className="text-neutral-400">{t("image.fileSize")}</dt>
                 <dd className="m-0">{formatBytes(selectedImage.fileSize)}</dd>
               </div>
               <div className="min-w-0">
-                <dt className="text-slate-400">{t("image.path")}</dt>
+                <dt className="text-neutral-400">{t("image.path")}</dt>
                 <dd className="m-0 truncate" title={selectedImage.path}>
                   {selectedImage.path}
                 </dd>
@@ -313,16 +313,16 @@ export function ImagePreviewView() {
           </div>
         </section>
 
-        <aside className="flex min-h-0 flex-col rounded-lg border border-slate-200 bg-white">
+        <aside className="flex min-h-0 flex-col rounded-lg border border-neutral-200 bg-white">
           {isFolderImage ? null : (
-            <div className="flex max-h-[176px] min-h-[112px] shrink-0 flex-col border-b border-slate-200">
+            <div className="flex max-h-[176px] min-h-[112px] shrink-0 flex-col border-b border-neutral-200">
               <div className="flex h-9 shrink-0 items-center justify-between px-3">
-                <div className="flex items-center gap-2 text-[13px] font-semibold text-slate-800">
+                <div className="flex items-center gap-2 text-[13px] font-semibold text-neutral-800">
                   <FileText size={16} />
                   {t("image.annotationTypes")}
                 </div>
               <button
-                className="no-drag inline-flex h-7 w-7 items-center justify-center rounded-md text-slate-600 transition hover:bg-slate-100"
+                className="no-drag inline-flex h-7 w-7 items-center justify-center rounded-md text-neutral-600 transition hover:bg-neutral-100"
                 onClick={startNewAnnotationType}
                 title={t("image.newAnnotation")}
               >
@@ -332,8 +332,8 @@ export function ImagePreviewView() {
 
               <div className="min-h-0 flex-1 overflow-auto p-2 pt-0">
                 {isCreatingProfile ? (
-                  <div className="mb-2 rounded-md border border-slate-200 bg-slate-50 p-2">
-                    <label className="mb-1 block text-[12px] font-medium text-slate-600">
+                  <div className="mb-2 rounded-md border border-neutral-200 bg-neutral-50 p-2">
+                    <label className="mb-1 block text-[12px] font-medium text-neutral-600">
                       {t("image.newTypeName")}
                     </label>
                     <input
@@ -350,14 +350,14 @@ export function ImagePreviewView() {
                     ) : null}
                     <div className="mt-2 flex gap-2">
                       <button
-                        className="no-drag inline-flex h-8 flex-1 items-center justify-center rounded-md border border-slate-900 bg-slate-900 px-2 text-[12px] font-medium text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+                        className="no-drag inline-flex h-8 flex-1 items-center justify-center rounded-md border border-neutral-900 bg-neutral-900 px-2 text-[12px] font-medium text-white transition hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-50"
                         onClick={() => void createProfile()}
                         disabled={!trimmedNewProfileName || newProfileNameExists}
                       >
                         {t("image.createType")}
                       </button>
                       <button
-                        className="no-drag inline-flex h-8 items-center justify-center rounded-md border border-slate-200 bg-white px-2 text-[12px] text-slate-600 transition hover:bg-slate-50"
+                        className="no-drag inline-flex h-8 items-center justify-center rounded-md border border-neutral-200 bg-white px-2 text-[12px] text-neutral-600 transition hover:bg-neutral-50"
                         onClick={() => setIsCreatingProfile(false)}
                       >
                         {t("actions.cancel")}
@@ -386,15 +386,15 @@ export function ImagePreviewView() {
                           key={profile.id}
                           className={`no-drag w-full rounded-md px-2 py-1.5 text-left transition ${
                             isSelected
-                              ? "bg-slate-900/[0.07] text-slate-950"
-                              : "text-slate-700 hover:bg-slate-100"
+                              ? "bg-neutral-900/[0.07] text-neutral-950"
+                              : "text-neutral-700 hover:bg-neutral-100"
                           }`}
                           onClick={() => selectProfile(profile.id)}
                         >
                           <div className="truncate text-[12px] font-medium">
                             {profile.name}
                           </div>
-                          <div className="mt-0.5 line-clamp-1 text-[12px] text-slate-500">
+                          <div className="mt-0.5 line-clamp-1 text-[12px] text-neutral-500">
                             {displayContent || "-"}
                           </div>
                         </button>
@@ -402,7 +402,7 @@ export function ImagePreviewView() {
                     })}
                   </div>
                 ) : (
-                  <div className="rounded-md bg-slate-50 px-3 py-2 text-[13px] text-slate-500">
+                  <div className="rounded-md bg-neutral-50 px-3 py-2 text-[13px] text-neutral-500">
                     {t("image.noAnnotations")}
                   </div>
                 )}
@@ -413,7 +413,7 @@ export function ImagePreviewView() {
           <div className="flex min-h-0 flex-1 flex-col p-3">
             {selectedProfileId !== undefined ? (
               <>
-            <div className="mb-3 flex shrink-0 items-center gap-1 border-b border-slate-100">
+            <div className="mb-3 flex shrink-0 items-center gap-1 border-b border-neutral-100">
               {[
                 { id: "annotation" as const, label: t("image.annotationTab") },
                 { id: "instruction" as const, label: t("image.instructionTab") }
@@ -426,8 +426,8 @@ export function ImagePreviewView() {
                     type="button"
                     className={`no-drag flex h-9 items-center border-b-2 px-3 text-[13px] transition ${
                       isActive
-                        ? "border-slate-900 text-slate-950"
-                        : "border-transparent text-slate-500 hover:text-slate-900"
+                        ? "border-neutral-900 text-neutral-950"
+                        : "border-transparent text-neutral-500 hover:text-neutral-900"
                     }`}
                     onClick={() => setActiveDraftTab(tab.id)}
                   >
@@ -455,14 +455,14 @@ export function ImagePreviewView() {
               )}
               {activeDraftTab === "annotation" && isAnnotating ? (
                 <div className="pointer-events-none absolute right-3 top-3">
-                  <LoaderCircle className="h-5 w-5 animate-spin text-slate-500" />
+                  <LoaderCircle className="h-5 w-5 animate-spin text-neutral-500" />
                 </div>
               ) : null}
             </div>
 
             <div className="mt-3 flex gap-2">
               <button
-                className="no-drag inline-flex h-8 flex-1 items-center justify-center gap-2 rounded-md border border-slate-900 bg-slate-900 px-3 text-[13px] font-medium text-white transition hover:bg-slate-800"
+                className="no-drag inline-flex h-8 flex-1 items-center justify-center gap-2 rounded-md border border-neutral-900 bg-neutral-900 px-3 text-[13px] font-medium text-white transition hover:bg-neutral-800"
                 onClick={saveCurrentAnnotation}
                 disabled={isAnnotating}
               >
@@ -485,7 +485,7 @@ export function ImagePreviewView() {
             </div>
               </>
             ) : (
-              <div className="rounded-md bg-slate-50 px-3 py-2 text-[13px] text-slate-500">
+              <div className="rounded-md bg-neutral-50 px-3 py-2 text-[13px] text-neutral-500">
                 {t("image.selectAnnotationHint")}
               </div>
             )}

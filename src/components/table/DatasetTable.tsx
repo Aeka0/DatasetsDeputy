@@ -577,10 +577,10 @@ export function DatasetTable({
 
   if (images.length === 0) {
     return (
-      <div className="flex flex-1 flex-col items-center justify-center rounded-lg border border-slate-200 bg-slate-50 p-12 text-center">
-        <ImageIcon size={44} className="mb-4 text-slate-300" />
-        <h2 className="m-0 text-xl font-semibold text-slate-900">{t("table.emptyTitle")}</h2>
-        <p className="mt-2 max-w-md text-sm text-slate-500">
+      <div className="flex flex-1 flex-col items-center justify-center rounded-lg border border-neutral-200 bg-neutral-50 p-12 text-center">
+        <ImageIcon size={44} className="mb-4 text-neutral-300" />
+        <h2 className="m-0 text-xl font-semibold text-neutral-900">{t("table.emptyTitle")}</h2>
+        <p className="mt-2 max-w-md text-sm text-neutral-500">
           {t("table.emptyDescription")}
         </p>
       </div>
@@ -588,15 +588,15 @@ export function DatasetTable({
   }
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-visible rounded-lg border border-slate-200 bg-white">
-      <div className="flex h-10 items-center justify-between border-b border-slate-100 bg-slate-50 px-4">
-        <div className="text-[13px] text-slate-500">
+    <div className="flex min-h-0 flex-1 flex-col overflow-visible rounded-lg border border-neutral-200 bg-white">
+      <div className="flex h-10 items-center justify-between border-b border-neutral-100 bg-neutral-50 px-4">
+        <div className="text-[13px] text-neutral-500">
           {unsavedStatus}
         </div>
         <div className="flex items-center gap-3">
           <button
             type="button"
-            className="no-drag flex h-7 items-center gap-1.5 rounded-md border border-slate-200 bg-white px-2.5 text-[13px] text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+            className="no-drag flex h-7 items-center gap-1.5 rounded-md border border-neutral-200 bg-white px-2.5 text-[13px] text-neutral-700 transition hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-50"
             disabled={dirtyCells.size === 0 || isSaving}
             onClick={() => void saveDirtyCells()}
           >
@@ -606,9 +606,9 @@ export function DatasetTable({
         </div>
       </div>
 
-      <div ref={headerScrollRef} className="overflow-hidden border-b border-slate-200 bg-slate-50">
+      <div ref={headerScrollRef} className="overflow-hidden border-b border-neutral-200 bg-neutral-50">
         <div
-          className="grid min-w-full px-3 py-2 text-[13px] font-normal text-slate-600"
+          className="grid min-w-full px-3 py-2 text-[13px] font-normal text-neutral-600"
           style={{ gridTemplateColumns, width: `${tableWidth}px` }}
         >
           <div className="relative px-2">
@@ -625,7 +625,7 @@ export function DatasetTable({
             ) : (
               <button
                 ref={profileButtonRef}
-                className="no-drag flex max-w-full items-center gap-1.5 rounded px-1 text-left transition hover:bg-slate-200/70 hover:text-slate-900"
+                className="no-drag flex max-w-full items-center gap-1.5 rounded px-1 text-left transition hover:bg-neutral-200/70 hover:text-neutral-900"
                 onClick={(event) => {
                   event.stopPropagation();
                   const rect = event.currentTarget.getBoundingClientRect();
@@ -638,10 +638,10 @@ export function DatasetTable({
                 }}
               >
                 <span>{t("table.annotationData")}</span>
-                <span className="truncate text-slate-400">
+                <span className="truncate text-neutral-400">
                   {selectedProfile ? `(${selectedProfile.name})` : ""}
                 </span>
-                <ChevronDown size={14} className="shrink-0 text-slate-400" />
+                <ChevronDown size={14} className="shrink-0 text-neutral-400" />
               </button>
             )}
 
@@ -668,8 +668,8 @@ export function DatasetTable({
               <div
                 key={image.id}
                 className={cn(
-                  "absolute left-0 grid w-full border-b border-slate-100 px-3 py-2 text-[13px] transition",
-                  isSelected ? "dataset-table-row-selected" : "hover:bg-slate-50"
+                  "absolute left-0 grid w-full border-b border-neutral-100 px-3 py-2 text-[13px] transition",
+                  isSelected ? "dataset-table-row-selected" : "hover:bg-neutral-50"
                 )}
                 aria-selected={isSelected}
                 style={{
@@ -680,7 +680,7 @@ export function DatasetTable({
                 onContextMenu={(event) => onImageContextMenu?.(image, event)}
               >
                 <button
-                  className="no-drag min-w-0 px-2 text-left text-[13px] font-medium leading-5 text-slate-900"
+                  className="no-drag min-w-0 px-2 text-left text-[13px] font-medium leading-5 text-neutral-900"
                   onClick={(event) => selectTableImage(image.id, event)}
                   title={image.path}
                 >
@@ -691,7 +691,7 @@ export function DatasetTable({
                   className="no-drag flex items-center justify-center px-2"
                   onClick={() => openImagePreview(image.id)}
                 >
-                  <div className="flex h-[100px] w-[116px] items-center justify-center overflow-hidden bg-slate-100">
+                  <div className="flex h-[100px] w-[116px] items-center justify-center overflow-hidden bg-neutral-100">
                     {image.sourceMissing ? (
                       <CircleAlert size={34} className="text-red-600" />
                     ) : image.thumbnailPath ? (
@@ -702,7 +702,7 @@ export function DatasetTable({
                         loading="lazy"
                       />
                     ) : (
-                      <div className="flex h-full w-full flex-col items-center justify-center gap-1 text-[13px] text-slate-400">
+                      <div className="flex h-full w-full flex-col items-center justify-center gap-1 text-[13px] text-neutral-400">
                         <ImageIcon size={22} />
                         <span>{t("table.noPreview")}</span>
                       </div>
@@ -732,7 +732,7 @@ export function DatasetTable({
                   />
                   {isAnnotating ? (
                     <div className="pointer-events-none absolute right-4 top-3">
-                      <LoaderCircle className="h-5 w-5 animate-spin text-slate-500" />
+                      <LoaderCircle className="h-5 w-5 animate-spin text-neutral-500" />
                     </div>
                   ) : null}
                 </div>
@@ -779,8 +779,8 @@ export function DatasetTable({
               <button
                 key={profile.id}
                 className={cn(
-                  "app-dropdown-item flex h-9 w-full items-center gap-2 px-3.5 text-left text-[13px] font-medium transition hover:bg-slate-100",
-                  isSelectedProfile ? "text-slate-950" : "text-slate-600"
+                  "app-dropdown-item flex h-9 w-full items-center gap-2 px-3.5 text-left text-[13px] font-medium transition hover:bg-neutral-100",
+                  isSelectedProfile ? "text-neutral-950" : "text-neutral-600"
                 )}
                 onClick={() => {
                   setActiveProfile(profile.id);
@@ -795,10 +795,10 @@ export function DatasetTable({
               </button>
             );
           })}
-          <div className="my-1 border-t border-slate-100" />
+          <div className="my-1 border-t border-neutral-100" />
           {isCreatingProfile ? (
             <div className="px-3 py-2">
-              <label className="mb-1 block text-[12px] font-medium text-slate-600">
+              <label className="mb-1 block text-[12px] font-medium text-neutral-600">
                 {t("image.newTypeName")}
               </label>
               <input
@@ -821,14 +821,14 @@ export function DatasetTable({
               ) : null}
               <div className="mt-2 flex gap-2">
                 <button
-                  className="no-drag inline-flex h-8 flex-1 items-center justify-center rounded-md border border-slate-900 bg-slate-900 px-2 text-[12px] font-medium text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="no-drag inline-flex h-8 flex-1 items-center justify-center rounded-md border border-neutral-900 bg-neutral-900 px-2 text-[12px] font-medium text-white transition hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-50"
                   onClick={() => void createProfile()}
                   disabled={!trimmedNewProfileName || newProfileNameExists}
                 >
                   {t("image.createType")}
                 </button>
                 <button
-                  className="no-drag inline-flex h-8 items-center justify-center rounded-md border border-slate-200 bg-white px-2 text-[12px] text-slate-600 transition hover:bg-slate-50"
+                  className="no-drag inline-flex h-8 items-center justify-center rounded-md border border-neutral-200 bg-white px-2 text-[12px] text-neutral-600 transition hover:bg-neutral-50"
                   onClick={() => setIsCreatingProfile(false)}
                 >
                   {t("actions.cancel")}
@@ -837,7 +837,7 @@ export function DatasetTable({
             </div>
           ) : (
             <button
-              className="app-dropdown-item flex h-9 w-full items-center gap-2 px-3.5 text-left text-[13px] font-medium text-slate-600 transition hover:bg-slate-100"
+              className="app-dropdown-item flex h-9 w-full items-center gap-2 px-3.5 text-left text-[13px] font-medium text-neutral-600 transition hover:bg-neutral-100"
               onClick={startCreatingProfile}
             >
               <span className="flex w-4 shrink-0 justify-center">

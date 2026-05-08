@@ -52,7 +52,7 @@ export function WindowControls({ onClose }: WindowControlsProps) {
   };
 
   return (
-    <div className="no-drag flex h-10 overflow-hidden rounded-bl-xl text-slate-700">
+    <div className="no-drag flex h-10 overflow-hidden rounded-bl-xl text-neutral-700">
       <button
         aria-label="Minimize"
         type="button"

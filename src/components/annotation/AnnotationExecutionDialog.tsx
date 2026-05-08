@@ -84,22 +84,22 @@ export function AnnotationExecutionDialog({
 
   return createPortal(
     <div
-      className="no-drag fixed inset-0 z-50 flex items-center justify-center bg-slate-950/18 px-5"
+      className="no-drag fixed inset-0 z-50 flex items-center justify-center bg-neutral-950/18 px-5"
     >
       <section
-        className="flex w-full max-w-[460px] flex-col overflow-hidden rounded-lg border border-slate-200 bg-white shadow-[0_24px_72px_rgba(15,23,42,0.22)]"
+        className="flex w-full max-w-[460px] flex-col overflow-hidden rounded-lg border border-neutral-200 bg-white shadow-[0_24px_72px_rgba(23,23,23,0.22)]"
         role="dialog"
         aria-modal="true"
         aria-labelledby="annotation-execution-title"
       >
-        <header className="flex h-14 shrink-0 items-center justify-between gap-3 border-b border-slate-200 px-5">
+        <header className="flex h-14 shrink-0 items-center justify-between gap-3 border-b border-neutral-200 px-5">
           <div className="min-w-0 flex-1">
             <h2
               id="annotation-execution-title"
-              className="m-0 flex min-w-0 items-baseline gap-2 text-[15px] font-semibold text-slate-950"
+              className="m-0 flex min-w-0 items-baseline gap-2 text-[15px] font-semibold text-neutral-950"
             >
               <span className="shrink-0">{t("annotationRun.title")}</span>
-              <span className="min-w-0 truncate text-[12px] font-normal text-slate-500">
+              <span className="min-w-0 truncate text-[12px] font-normal text-neutral-500">
                 {datasetPathLabel || datasetName}
               </span>
             </h2>
@@ -116,10 +116,10 @@ export function AnnotationExecutionDialog({
           </Button>
         </header>
 
-        <div className="space-y-3 bg-slate-50/42 p-5">
-          <section className="rounded-lg border border-slate-200 bg-white">
+        <div className="space-y-3 bg-neutral-50/42 p-5">
+          <section className="rounded-lg border border-neutral-200 bg-white">
             <div className="grid min-h-12 grid-cols-[112px_minmax(0,1fr)] items-center gap-3 px-4 py-3">
-              <div className="text-[13px] font-semibold text-slate-900">
+              <div className="text-[13px] font-semibold text-neutral-900">
                 {t("annotationRun.mode")}
               </div>
               <button
@@ -137,19 +137,19 @@ export function AnnotationExecutionDialog({
                 }}
               >
                 <span className="min-w-0 truncate">{t(selectedModeLabel)}</span>
-                <ChevronDown size={14} className="shrink-0 text-slate-400" />
+                <ChevronDown size={14} className="shrink-0 text-neutral-400" />
               </button>
             </div>
           </section>
 
-          <section className="rounded-lg border border-slate-200 bg-white">
-            <div className="border-b border-slate-100 px-4 py-3 text-[13px] font-semibold text-slate-900">
+          <section className="rounded-lg border border-neutral-200 bg-white">
+            <div className="border-b border-neutral-100 px-4 py-3 text-[13px] font-semibold text-neutral-900">
               {t("annotationRun.scope")}
             </div>
             <div className="space-y-2 px-4 py-3">
               <label
                 className={`flex min-h-8 items-center gap-2 text-[13px] ${
-                  hasSelectedImage ? "text-slate-700" : "text-slate-400"
+                  hasSelectedImage ? "text-neutral-700" : "text-neutral-400"
                 }`}
               >
                 <input
@@ -162,7 +162,7 @@ export function AnnotationExecutionDialog({
                 />
                 {t("annotationRun.scopeSelected", { count: selectedImageCount })}
               </label>
-              <label className="flex min-h-8 items-center gap-2 text-[13px] text-slate-700">
+              <label className="flex min-h-8 items-center gap-2 text-[13px] text-neutral-700">
                 <input
                   type="radio"
                   name="annotation-scope"
@@ -172,7 +172,7 @@ export function AnnotationExecutionDialog({
                 />
                 {t("annotationRun.scopeAll")}
               </label>
-              <label className="flex min-h-8 items-center gap-2 text-[13px] text-slate-700">
+              <label className="flex min-h-8 items-center gap-2 text-[13px] text-neutral-700">
                 <input
                   type="radio"
                   name="annotation-scope"
@@ -185,12 +185,12 @@ export function AnnotationExecutionDialog({
             </div>
           </section>
 
-          <section className="rounded-lg border border-slate-200 bg-white">
-            <div className="border-b border-slate-100 px-4 py-3 text-[13px] font-semibold text-slate-900">
+          <section className="rounded-lg border border-neutral-200 bg-white">
+            <div className="border-b border-neutral-100 px-4 py-3 text-[13px] font-semibold text-neutral-900">
               {t("annotationRun.conflict")}
             </div>
             <div className="space-y-2 px-4 py-3">
-              <label className="flex min-h-8 items-center gap-2 text-[13px] text-slate-700">
+              <label className="flex min-h-8 items-center gap-2 text-[13px] text-neutral-700">
                 <input
                   type="radio"
                   name="annotation-conflict"
@@ -200,7 +200,7 @@ export function AnnotationExecutionDialog({
                 />
                 {t("annotationRun.conflictOverwrite")}
               </label>
-              <label className="flex min-h-8 items-center gap-2 text-[13px] text-slate-700">
+              <label className="flex min-h-8 items-center gap-2 text-[13px] text-neutral-700">
                 <input
                   type="radio"
                   name="annotation-conflict"
@@ -216,7 +216,7 @@ export function AnnotationExecutionDialog({
           <div className="flex justify-end pt-1">
             <button
               type="button"
-              className="no-drag h-8 rounded-md border border-slate-900 bg-slate-900 px-3 text-[13px] font-medium text-white transition hover:bg-slate-800"
+              className="no-drag h-8 rounded-md border border-neutral-900 bg-neutral-900 px-3 text-[13px] font-medium text-white transition hover:bg-neutral-800"
               onClick={() => onConfirm({ mode, scope, conflictStrategy })}
             >
               {t("annotationRun.start")}
@@ -242,8 +242,8 @@ export function AnnotationExecutionDialog({
               <button
                 key={option.value}
                 type="button"
-                className={`app-dropdown-item flex h-9 w-full items-center gap-2 px-3 text-left text-[13px] font-medium transition hover:bg-slate-100 ${
-                  isSelected ? "text-slate-950" : "text-slate-600"
+                className={`app-dropdown-item flex h-9 w-full items-center gap-2 px-3 text-left text-[13px] font-medium transition hover:bg-neutral-100 ${
+                  isSelected ? "text-neutral-950" : "text-neutral-600"
                 }`}
                 onClick={() => {
                   setMode(option.value);

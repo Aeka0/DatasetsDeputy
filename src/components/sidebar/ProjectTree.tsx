@@ -97,7 +97,7 @@ function ProjectNode({
             ? "cursor-not-allowed text-black/36"
             : isSelected
             ? "project-tree-row-selected bg-white/62 text-black"
-            : "text-black hover:bg-slate-900/[0.045]"
+            : "text-black hover:bg-neutral-900/[0.045]"
         )}
         style={{ paddingLeft: `${indentation}px` }}
         onContextMenu={(event) => {
@@ -519,7 +519,7 @@ export function ProjectTree() {
             >
               <div className="app-dropdown-backdrop" />
               <button
-                className="app-dropdown-item flex h-9 w-full items-center px-3.5 text-left text-[12px] font-medium text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+                className="app-dropdown-item flex h-9 w-full items-center px-3.5 text-left text-[12px] font-medium text-neutral-700 transition hover:bg-neutral-100 disabled:cursor-not-allowed disabled:opacity-50"
                 disabled={!contextMenu.project.children?.length}
                 onClick={() => {
                   const project = contextMenu.project;
@@ -530,7 +530,7 @@ export function ProjectTree() {
                 {expandedIds.has(contextMenu.project.id) ? t("tree.collapse") : t("tree.expand")}
               </button>
               <button
-                className="app-dropdown-item flex h-9 w-full items-center px-3.5 text-left text-[12px] font-medium text-slate-700 transition hover:bg-slate-100"
+                className="app-dropdown-item flex h-9 w-full items-center px-3.5 text-left text-[12px] font-medium text-neutral-700 transition hover:bg-neutral-100"
                 onClick={() => {
                   setContextMenu(undefined);
                   void refreshImages();
@@ -539,14 +539,14 @@ export function ProjectTree() {
                 {t("tree.refresh")}
               </button>
               <button
-                className="app-dropdown-item flex h-9 w-full items-center px-3.5 text-left text-[12px] font-medium text-slate-700 transition hover:bg-slate-100"
+                className="app-dropdown-item flex h-9 w-full items-center px-3.5 text-left text-[12px] font-medium text-neutral-700 transition hover:bg-neutral-100"
                 onClick={() => void runProjectCheck(contextMenu.project)}
               >
                 {t("tree.checkProblems")}
               </button>
               {canCreateChildFolder(contextMenu.project) ? (
                 <button
-                  className="app-dropdown-item flex h-9 w-full items-center px-3.5 text-left text-[12px] font-medium text-slate-700 transition hover:bg-slate-100"
+                  className="app-dropdown-item flex h-9 w-full items-center px-3.5 text-left text-[12px] font-medium text-neutral-700 transition hover:bg-neutral-100"
                   onClick={() => {
                     setPendingNewChild(contextMenu.project);
                     setNewChildName("");
@@ -558,9 +558,9 @@ export function ProjectTree() {
               ) : null}
               {!isVirtualRoot(contextMenu.project) && !isDatasetRoot(contextMenu.project) ? (
                 <>
-                  <div className="app-dropdown-separator my-1.5 h-px bg-slate-200" />
+                  <div className="app-dropdown-separator my-1.5 h-px bg-neutral-200" />
                   <button
-                    className="app-dropdown-item flex h-9 w-full items-center px-3.5 text-left text-[12px] font-medium text-slate-700 transition hover:bg-slate-100"
+                    className="app-dropdown-item flex h-9 w-full items-center px-3.5 text-left text-[12px] font-medium text-neutral-700 transition hover:bg-neutral-100"
                     onClick={() => startRename(contextMenu.project)}
                   >
                     {t("tree.renameFolder")}
@@ -569,7 +569,7 @@ export function ProjectTree() {
               ) : null}
               {!isVirtualRoot(contextMenu.project) && !isDatasetRoot(contextMenu.project) ? (
                 <button
-                  className="app-dropdown-item flex h-9 w-full items-center px-3.5 text-left text-[12px] font-medium text-slate-700 transition hover:bg-slate-100"
+                  className="app-dropdown-item flex h-9 w-full items-center px-3.5 text-left text-[12px] font-medium text-neutral-700 transition hover:bg-neutral-100"
                   onClick={() => {
                     const project = contextMenu.project;
                     setContextMenu(undefined);
@@ -582,7 +582,7 @@ export function ProjectTree() {
                 </button>
               ) : null}
               <button
-                className="app-dropdown-item flex h-9 w-full items-center px-3.5 text-left text-[12px] font-medium text-slate-700 transition hover:bg-slate-100"
+                className="app-dropdown-item flex h-9 w-full items-center px-3.5 text-left text-[12px] font-medium text-neutral-700 transition hover:bg-neutral-100"
                 hidden={isVirtualRoot(contextMenu.project) || !isDatasetRoot(contextMenu.project)}
                 onClick={() => {
                   const project = contextMenu.project;
@@ -600,21 +600,21 @@ export function ProjectTree() {
         : null}
       {pendingRename ? (
         <div
-          className="no-drag fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/24 px-4"
+          className="no-drag fixed inset-0 z-[60] flex items-center justify-center bg-neutral-950/24 px-4"
           onClick={() => setPendingRename(undefined)}
         >
           <form
-            className="w-full max-w-[360px] rounded-lg border border-slate-200 bg-white p-5 shadow-xl"
+            className="w-full max-w-[360px] rounded-lg border border-neutral-200 bg-white p-5 shadow-xl"
             onClick={(event) => event.stopPropagation()}
             onSubmit={(event) => {
               event.preventDefault();
               void submitRename();
             }}
           >
-            <h2 className="m-0 text-[15px] font-semibold leading-6 text-slate-950">
+            <h2 className="m-0 text-[15px] font-semibold leading-6 text-neutral-950">
               {t("tree.renameTitle")}
             </h2>
-            <label className="mt-4 block text-[12px] font-medium text-slate-600">
+            <label className="mt-4 block text-[12px] font-medium text-neutral-600">
               {t("tree.renameNameLabel")}
             </label>
             <input
@@ -632,14 +632,14 @@ export function ProjectTree() {
             <div className="mt-5 flex justify-end gap-2">
               <button
                 type="button"
-                className="h-8 rounded-md border border-slate-200 bg-white px-3 text-[13px] text-slate-700 transition hover:bg-slate-50"
+                className="h-8 rounded-md border border-neutral-200 bg-white px-3 text-[13px] text-neutral-700 transition hover:bg-neutral-50"
                 onClick={() => setPendingRename(undefined)}
               >
                 {t("actions.cancel")}
               </button>
               <button
                 type="submit"
-                className="h-8 rounded-md bg-slate-950 px-3 text-[13px] font-medium text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+                className="h-8 rounded-md bg-neutral-950 px-3 text-[13px] font-medium text-white transition hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-50"
                 disabled={!renameValue.trim()}
               >
                 {t("actions.save")}
@@ -650,21 +650,21 @@ export function ProjectTree() {
       ) : null}
       {pendingNewChild ? (
         <div
-          className="no-drag fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/24 px-4"
+          className="no-drag fixed inset-0 z-[60] flex items-center justify-center bg-neutral-950/24 px-4"
           onClick={() => setPendingNewChild(undefined)}
         >
           <form
-            className="w-full max-w-[360px] rounded-lg border border-slate-200 bg-white p-5 shadow-xl"
+            className="w-full max-w-[360px] rounded-lg border border-neutral-200 bg-white p-5 shadow-xl"
             onClick={(event) => event.stopPropagation()}
             onSubmit={(event) => {
               event.preventDefault();
               void submitNewChild();
             }}
           >
-            <h2 className="m-0 text-[15px] font-semibold leading-6 text-slate-950">
+            <h2 className="m-0 text-[15px] font-semibold leading-6 text-neutral-950">
               {t("tree.newChildFolderTitle")}
             </h2>
-            <label className="mt-4 block text-[12px] font-medium text-slate-600">
+            <label className="mt-4 block text-[12px] font-medium text-neutral-600">
               {t("tree.renameNameLabel")}
             </label>
             <input
@@ -682,14 +682,14 @@ export function ProjectTree() {
             <div className="mt-5 flex justify-end gap-2">
               <button
                 type="button"
-                className="h-8 rounded-md border border-slate-200 bg-white px-3 text-[13px] text-slate-700 transition hover:bg-slate-50"
+                className="h-8 rounded-md border border-neutral-200 bg-white px-3 text-[13px] text-neutral-700 transition hover:bg-neutral-50"
                 onClick={() => setPendingNewChild(undefined)}
               >
                 {t("actions.cancel")}
               </button>
               <button
                 type="submit"
-                className="h-8 rounded-md bg-slate-950 px-3 text-[13px] font-medium text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+                className="h-8 rounded-md bg-neutral-950 px-3 text-[13px] font-medium text-white transition hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-50"
                 disabled={!newChildName.trim()}
               >
                 {t("actions.create")}
@@ -700,50 +700,50 @@ export function ProjectTree() {
       ) : null}
       {pendingRemoval ? (
         <div
-          className="no-drag fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/24 px-4"
+          className="no-drag fixed inset-0 z-[60] flex items-center justify-center bg-neutral-950/24 px-4"
           onClick={() => setPendingRemoval(undefined)}
         >
           <div
-            className="w-full max-w-[420px] rounded-lg border border-slate-200 bg-white p-5 shadow-xl"
+            className="w-full max-w-[420px] rounded-lg border border-neutral-200 bg-white p-5 shadow-xl"
             onClick={(event) => event.stopPropagation()}
           >
-            <h2 className="m-0 text-[15px] font-semibold leading-6 text-slate-950">
+            <h2 className="m-0 text-[15px] font-semibold leading-6 text-neutral-950">
               {pendingRemovalTitle}
             </h2>
-            <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-[12px] leading-5">
-              <div className="truncate font-medium text-slate-900">
+            <div className="mt-3 rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2.5 text-[12px] leading-5">
+              <div className="truncate font-medium text-neutral-900">
                 {pendingRemovalParentName ? (
-                  <span className="text-slate-400">{pendingRemovalParentName} / </span>
+                  <span className="text-neutral-400">{pendingRemovalParentName} / </span>
                 ) : null}
                 {pendingRemoval.name}
               </div>
               {pendingRemoval.path &&
               pendingRemoval.sourceKind !== "database" &&
               pendingRemoval.sourceKind !== "asset" ? (
-                <div className="truncate text-slate-500">{pendingRemoval.path}</div>
+                <div className="truncate text-neutral-500">{pendingRemoval.path}</div>
               ) : null}
             </div>
             <div className="mt-4 space-y-3 text-[13px] leading-5">
               <div>
-                <div className="font-medium text-slate-950">{t("deleteDetails.deletedTitle")}</div>
+                <div className="font-medium text-neutral-950">{t("deleteDetails.deletedTitle")}</div>
                 <div className="mt-1 text-rose-400">{pendingRemovalDeletedDescription}</div>
               </div>
               {!isWorkspaceFolderChild(pendingRemoval) ? (
                 <div>
-                  <div className="font-medium text-slate-950">{t("deleteDetails.keptTitle")}</div>
-                  <div className="mt-1 text-slate-600">{pendingRemovalKeptDescription}</div>
+                  <div className="font-medium text-neutral-950">{t("deleteDetails.keptTitle")}</div>
+                  <div className="mt-1 text-neutral-600">{pendingRemovalKeptDescription}</div>
                 </div>
               ) : null}
             </div>
             <div className="mt-5 flex justify-end gap-2">
               <button
-                className="h-8 rounded-md border border-slate-200 bg-white px-3 text-[13px] text-slate-700 transition hover:bg-slate-50"
+                className="h-8 rounded-md border border-neutral-200 bg-white px-3 text-[13px] text-neutral-700 transition hover:bg-neutral-50"
                 onClick={() => setPendingRemoval(undefined)}
               >
                 {t("actions.cancel")}
               </button>
               <button
-                className="h-8 rounded-md bg-slate-950 px-3 text-[13px] font-medium text-white transition hover:bg-slate-800"
+                className="h-8 rounded-md bg-neutral-950 px-3 text-[13px] font-medium text-white transition hover:bg-neutral-800"
                 onClick={() => {
                   const project = pendingRemoval;
                   setPendingRemoval(undefined);

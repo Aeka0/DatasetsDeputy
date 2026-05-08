@@ -465,6 +465,9 @@ interface DatasetState {
   ) => Promise<void>;
   saveAnnotationChanges: (changes: AnnotationChange[]) => Promise<void>;
   createAnnotationProfile: (name: string) => Promise<number | undefined>;
+  renameAnnotationProfile: (profileId: number, newName: string) => Promise<void>;
+  duplicateAnnotationProfile: (profileId: number, newName: string) => Promise<void>;
+  deleteAnnotationProfile: (profileId: number) => Promise<void>;
   clearAnnotation: (annotationId: number) => Promise<void>;
 }
 
@@ -1982,6 +1985,61 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
       )
     }));
     return profileId;
+  },
+  renameAnnotationProfile: async (profileId, newName) => {
+    if (hasTauriRuntime()) {
+      await invokeCommand("rename_annotation_profile", { profileId, newName });
+      const profiles = await invokeCommand<AnnotationProfile[]>("list_annotation_profiles");
+      set({ profiles });
+    } else {
+      set((current) => ({
+        profiles: current.profiles.map((p) =>
+          p.id === profileId ? { ...p, name: newName.trim() } : p
+        )
+      }));
+    }
+  },
+  duplicateAnnotationProfile: async (profileId, newName) => {
+    if (hasTauriRuntime()) {
+      await invokeCommand("duplicate_annotation_profile", { profileId, newName });
+      const [images, profiles] = await Promise.all([
+        invokeCommand<DatasetImage[]>("list_images"),
+        invokeCommand<AnnotationProfile[]>("list_annotation_profiles")
+      ]);
+      set((current) => ({
+        images,
+        profiles,
+        projects: createProjectTree(images),
+        selectedImageId: current.selectedImageId,
+        previewImageId: current.previewImageId,
+        selectedProjectId: current.selectedProjectId
+      }));
+    }
+  },
+  deleteAnnotationProfile: async (profileId) => {
+    if (hasTauriRuntime()) {
+      await invokeCommand("delete_annotation_profile", { profileId });
+      const [images, profiles] = await Promise.all([
+        invokeCommand<DatasetImage[]>("list_images"),
+        invokeCommand<AnnotationProfile[]>("list_annotation_profiles")
+      ]);
+      set((current) => ({
+        images,
+        profiles,
+        projects: createProjectTree(images),
+        selectedImageId: current.selectedImageId,
+        previewImageId: current.previewImageId,
+        selectedProjectId: current.selectedProjectId
+      }));
+    } else {
+      set((current) => ({
+        profiles: current.profiles.filter((p) => p.id !== profileId),
+        images: current.images.map((image) => ({
+          ...image,
+          annotations: image.annotations.filter((a) => a.profileId !== profileId)
+        }))
+      }));
+    }
   },
   clearAnnotation: async (annotationId) => {
     const selectedImageId = get().selectedImageId;

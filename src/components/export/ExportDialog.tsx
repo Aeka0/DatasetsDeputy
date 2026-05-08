@@ -168,24 +168,24 @@ export function ExportDialog() {
   };
 
   return createPortal(
-    <div className="no-drag fixed inset-0 z-50 flex items-center justify-center bg-slate-950/18 px-5">
+    <div className="no-drag fixed inset-0 z-50 flex items-center justify-center bg-neutral-950/18 px-5">
       <section
-        className="flex w-full max-w-[520px] flex-col overflow-hidden rounded-lg border border-slate-200 bg-white shadow-[0_24px_72px_rgba(15,23,42,0.22)]"
+        className="flex w-full max-w-[520px] flex-col overflow-hidden rounded-lg border border-neutral-200 bg-white shadow-[0_24px_72px_rgba(23,23,23,0.22)]"
         role="dialog"
         aria-modal="true"
       >
-        <header className="flex h-14 shrink-0 items-center justify-between gap-3 border-b border-slate-200 px-5">
+        <header className="flex h-14 shrink-0 items-center justify-between gap-3 border-b border-neutral-200 px-5">
           <div className="flex min-w-0 flex-1 items-center gap-3">
-            <h2 className="m-0 shrink-0 text-[15px] font-semibold text-slate-950">
+            <h2 className="m-0 shrink-0 text-[15px] font-semibold text-neutral-950">
               {t("export.title")}
             </h2>
-            <div className="min-w-0 flex-1 truncate rounded-md border border-slate-200 bg-slate-50 px-2.5 py-1.5 font-mono text-[12px] leading-4 text-slate-600">
+            <div className="min-w-0 flex-1 truncate rounded-md border border-neutral-200 bg-neutral-50 px-2.5 py-1.5 font-mono text-[12px] leading-4 text-neutral-600">
               {getDatasetScopeLabel(selectedProject, selectedProjectTrail, t("export.noDataset"))}
             </div>
           </div>
           <button
             type="button"
-            className="no-drag inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-slate-500 transition hover:bg-slate-100 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-45"
+            className="no-drag inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-neutral-500 transition hover:bg-neutral-100 hover:text-neutral-900 disabled:cursor-not-allowed disabled:opacity-45"
             aria-label={t("menu.close")}
             title={t("menu.close")}
             disabled={isExporting}
@@ -195,10 +195,10 @@ export function ExportDialog() {
           </button>
         </header>
 
-        <div className="space-y-3 bg-slate-50/42 p-5">
-          <section className="rounded-lg border border-slate-200 bg-white">
+        <div className="space-y-3 bg-neutral-50/42 p-5">
+          <section className="rounded-lg border border-neutral-200 bg-white">
             <div className="grid min-h-12 grid-cols-[112px_minmax(0,1fr)] items-center gap-3 px-4 py-3">
-              <div className="text-[13px] font-semibold text-slate-900">
+              <div className="text-[13px] font-semibold text-neutral-900">
                 {t("export.outputPath")}
               </div>
               <button
@@ -207,20 +207,20 @@ export function ExportDialog() {
                 disabled={isExporting}
                 onClick={() => void chooseOutputDir()}
               >
-                <FolderOpen size={14} className="shrink-0 text-slate-400" />
+                <FolderOpen size={14} className="shrink-0 text-neutral-400" />
                 <span className="min-w-0 flex-1 truncate">
                   {outputDir || t("export.chooseOutputPath")}
                 </span>
               </button>
             </div>
-            <div className="grid min-h-12 grid-cols-[112px_minmax(0,1fr)] items-center gap-3 border-t border-slate-100 px-4 py-3">
-              <div className="text-[13px] font-semibold text-slate-900">
+            <div className="grid min-h-12 grid-cols-[112px_minmax(0,1fr)] items-center gap-3 border-t border-neutral-100 px-4 py-3">
+              <div className="text-[13px] font-semibold text-neutral-900">
                 {t("export.profile")}
               </div>
               <div className="relative">
                 <button
                   type="button"
-                  className="glass-input no-drag flex h-8 w-full items-center gap-2 px-2.5 text-left text-[13px] disabled:cursor-not-allowed disabled:text-slate-400"
+                  className="glass-input no-drag flex h-8 w-full items-center gap-2 px-2.5 text-left text-[13px] disabled:cursor-not-allowed disabled:text-neutral-400"
                   disabled={isFolderDataset || isExporting}
                   onClick={() => setProfileMenuOpen((open) => !open)}
                 >
@@ -229,7 +229,7 @@ export function ExportDialog() {
                       ? t("export.folderProfile")
                       : selectedProfile?.name ?? "-"}
                   </span>
-                  <ChevronDown size={14} className="shrink-0 text-slate-400" />
+                  <ChevronDown size={14} className="shrink-0 text-neutral-400" />
                 </button>
                 {profileMenuOpen && !isFolderDataset ? (
                   <div className="app-dropdown-menu no-drag absolute left-0 top-9 z-[70] w-full rounded-lg py-2">
@@ -240,7 +240,7 @@ export function ExportDialog() {
                         <button
                           key={profile.id}
                           type="button"
-                          className="app-dropdown-item flex h-9 w-full items-center gap-2 px-3.5 text-left text-[13px] font-medium text-slate-700 transition hover:bg-slate-100"
+                          className="app-dropdown-item flex h-9 w-full items-center gap-2 px-3.5 text-left text-[13px] font-medium text-neutral-700 transition hover:bg-neutral-100"
                           onClick={() => {
                             setSelectedProfileId(profile.id);
                             setProfileMenuOpen(false);
@@ -259,34 +259,34 @@ export function ExportDialog() {
             </div>
           </section>
 
-          <section className="rounded-lg border border-slate-200 bg-white px-4 py-3 text-[13px]">
-            <div className="grid gap-2 text-slate-600">
+          <section className="rounded-lg border border-neutral-200 bg-white px-4 py-3 text-[13px]">
+            <div className="grid gap-2 text-neutral-600">
               <div className="flex justify-between gap-4">
                 <span>{t("export.finalOutputPath")}</span>
-                <span className="min-w-0 truncate text-right text-slate-900">
+                <span className="min-w-0 truncate text-right text-neutral-900">
                   {exportPreview?.outputDir ?? "-"}
                 </span>
               </div>
               <div className="flex justify-between gap-4">
                 <span>{t("export.estimatedSize")}</span>
-                <span className="text-slate-900">
+                <span className="text-neutral-900">
                   {formatBytes(exportPreview?.estimatedSizeBytes)}
                 </span>
               </div>
               <div className="flex justify-between gap-4">
                 <span>{t("export.imageCount")}</span>
-                <span className="text-slate-900">{exportPreview?.imageCount ?? "-"}</span>
+                <span className="text-neutral-900">{exportPreview?.imageCount ?? "-"}</span>
               </div>
               <div className="flex justify-between gap-4">
                 <span>{t("export.annotationCount")}</span>
-                <span className="text-slate-900">{exportPreview?.annotationCount ?? "-"}</span>
+                <span className="text-neutral-900">{exportPreview?.annotationCount ?? "-"}</span>
               </div>
             </div>
           </section>
 
           {exportProgress ? (
-            <section className="rounded-lg border border-slate-200 bg-white px-4 py-3">
-              <div className="mb-2 flex justify-between text-[12px] text-slate-600">
+            <section className="rounded-lg border border-neutral-200 bg-white px-4 py-3">
+              <div className="mb-2 flex justify-between text-[12px] text-neutral-600">
                 <span>
                   {exportProgress.done
                     ? t("export.progressDone")
@@ -294,13 +294,13 @@ export function ExportDialog() {
                 </span>
                 <span>{progressPercent}%</span>
               </div>
-              <div className="h-2 overflow-hidden rounded-full bg-slate-100">
+              <div className="h-2 overflow-hidden rounded-full bg-neutral-100">
                 <div
-                  className="h-full rounded-full bg-slate-900 transition-all"
+                  className="h-full rounded-full bg-neutral-900 transition-all"
                   style={{ width: `${progressPercent}%` }}
                 />
               </div>
-              <div className="mt-2 text-[12px] text-slate-500">
+              <div className="mt-2 text-[12px] text-neutral-500">
                 {t("export.progressCount", {
                   processed: exportProgress.processed,
                   total: exportProgress.total
@@ -318,7 +318,7 @@ export function ExportDialog() {
           <div className="flex justify-end gap-2 pt-1">
             <button
               type="button"
-              className="no-drag h-8 rounded-md border border-slate-200 bg-white px-3 text-[13px] text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+              className="no-drag h-8 rounded-md border border-neutral-200 bg-white px-3 text-[13px] text-neutral-600 transition hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-50"
               disabled={isExporting}
               onClick={closeExportDialog}
             >
@@ -326,7 +326,7 @@ export function ExportDialog() {
             </button>
             <button
               type="button"
-              className="no-drag h-8 rounded-md border border-slate-900 bg-slate-900 px-3 text-[13px] font-medium text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+              className="no-drag h-8 rounded-md border border-neutral-900 bg-neutral-900 px-3 text-[13px] font-medium text-white transition hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-50"
               disabled={!request || isExporting || Boolean(error)}
               onClick={() => void startExport()}
             >

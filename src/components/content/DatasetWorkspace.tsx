@@ -1,15 +1,21 @@
 import {
   Check,
   ChevronDown,
+  Clock,
+  Copy,
+  Ellipsis,
   FolderOpen,
   Grid3X3,
+  HardDrive,
   ImageIcon,
   ImagePlus,
   Info,
   Pencil,
+  Plus,
   RefreshCw,
   Search,
   Table2,
+  Trash2,
   X
 } from "lucide-react";
 import type { MouseEvent as ReactMouseEvent } from "react";
@@ -42,32 +48,11 @@ type ImageContextMenuState = {
 };
 
 const tabs: Array<{ id: WorkspaceTab; labelKey: string; icon: typeof Info }> = [
-  { id: "overview", labelKey: "workspace.overview", icon: Info },
   { id: "grid", labelKey: "workspace.grid", icon: Grid3X3 },
-  { id: "table", labelKey: "workspace.table", icon: Table2 }
+  { id: "table", labelKey: "workspace.table", icon: Table2 },
+  { id: "overview", labelKey: "workspace.overview", icon: Info }
 ];
 
-const folderImageImportCopy = {
-  button: "导入图片",
-  title: "确认导入图片",
-  targetFolder: "目标文件夹",
-  sourceLocation: "原始图片位置",
-  assetStorage: "资产库存储",
-  databaseNote: "仅加入数据库索引，不移动或复制原文件。",
-  assetNote: "图片会复制到应用资产库，原路径仅作为导入记录保留。",
-  assetStorageValue: "应用受管资产库",
-  imageCount: "图片数量",
-  annotationCount: "检测到标注",
-  instructionCount: "检测到指令",
-  annotationType: "导入标注类型",
-  noProfiles: "当前数据集没有可用的标注类型。",
-  cancel: "取消",
-  confirm: "确认导入",
-  importing: "正在导入...",
-  unsupported: "导入图片仅支持数据集子文件夹。",
-  selectFailed: "选择图片失败",
-  importFailed: "导入图片失败"
-};
 
 function isVirtualProjectRoot(project: DatasetProject | undefined) {
   return (
@@ -210,35 +195,6 @@ function createViewFilterImageIds({
     .map((image) => image.id);
 }
 
-function PropertyRow({
-  label,
-  value,
-  mono,
-  action
-}: {
-  label: string;
-  value: string | number;
-  mono?: boolean;
-  action?: React.ReactNode;
-}) {
-  return (
-    <div className="flex min-h-[28px] items-center gap-3 text-[13px]">
-      <dt className="w-[86px] shrink-0 text-slate-500">{label}</dt>
-      <dd className={cn("m-0 min-w-0 truncate text-slate-900", mono && "font-mono text-[12px]")}>
-        {value}
-      </dd>
-      {action ? <span className="inline-flex h-6 items-center">{action}</span> : null}
-    </div>
-  );
-}
-
-function SectionHeader({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="mb-1 mt-4 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.06em] text-slate-400 first:mt-0">
-      {children}
-    </div>
-  );
-}
 
 function getDirectoryFromPath(path: string) {
   return path.replace(/\\/g, "/").replace(/\/[^/]*$/, "");
@@ -287,44 +243,45 @@ function FolderImageImportDialog({
   onClose: () => void;
   onConfirm: () => void;
 }) {
+  const { t } = useTranslation();
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const needsProfile = preview.annotationCount > 0 || preview.instructionCount > 0;
   const canImport = preview.imageCount > 0 && (!needsProfile || selectedProfileId !== undefined);
   const selectedProfile = profiles.find((profile) => profile.id === selectedProfileId);
   const locationLabel =
     sourceKind === "database"
-      ? folderImageImportCopy.sourceLocation
+      ? t("folderImport.sourceLocation")
       : sourceKind === "asset"
-      ? folderImageImportCopy.assetStorage
-      : folderImageImportCopy.targetFolder;
+      ? t("folderImport.assetStorage")
+      : t("folderImport.targetFolder");
   const locationValue =
     sourceKind === "database"
       ? getCommonPath(preview.imagePaths)
       : sourceKind === "asset"
-      ? folderImageImportCopy.assetStorageValue
+      ? t("folderImport.assetStorageValue")
       : preview.targetFolderPath;
   const locationNote =
     sourceKind === "database"
-      ? folderImageImportCopy.databaseNote
+      ? t("folderImport.databaseNote")
       : sourceKind === "asset"
-      ? folderImageImportCopy.assetNote
+      ? t("folderImport.assetNote")
       : "";
 
   return createPortal(
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/25 px-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-neutral-950/25 px-4">
       <div
-        className="no-drag w-full max-w-lg rounded-lg border border-slate-200 bg-white shadow-xl"
+        className="no-drag w-full max-w-lg rounded-lg border border-neutral-200 bg-white shadow-xl"
         role="dialog"
         aria-modal="true"
       >
-        <div className="flex h-12 items-center justify-between border-b border-slate-100 px-4">
-          <div className="flex items-center gap-2 text-[14px] font-semibold text-slate-900">
+        <div className="flex h-12 items-center justify-between border-b border-neutral-100 px-4">
+          <div className="flex items-center gap-2 text-[14px] font-semibold text-neutral-900">
             <ImagePlus size={17} />
-            {folderImageImportCopy.title}
+            {t("folderImport.title")}
           </div>
           <button
             type="button"
-            className="inline-flex h-8 w-8 items-center justify-center rounded-md text-slate-500 transition hover:bg-slate-100 hover:text-slate-900"
+            className="inline-flex h-8 w-8 items-center justify-center rounded-md text-neutral-500 transition hover:bg-neutral-100 hover:text-neutral-900"
             onClick={onClose}
             disabled={isImporting}
           >
@@ -334,51 +291,51 @@ function FolderImageImportDialog({
 
         <div className="space-y-4 px-4 py-4 text-[13px]">
           <section>
-            <div className="font-medium text-slate-600">{locationLabel}</div>
-            <div className="mt-2 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 font-mono text-[12px] leading-5 text-slate-700">
+            <div className="font-medium text-neutral-600">{locationLabel}</div>
+            <div className="mt-2 rounded-md border border-neutral-200 bg-neutral-50 px-3 py-2 font-mono text-[12px] leading-5 text-neutral-700">
               {locationValue}
             </div>
             {locationNote ? (
-              <div className="mt-1 text-[12px] leading-5 text-slate-500">{locationNote}</div>
+              <div className="mt-1 text-[12px] leading-5 text-neutral-500">{locationNote}</div>
             ) : null}
           </section>
 
           <section className="grid grid-cols-3 gap-3">
-            <div className="rounded-md border border-slate-200 bg-white p-3">
-              <div className="text-[22px] font-semibold leading-7 text-slate-950">
+            <div className="rounded-md border border-neutral-200 bg-white p-3">
+              <div className="text-[22px] font-semibold leading-7 text-neutral-950">
                 {preview.imageCount}
               </div>
-              <div className="mt-1 text-slate-500">{folderImageImportCopy.imageCount}</div>
+              <div className="mt-1 text-neutral-500">{t("folderImport.imageCount")}</div>
             </div>
-            <div className="rounded-md border border-slate-200 bg-white p-3">
-              <div className="text-[22px] font-semibold leading-7 text-slate-950">
+            <div className="rounded-md border border-neutral-200 bg-white p-3">
+              <div className="text-[22px] font-semibold leading-7 text-neutral-950">
                 {preview.annotationCount}
               </div>
-              <div className="mt-1 text-slate-500">{folderImageImportCopy.annotationCount}</div>
+              <div className="mt-1 text-neutral-500">{t("folderImport.annotationCount")}</div>
             </div>
-            <div className="rounded-md border border-slate-200 bg-white p-3">
-              <div className="text-[22px] font-semibold leading-7 text-slate-950">
+            <div className="rounded-md border border-neutral-200 bg-white p-3">
+              <div className="text-[22px] font-semibold leading-7 text-neutral-950">
                 {preview.instructionCount}
               </div>
-              <div className="mt-1 text-slate-500">{folderImageImportCopy.instructionCount}</div>
+              <div className="mt-1 text-neutral-500">{t("folderImport.instructionCount")}</div>
             </div>
           </section>
 
           <section>
-            <label className="block font-medium text-slate-600">
-              {folderImageImportCopy.annotationType}
+            <label className="block font-medium text-neutral-600">
+              {t("folderImport.annotationType")}
             </label>
             <div className="relative mt-2">
               <button
                 type="button"
-                className="glass-input no-drag flex h-9 w-full items-center gap-2 px-3 text-left text-[13px] disabled:cursor-not-allowed disabled:text-slate-400"
+                className="glass-input no-drag flex h-9 w-full items-center gap-2 px-3 text-left text-[13px] disabled:cursor-not-allowed disabled:text-neutral-400"
                 disabled={profiles.length === 0 || isImporting}
                 onClick={() => setProfileMenuOpen((open) => !open)}
               >
                 <span className="min-w-0 flex-1 truncate">
-                  {selectedProfile?.name ?? folderImageImportCopy.noProfiles}
+                  {selectedProfile?.name ?? t("folderImport.noProfiles")}
                 </span>
-                <ChevronDown size={15} className="shrink-0 text-slate-400" />
+                <ChevronDown size={15} className="shrink-0 text-neutral-400" />
               </button>
               {profileMenuOpen ? (
                 <div className="app-dropdown-menu no-drag absolute left-0 top-10 z-[70] w-full rounded-lg py-2">
@@ -389,7 +346,7 @@ function FolderImageImportDialog({
                       <button
                         key={profile.id}
                         type="button"
-                        className="app-dropdown-item flex h-9 w-full items-center gap-2 px-3.5 text-left text-[13px] font-medium text-slate-700 transition hover:bg-slate-100"
+                        className="app-dropdown-item flex h-9 w-full items-center gap-2 px-3.5 text-left text-[13px] font-medium text-neutral-700 transition hover:bg-neutral-100"
                         onClick={() => {
                           onProfileChange(profile.id);
                           setProfileMenuOpen(false);
@@ -407,7 +364,7 @@ function FolderImageImportDialog({
             </div>
             {profiles.length === 0 ? (
               <div className="mt-1 text-[12px] text-red-600">
-                {folderImageImportCopy.noProfiles}
+                {t("folderImport.noProfiles")}
               </div>
             ) : null}
           </section>
@@ -415,23 +372,23 @@ function FolderImageImportDialog({
           {error ? <div className="rounded-md bg-red-50 px-3 py-2 text-red-700">{error}</div> : null}
         </div>
 
-        <div className="flex justify-end gap-2 border-t border-slate-100 px-4 py-3">
+        <div className="flex justify-end gap-2 border-t border-neutral-100 px-4 py-3">
           <button
             type="button"
-            className="inline-flex h-9 items-center rounded-md border border-slate-200 bg-white px-3 text-[13px] text-slate-600 transition hover:bg-slate-50 disabled:opacity-50"
+            className="inline-flex h-9 items-center rounded-md border border-neutral-200 bg-white px-3 text-[13px] text-neutral-600 transition hover:bg-neutral-50 disabled:opacity-50"
             onClick={onClose}
             disabled={isImporting}
           >
-            {folderImageImportCopy.cancel}
+            {t("folderImport.cancel")}
           </button>
           <button
             type="button"
-            className="inline-flex h-9 items-center gap-2 rounded-md border border-slate-900 bg-slate-900 px-3 text-[13px] font-medium text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+            className="inline-flex h-9 items-center gap-2 rounded-md border border-neutral-900 bg-neutral-900 px-3 text-[13px] font-medium text-white transition hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-50"
             onClick={onConfirm}
             disabled={!canImport || isImporting}
           >
             <ImagePlus size={15} />
-            {isImporting ? folderImageImportCopy.importing : folderImageImportCopy.confirm}
+            {isImporting ? t("folderImport.importing") : t("folderImport.confirm")}
           </button>
         </div>
       </div>
@@ -460,16 +417,16 @@ function ImageRenameDialog({
   const { t } = useTranslation();
 
   return createPortal(
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/25 px-4">
-      <div className="no-drag w-full max-w-sm rounded-lg border border-slate-200 bg-white shadow-xl">
-        <div className="flex h-12 items-center justify-between border-b border-slate-100 px-4">
-          <div className="flex items-center gap-2 text-[14px] font-semibold text-slate-900">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-neutral-950/25 px-4">
+      <div className="no-drag w-full max-w-sm rounded-lg border border-neutral-200 bg-white shadow-xl">
+        <div className="flex h-12 items-center justify-between border-b border-neutral-100 px-4">
+          <div className="flex items-center gap-2 text-[14px] font-semibold text-neutral-900">
             <Pencil size={16} />
             {t("itemMenu.renameTitle")}
           </div>
           <button
             type="button"
-            className="inline-flex h-8 w-8 items-center justify-center rounded-md text-slate-500 transition hover:bg-slate-100 hover:text-slate-900"
+            className="inline-flex h-8 w-8 items-center justify-center rounded-md text-neutral-500 transition hover:bg-neutral-100 hover:text-neutral-900"
             onClick={onClose}
             disabled={isSaving}
           >
@@ -477,7 +434,7 @@ function ImageRenameDialog({
           </button>
         </div>
         <div className="px-4 py-4">
-          <label className="block text-[13px] font-medium text-slate-600">
+          <label className="block text-[13px] font-medium text-neutral-600">
             {t("itemMenu.nameLabel")}
           </label>
           <input
@@ -497,10 +454,10 @@ function ImageRenameDialog({
           />
           {error ? <div className="mt-2 text-[12px] text-red-600">{error}</div> : null}
         </div>
-        <div className="flex justify-end gap-2 border-t border-slate-100 px-4 py-3">
+        <div className="flex justify-end gap-2 border-t border-neutral-100 px-4 py-3">
           <button
             type="button"
-            className="inline-flex h-9 items-center rounded-md border border-slate-200 bg-white px-3 text-[13px] text-slate-600 transition hover:bg-slate-50 disabled:opacity-50"
+            className="inline-flex h-9 items-center rounded-md border border-neutral-200 bg-white px-3 text-[13px] text-neutral-600 transition hover:bg-neutral-50 disabled:opacity-50"
             onClick={onClose}
             disabled={isSaving}
           >
@@ -508,7 +465,7 @@ function ImageRenameDialog({
           </button>
           <button
             type="button"
-            className="inline-flex h-9 items-center rounded-md border border-slate-900 bg-slate-900 px-3 text-[13px] font-medium text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+            className="inline-flex h-9 items-center rounded-md border border-neutral-900 bg-neutral-900 px-3 text-[13px] font-medium text-white transition hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-50"
             onClick={onConfirm}
             disabled={!value.trim() || isSaving}
           >
@@ -554,24 +511,24 @@ function ImageDeleteDialog({
     : t("itemMenu.keptDatabaseImage");
 
   return createPortal(
-    <div className="no-drag fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/24 px-4">
-      <div className="w-full max-w-[420px] rounded-lg border border-slate-200 bg-white p-5 shadow-xl">
-        <h2 className="m-0 text-[15px] font-semibold leading-6 text-slate-950">
+    <div className="no-drag fixed inset-0 z-[60] flex items-center justify-center bg-neutral-950/24 px-4">
+      <div className="w-full max-w-[420px] rounded-lg border border-neutral-200 bg-white p-5 shadow-xl">
+        <h2 className="m-0 text-[15px] font-semibold leading-6 text-neutral-950">
           {t("itemMenu.deleteTitle")}
         </h2>
-        <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-[12px] leading-5">
-          <div className="truncate font-medium text-slate-900">{image.fileName}</div>
-          <div className="truncate text-slate-500">{image.path}</div>
+        <div className="mt-3 rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2.5 text-[12px] leading-5">
+          <div className="truncate font-medium text-neutral-900">{image.fileName}</div>
+          <div className="truncate text-neutral-500">{image.path}</div>
         </div>
         <div className="mt-4 space-y-3 text-[13px] leading-5">
           <div>
-            <div className="font-medium text-slate-950">{t("deleteDetails.deletedTitle")}</div>
+            <div className="font-medium text-neutral-950">{t("deleteDetails.deletedTitle")}</div>
             <div className="mt-1 text-rose-400">{deletedDescription}</div>
           </div>
           {!isFolderImage ? (
             <div>
-              <div className="font-medium text-slate-950">{t("deleteDetails.keptTitle")}</div>
-              <div className="mt-1 text-slate-600">{keptDescription}</div>
+              <div className="font-medium text-neutral-950">{t("deleteDetails.keptTitle")}</div>
+              <div className="mt-1 text-neutral-600">{keptDescription}</div>
             </div>
           ) : null}
         </div>
@@ -579,7 +536,7 @@ function ImageDeleteDialog({
         <div className="mt-5 flex justify-end gap-2">
           <button
             type="button"
-            className="h-8 rounded-md border border-slate-200 bg-white px-3 text-[13px] text-slate-700 transition hover:bg-slate-50 disabled:opacity-50"
+            className="h-8 rounded-md border border-neutral-200 bg-white px-3 text-[13px] text-neutral-700 transition hover:bg-neutral-50 disabled:opacity-50"
             onClick={onClose}
             disabled={isDeleting}
           >
@@ -587,7 +544,7 @@ function ImageDeleteDialog({
           </button>
           <button
             type="button"
-            className="h-8 rounded-md bg-slate-950 px-3 text-[13px] font-medium text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+            className="h-8 rounded-md bg-neutral-950 px-3 text-[13px] font-medium text-white transition hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-50"
             onClick={onConfirm}
             disabled={isDeleting}
           >
@@ -605,84 +562,540 @@ function DatasetOverview({
   selectedProject,
   profiles,
   isCheckingProblemItems,
-  checkProblemItems
+  checkProblemItems,
+  createAnnotationProfile,
+  renameAnnotationProfile,
+  duplicateAnnotationProfile,
+  deleteAnnotationProfile,
+  addAppLog
 }: {
   images: DatasetImage[];
   selectedProject: DatasetProject | undefined;
   profiles: AnnotationProfile[];
   isCheckingProblemItems: boolean;
   checkProblemItems: (project?: DatasetProject) => Promise<unknown>;
+  createAnnotationProfile: (name: string) => Promise<number | undefined>;
+  renameAnnotationProfile: (profileId: number, newName: string) => Promise<void>;
+  duplicateAnnotationProfile: (profileId: number, newName: string) => Promise<void>;
+  deleteAnnotationProfile: (profileId: number) => Promise<void>;
+  addAppLog: (message: string, level?: "info" | "warning" | "error") => void;
 }) {
   const { t } = useTranslation();
+  const [isCreatingProfile, setIsCreatingProfile] = useState(false);
+  const [newProfileName, setNewProfileName] = useState("");
+  const [createProfileError, setCreateProfileError] = useState("");
+  const [isSubmittingProfile, setIsSubmittingProfile] = useState(false);
+
+  const [profileMenuId, setProfileMenuId] = useState<number>();
+  const [renamingProfileId, setRenamingProfileId] = useState<number>();
+  const [renameValue, setRenameValue] = useState("");
+  const [renameError, setRenameError] = useState("");
+  const [isRenaming, setIsRenaming] = useState(false);
+  const [deletingProfile, setDeletingProfile] = useState<{ id: number; name: string }>();
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
+
+  useEffect(() => {
+    if (profileMenuId === undefined) return;
+    const close = () => setProfileMenuId(undefined);
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") close();
+    };
+    window.addEventListener("mousedown", close);
+    window.addEventListener("keydown", closeOnEscape);
+    return () => {
+      window.removeEventListener("mousedown", close);
+      window.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [profileMenuId]);
+
   const totalSize = images.reduce((sum, image) => sum + (image.fileSize ?? 0), 0);
-  const annotatedImages = images.filter((image) =>
-    image.annotations.some((annotation) => annotation.content.trim())
-  ).length;
   const problemItems = images.filter((image) => image.sourceMissing).length;
   const canCheckProblemItems =
     Boolean(selectedProject?.datasetId) &&
     !["asset-database-group", "database-group", "workspace-folder-group"].includes(
       selectedProject?.id ?? ""
     );
-  const profileById = new Map(profiles.map((profile) => [profile.id, profile.name]));
-  const annotationTypeNames = Array.from(
-    new Set(
-      images.flatMap((image) =>
-        image.annotations.map(
-          (annotation) => profileById.get(annotation.profileId) ?? `#${annotation.profileId}`
-        )
+  const canManageProfiles =
+    Boolean(selectedProject?.datasetId) &&
+    selectedProject?.sourceKind !== "folder" &&
+    !isVirtualProjectRoot(selectedProject);
+  const imageProfileIds = new Set(
+    images.flatMap((image) => image.annotations.map((annotation) => annotation.profileId))
+  );
+  const imageDatasetIds = new Set(images.map((image) => image.datasetId).filter(Boolean));
+  if (selectedProject?.datasetId) {
+    imageDatasetIds.add(selectedProject.datasetId);
+  }
+
+  const matchedProfiles = profiles.filter(
+    (profile) =>
+      imageProfileIds.has(profile.id) ||
+      (profile.datasetId !== undefined && imageDatasetIds.has(profile.datasetId))
+  );
+  const matchedProfileIds = new Set(matchedProfiles.map((profile) => profile.id));
+  const inferredProfiles: AnnotationProfile[] = Array.from(imageProfileIds)
+    .filter((profileId) => !matchedProfileIds.has(profileId))
+    .map((profileId) => ({
+      id: profileId,
+      name: `#${profileId}`,
+      datasetId: selectedProject?.datasetId
+    }));
+  const overviewProfiles = [...matchedProfiles, ...inferredProfiles];
+  const annotationTypeStats = overviewProfiles.map((profile) => ({
+    id: profile.id,
+    name: profile.name,
+    annotatedCount: images.filter((image) =>
+      image.annotations.some(
+        (annotation) => annotation.profileId === profile.id && annotation.content.trim()
       )
-    )
-  ).join(", ");
+    ).length
+  }));
   const latestUpdate = images
     .map((image) => image.updatedAt)
     .filter(Boolean)
     .sort()
     .at(-1);
 
+  const avgCompletion =
+    annotationTypeStats.length > 0 && images.length > 0
+      ? annotationTypeStats.reduce(
+          (sum, s) => sum + s.annotatedCount / images.length,
+          0
+        ) / annotationTypeStats.length
+      : 0;
+  const avgCompleteness =
+    avgCompletion >= 1
+      ? "100"
+      : (Math.floor(avgCompletion * 1000) / 10).toFixed(1);
+
+  const trimmedNewProfileName = newProfileName.trim();
+  const normalizedNewProfileName = trimmedNewProfileName.toLocaleLowerCase();
+  const newProfileNameExists = profiles.some(
+    (profile) =>
+      profile.datasetId === selectedProject?.datasetId &&
+      profile.name.trim().toLocaleLowerCase() === normalizedNewProfileName
+  );
+  const newProfileError =
+    newProfileNameExists ? t("image.profileNameExists") : createProfileError;
+
+  const trimmedRenameValue = renameValue.trim();
+  const renameNameExists =
+    trimmedRenameValue.toLocaleLowerCase() !== "" &&
+    profiles.some(
+      (profile) =>
+        profile.id !== renamingProfileId &&
+        profile.datasetId === selectedProject?.datasetId &&
+        profile.name.trim().toLocaleLowerCase() === trimmedRenameValue.toLocaleLowerCase()
+    );
+
+  const handleCreateProfile = async () => {
+    if (!trimmedNewProfileName || newProfileNameExists || isSubmittingProfile) return;
+    setIsSubmittingProfile(true);
+    setCreateProfileError("");
+    try {
+      await createAnnotationProfile(trimmedNewProfileName);
+      setIsCreatingProfile(false);
+      setNewProfileName("");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : t("image.createTypeFailed");
+      setCreateProfileError(message);
+      addAppLog(`创建标注类型失败：${message}`, "error");
+    } finally {
+      setIsSubmittingProfile(false);
+    }
+  };
+
+  const handleRenameProfile = async () => {
+    if (!trimmedRenameValue || renameNameExists || isRenaming || !renamingProfileId) return;
+    setIsRenaming(true);
+    setRenameError("");
+    try {
+      await renameAnnotationProfile(renamingProfileId, trimmedRenameValue);
+      setRenamingProfileId(undefined);
+      setRenameValue("");
+    } catch (error) {
+      setRenameError(error instanceof Error ? error.message : t("image.createTypeFailed"));
+    } finally {
+      setIsRenaming(false);
+    }
+  };
+
+  const handleDuplicateProfile = async (profileId: number, sourceName: string) => {
+    setProfileMenuId(undefined);
+    let copyName = `${sourceName} copy`;
+    let counter = 2;
+    const existingNames = new Set(
+      profiles.map((p) => p.name.trim().toLocaleLowerCase())
+    );
+    while (existingNames.has(copyName.toLocaleLowerCase())) {
+      copyName = `${sourceName} copy ${counter}`;
+      counter += 1;
+    }
+    try {
+      await duplicateAnnotationProfile(profileId, copyName);
+      addAppLog(`已复制标注类型「${sourceName}」为「${copyName}」`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "未知错误";
+      addAppLog(`复制标注类型失败：${message}`, "error");
+    }
+  };
+
+  const handleDeleteProfile = async () => {
+    if (!deletingProfile || isDeleting) return;
+    setIsDeleting(true);
+    setDeleteError("");
+    try {
+      await deleteAnnotationProfile(deletingProfile.id);
+      addAppLog(`已删除标注类型「${deletingProfile.name}」`);
+      setDeletingProfile(undefined);
+    } catch (error) {
+      setDeleteError(error instanceof Error ? error.message : "未知错误");
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
   return (
     <div className="min-h-0 flex-1 overflow-auto px-1.5 pb-4">
-      <div className="max-w-[540px]">
-        <SectionHeader>{t("workspace.dataset")}</SectionHeader>
-        <dl className="space-y-0.5">
-          <PropertyRow label={t("workspace.name")} value={selectedProject?.name ?? "-"} />
-          {selectedProject?.sourceKind === "folder" ? (
-            <PropertyRow label={t("workspace.path")} value={selectedProject.path} mono />
-          ) : null}
-          <PropertyRow
-            label={t("workspace.latestUpdate")}
-            value={latestUpdate ? new Date(latestUpdate).toLocaleString() : "-"}
-          />
-        </dl>
+      <div className="max-w-[720px] py-2 px-1">
+        <div className="mb-8">
+          <h3 className="m-0 text-[24px] font-semibold leading-8 tracking-tight text-neutral-950">
+            {selectedProject?.name ?? "-"}
+          </h3>
+          
+          <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-2 text-[12px] text-neutral-500">
+            {selectedProject?.sourceKind === "folder" ? (
+              <div className="flex min-w-0 items-center gap-1.5">
+                <FolderOpen size={14} className="shrink-0 text-neutral-400" />
+                <span className="truncate font-mono">{selectedProject.path}</span>
+              </div>
+            ) : null}
+            <div className="flex shrink-0 items-center gap-1.5">
+              <HardDrive size={14} className="text-neutral-400" />
+              <span>{formatBytes(totalSize)}</span>
+            </div>
+            <div className="flex shrink-0 items-center gap-1.5">
+              <Clock size={14} className="text-neutral-400" />
+              <span>{latestUpdate ? new Date(latestUpdate).toLocaleString() : "-"}</span>
+            </div>
+          </div>
+        </div>
 
-        <div className="my-3 h-px bg-slate-200/70" />
-
-        <SectionHeader>{t("workspace.statistics")}</SectionHeader>
-        <dl className="space-y-0.5">
-          <PropertyRow label={t("workspace.imageCount")} value={images.length.toLocaleString()} />
-          <PropertyRow label={t("workspace.annotated")} value={`${annotatedImages} / ${images.length}`} />
-          <PropertyRow
-            label={t("workspace.problemItems")}
-            value={problemItems.toLocaleString()}
-            action={
-              <button
-                type="button"
-                className="no-drag inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-slate-500 transition hover:bg-slate-100 hover:text-slate-900 disabled:cursor-wait disabled:opacity-50"
-                disabled={isCheckingProblemItems || !canCheckProblemItems}
-                onClick={() => void checkProblemItems(selectedProject)}
-                title={t("workspace.checkProblemItems")}
+        <div className="flex items-center gap-6">
+          <div className="flex items-baseline gap-1.5">
+            <span className="text-[20px] font-semibold tabular-nums text-neutral-950">
+              {images.length.toLocaleString()}
+            </span>
+            <span className="text-[12px] text-neutral-500">{t("workspace.imageCount")}</span>
+          </div>
+          <div className="flex items-baseline gap-1.5">
+            <span className="text-[20px] font-semibold tabular-nums text-neutral-950">
+              {avgCompleteness}%
+            </span>
+            <span className="text-[12px] text-neutral-500">
+              {t("workspace.annotationCompleteness")}
+            </span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <div className="flex items-baseline gap-1.5">
+              <span
+                className={cn(
+                  "text-[20px] font-semibold tabular-nums",
+                  problemItems > 0 ? "text-orange-600" : "text-neutral-950"
+                )}
               >
-                <RefreshCw
-                  size={14}
-                  className={cn(isCheckingProblemItems && "animate-spin")}
-                />
-              </button>
-            }
-          />
-          <PropertyRow label={t("workspace.annotationTypes")} value={annotationTypeNames || "-"} />
-          <PropertyRow label={t("workspace.fileSize")} value={formatBytes(totalSize)} />
-        </dl>
+                {problemItems.toLocaleString()}
+              </span>
+              <span className="text-[12px] text-neutral-500">{t("workspace.problemItems")}</span>
+            </div>
+            <button
+              type="button"
+              className="no-drag ml-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded text-neutral-400 transition hover:bg-neutral-100 hover:text-neutral-900 disabled:cursor-wait disabled:opacity-50"
+              disabled={isCheckingProblemItems || !canCheckProblemItems}
+              onClick={() => void checkProblemItems(selectedProject)}
+              title={t("workspace.checkProblemItems")}
+            >
+              <RefreshCw
+                size={13}
+                className={cn(isCheckingProblemItems && "animate-spin")}
+              />
+            </button>
+          </div>
+        </div>
+
+        <div className="mt-8">
+          <div className="mb-3 text-[11px] font-medium uppercase tracking-[0.06em] text-neutral-400">
+            {t("workspace.annotationTypesCount", { count: annotationTypeStats.length })}
+          </div>
+          {annotationTypeStats.length > 0 ? (
+            <div className="-mx-2 border-t border-neutral-200/70">
+              {annotationTypeStats.map((profile) => {
+                const completion =
+                  images.length > 0 ? profile.annotatedCount / images.length : 0;
+                const pct =
+                  completion >= 1
+                    ? "100"
+                    : (Math.floor(completion * 1000) / 10).toFixed(1);
+                const isMenuOpen = profileMenuId === profile.id;
+                const isBeingRenamed = renamingProfileId === profile.id;
+
+                return (
+                  <div 
+                    key={profile.id} 
+                    className="group relative flex items-center gap-4 border-b border-neutral-100/70 px-2 py-2.5 transition-colors hover:bg-neutral-50/50"
+                  >
+                    {isBeingRenamed ? (
+                      <div className="flex min-w-0 flex-1 items-center gap-2">
+                        <input
+                          value={renameValue}
+                          onChange={(e) => {
+                            setRenameValue(e.target.value);
+                            setRenameError("");
+                          }}
+                          className="glass-input h-7 min-w-0 flex-1 px-2 text-[13px]"
+                          autoFocus
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              e.preventDefault();
+                              void handleRenameProfile();
+                            }
+                            if (e.key === "Escape") {
+                              setRenamingProfileId(undefined);
+                              setRenameError("");
+                            }
+                          }}
+                          disabled={isRenaming}
+                        />
+                        <button
+                          type="button"
+                          className="no-drag inline-flex h-7 items-center rounded-md border border-neutral-200 bg-white px-2 text-[12px] font-medium text-neutral-700 transition hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-50"
+                          disabled={!trimmedRenameValue || renameNameExists || isRenaming}
+                          onClick={() => void handleRenameProfile()}
+                        >
+                          {t("actions.save")}
+                        </button>
+                        <button
+                          type="button"
+                          className="no-drag inline-flex h-7 w-7 items-center justify-center rounded-md text-neutral-400 transition hover:bg-neutral-100 hover:text-neutral-900"
+                          onClick={() => {
+                            setRenamingProfileId(undefined);
+                            setRenameError("");
+                          }}
+                          disabled={isRenaming}
+                        >
+                          <X size={14} />
+                        </button>
+                        {(renameError || renameNameExists) ? (
+                          <span className="text-[12px] text-red-600">
+                            {renameNameExists ? t("image.profileNameExists") : renameError}
+                          </span>
+                        ) : null}
+                      </div>
+                    ) : (
+                      <>
+                        <span className="w-[140px] shrink-0 truncate text-[13px] font-medium text-neutral-600 transition-colors group-hover:text-neutral-900">
+                          {profile.name}
+                        </span>
+                        <div className="h-1 w-36 shrink-0 overflow-hidden rounded-full bg-neutral-100">
+                          <div
+                            className="h-full rounded-full bg-neutral-400 transition-all duration-500 group-hover:bg-neutral-500"
+                            style={{ width: `${pct}%` }}
+                          />
+                        </div>
+                        <span className="w-[72px] shrink-0 text-right text-[12px] tabular-nums text-neutral-500">
+                          {profile.annotatedCount.toLocaleString()}
+                          <span className="text-neutral-400">
+                            /{images.length.toLocaleString()}
+                          </span>
+                        </span>
+                        <span className="w-12 shrink-0 text-right text-[12px] font-medium tabular-nums text-neutral-700">
+                          {pct}%
+                        </span>
+                        {canManageProfiles ? (
+                          <div className="relative">
+                            <button
+                              type="button"
+                              className={cn(
+                                "no-drag inline-flex h-6 w-6 items-center justify-center rounded text-neutral-400 transition hover:bg-neutral-100 hover:text-neutral-900",
+                                isMenuOpen ? "bg-neutral-100 text-neutral-900" : "opacity-0 group-hover:opacity-100"
+                              )}
+                              onMouseDown={(e) => e.stopPropagation()}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setProfileMenuId(isMenuOpen ? undefined : profile.id);
+                              }}
+                            >
+                              <Ellipsis size={15} />
+                            </button>
+                            {isMenuOpen ? (
+                              <div
+                                className="app-dropdown-menu no-drag absolute right-0 top-8 z-50 min-w-[148px] rounded-lg py-1.5"
+                                onMouseDown={(e) => e.stopPropagation()}
+                              >
+                                <div className="app-dropdown-backdrop" />
+                                <button
+                                  type="button"
+                                  className="app-dropdown-item flex h-8 w-full items-center gap-2.5 px-3 text-left text-[12px] font-medium text-neutral-700 transition hover:bg-neutral-100"
+                                  onClick={() => {
+                                    setProfileMenuId(undefined);
+                                    setRenamingProfileId(profile.id);
+                                    setRenameValue(profile.name);
+                                    setRenameError("");
+                                  }}
+                                >
+                                  <Pencil size={13} />
+                                  {t("workspace.renameAnnotationType")}
+                                </button>
+                                <button
+                                  type="button"
+                                  className="app-dropdown-item flex h-8 w-full items-center gap-2.5 px-3 text-left text-[12px] font-medium text-neutral-700 transition hover:bg-neutral-100"
+                                  onClick={() =>
+                                    void handleDuplicateProfile(profile.id, profile.name)
+                                  }
+                                >
+                                  <Copy size={13} />
+                                  {t("workspace.duplicateAnnotationType")}
+                                </button>
+                                <div className="app-dropdown-separator my-1 h-px bg-neutral-200" />
+                                <button
+                                  type="button"
+                                  className="app-dropdown-item flex h-8 w-full items-center gap-2.5 px-3 text-left text-[12px] font-medium text-red-600 transition hover:bg-neutral-100"
+                                  onClick={() => {
+                                    setProfileMenuId(undefined);
+                                    setDeletingProfile({
+                                      id: profile.id,
+                                      name: profile.name
+                                    });
+                                    setDeleteError("");
+                                  }}
+                                >
+                                  <Trash2 size={13} />
+                                  {t("workspace.deleteAnnotationType")}
+                                </button>
+                              </div>
+                            ) : null}
+                          </div>
+                        ) : null}
+                      </>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          ) : null}
+          {canManageProfiles ? (
+            <div className="mt-2 -mx-2">
+              {isCreatingProfile ? (
+                <div className="flex items-center gap-2 px-2 py-1.5">
+                  <input
+                    value={newProfileName}
+                    onChange={(event) => {
+                      setNewProfileName(event.target.value);
+                      setCreateProfileError("");
+                    }}
+                    className="glass-input h-7 min-w-0 flex-1 px-2 text-[13px]"
+                    placeholder={t("image.newTypeName")}
+                    autoFocus
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") {
+                        event.preventDefault();
+                        void handleCreateProfile();
+                      }
+                      if (event.key === "Escape") {
+                        setIsCreatingProfile(false);
+                        setNewProfileName("");
+                        setCreateProfileError("");
+                      }
+                    }}
+                    disabled={isSubmittingProfile}
+                  />
+                  <button
+                    type="button"
+                    className="no-drag inline-flex h-7 items-center rounded-md border border-neutral-200 bg-white px-2 text-[12px] font-medium text-neutral-700 transition hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-50"
+                    disabled={
+                      !trimmedNewProfileName || newProfileNameExists || isSubmittingProfile
+                    }
+                    onClick={() => void handleCreateProfile()}
+                  >
+                    {t("image.createType")}
+                  </button>
+                  <button
+                    type="button"
+                    className="no-drag inline-flex h-7 w-7 items-center justify-center rounded-md text-neutral-400 transition hover:bg-neutral-100 hover:text-neutral-900"
+                    onClick={() => {
+                      setIsCreatingProfile(false);
+                      setNewProfileName("");
+                      setCreateProfileError("");
+                    }}
+                    disabled={isSubmittingProfile}
+                  >
+                    <X size={14} />
+                  </button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  className="no-drag flex h-8 items-center gap-1.5 rounded-md px-2 text-[12px] text-neutral-500 transition hover:bg-neutral-50/50 hover:text-neutral-900"
+                  onClick={() => {
+                    setIsCreatingProfile(true);
+                    setNewProfileName("");
+                    setCreateProfileError("");
+                  }}
+                >
+                  <Plus size={14} />
+                  <span>{t("workspace.addAnnotationType")}</span>
+                </button>
+              )}
+              {newProfileError ? (
+                <div className="px-2 pt-1 text-[12px] text-red-600">{newProfileError}</div>
+              ) : null}
+            </div>
+          ) : null}
+        </div>
       </div>
+
+      {deletingProfile
+        ? createPortal(
+            <div className="no-drag fixed inset-0 z-[60] flex items-center justify-center bg-neutral-950/24 px-4">
+              <div className="w-full max-w-[400px] rounded-lg border border-neutral-200 bg-white p-5 shadow-xl">
+                <h2 className="m-0 text-[15px] font-semibold leading-6 text-neutral-950">
+                  {t("workspace.deleteAnnotationTypeTitle")}
+                </h2>
+                <div className="mt-3 rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2.5 text-[13px] font-medium text-neutral-900">
+                  {deletingProfile.name}
+                </div>
+                <p className="mt-3 text-[13px] leading-5 text-neutral-600">
+                  {t("workspace.deleteAnnotationTypeDescription")}
+                </p>
+                {deleteError ? (
+                  <div className="mt-3 text-[12px] text-red-600">{deleteError}</div>
+                ) : null}
+                <div className="mt-5 flex justify-end gap-2">
+                  <button
+                    type="button"
+                    className="h-8 rounded-md border border-neutral-200 bg-white px-3 text-[13px] text-neutral-700 transition hover:bg-neutral-50 disabled:opacity-50"
+                    onClick={() => setDeletingProfile(undefined)}
+                    disabled={isDeleting}
+                  >
+                    {t("actions.cancel")}
+                  </button>
+                  <button
+                    type="button"
+                    className="h-8 rounded-md bg-neutral-950 px-3 text-[13px] font-medium text-white transition hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-50"
+                    onClick={() => void handleDeleteProfile()}
+                    disabled={isDeleting}
+                  >
+                    {isDeleting
+                      ? t("itemMenu.deleting")
+                      : t("workspace.confirmDeleteAnnotationType")}
+                  </button>
+                </div>
+              </div>
+            </div>,
+            document.body
+          )
+        : null}
     </div>
   );
 }
@@ -711,6 +1124,10 @@ export function DatasetWorkspace() {
     refreshImages,
     addAppLog,
     checkProblemItems,
+    createAnnotationProfile,
+    renameAnnotationProfile,
+    duplicateAnnotationProfile,
+    deleteAnnotationProfile,
     selectImage,
     renameDatasetImage,
     deleteDatasetImage
@@ -737,6 +1154,10 @@ export function DatasetWorkspace() {
       refreshImages: state.refreshImages,
       addAppLog: state.addAppLog,
       checkProblemItems: state.checkProblemItems,
+      createAnnotationProfile: state.createAnnotationProfile,
+      renameAnnotationProfile: state.renameAnnotationProfile,
+      duplicateAnnotationProfile: state.duplicateAnnotationProfile,
+      deleteAnnotationProfile: state.deleteAnnotationProfile,
       selectImage: state.selectImage,
       renameDatasetImage: state.renameDatasetImage,
       deleteDatasetImage: state.deleteDatasetImage
@@ -772,6 +1193,10 @@ export function DatasetWorkspace() {
   const visibleImages = useMemo(
     () => getVisibleImages(images, selectedProject, search, viewFilterMode, viewFilterImageIds),
     [images, search, selectedProject, viewFilterImageIds, viewFilterMode]
+  );
+  const overviewImages = useMemo(
+    () => getVisibleImages(images, selectedProject, "", viewFilterMode, viewFilterImageIds),
+    [images, selectedProject, viewFilterImageIds, viewFilterMode]
   );
   const projectImageCount = useMemo(
     () => getProjectImages(images, selectedProject).length,
@@ -946,14 +1371,18 @@ export function DatasetWorkspace() {
       setFolderImportPreview(preview);
       setFolderImportProfileId(defaultProfileId);
       addAppLog(
-        `图片导入预览完成：选择 ${preview.imageCount} 张图片，检测到 ${preview.annotationCount} 份标注和 ${preview.instructionCount} 份指令。`
+        t("folderImport.previewDone", {
+          imageCount: preview.imageCount,
+          annotationCount: preview.annotationCount,
+          instructionCount: preview.instructionCount
+        })
       );
     } catch (error) {
       const payload = error as { code?: string };
       if (payload.code !== "dialog_cancelled") {
         const message = formatAppError(error);
-        setFolderImportError(`${folderImageImportCopy.selectFailed}：${message}`);
-        addAppLog(`${folderImageImportCopy.selectFailed}：${message}`, "error");
+        setFolderImportError(`${t("folderImport.selectFailed")}：${message}`);
+        addAppLog(`${t("folderImport.selectFailed")}：${message}`, "error");
       }
     } finally {
       setIsPreparingFolderImport(false);
@@ -974,13 +1403,19 @@ export function DatasetWorkspace() {
       });
       await refreshImages();
       addAppLog(
-        `图片导入完成：导入 ${summary.imported} 张，跳过 ${summary.skipped} 张，失败 ${summary.failed} 张；导入标注 ${summary.annotationCount} 份，指令 ${summary.instructionCount} 份。`
+        t("folderImport.importDone", {
+          imported: summary.imported,
+          skipped: summary.skipped,
+          failed: summary.failed,
+          annotationCount: summary.annotationCount,
+          instructionCount: summary.instructionCount
+        })
       );
       setFolderImportPreview(undefined);
     } catch (error) {
       const message = formatAppError(error);
-      setFolderImportError(`${folderImageImportCopy.importFailed}：${message}`);
-      addAppLog(`${folderImageImportCopy.importFailed}：${message}`, "error");
+      setFolderImportError(`${t("folderImport.importFailed")}：${message}`);
+      addAppLog(`${t("folderImport.importFailed")}：${message}`, "error");
     } finally {
       setIsImportingImages(false);
     }
@@ -988,13 +1423,13 @@ export function DatasetWorkspace() {
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="mb-3 flex min-h-11 items-center gap-3 border-b border-slate-100 px-1.5 pb-3 pt-0.5">
+      <div className="mb-3 flex min-h-11 items-center gap-3 border-b border-neutral-100 px-1.5 pb-3 pt-0.5">
         <div className="min-w-0 flex-1">
-          <h2 className="m-0 flex min-w-0 items-center gap-2 text-[14px] text-slate-900">
-            <FolderOpen size={16} className="shrink-0 text-slate-500" />
+          <h2 className="m-0 flex min-w-0 items-center gap-2 text-[14px] text-neutral-900">
+            <FolderOpen size={16} className="shrink-0 text-neutral-500" />
             <span className="min-w-0 flex-1 truncate leading-5">
               {titlePathPrefix ? (
-                <span className="font-normal text-slate-500">{titlePathPrefix}</span>
+                <span className="font-normal text-neutral-500">{titlePathPrefix}</span>
               ) : null}
               <span className="font-semibold">{selectedProject?.name}</span>
             </span>
@@ -1003,7 +1438,7 @@ export function DatasetWorkspace() {
                 "shrink-0 rounded-full px-2 py-0.5 text-[11px] font-normal",
                 visibleProblemItemCount > 0
                   ? "bg-orange-100 text-orange-700"
-                  : "bg-slate-100 text-slate-500"
+                  : "bg-neutral-100 text-neutral-500"
               )}
             >
               {visibleProblemItemCount > 0
@@ -1011,7 +1446,7 @@ export function DatasetWorkspace() {
                 : t("toolbar.datasetCount", { count: visibleImages.length })}
             </span>
             {selectedVisibleImageCount > 0 ? (
-              <span className="shrink-0 rounded-full bg-slate-900 px-2 py-0.5 text-[11px] font-normal text-white">
+              <span className="shrink-0 rounded-full bg-neutral-900 px-2 py-0.5 text-[11px] font-normal text-white">
                 {t("toolbar.selectedCount", { count: selectedVisibleImageCount })}
               </span>
             ) : null}
@@ -1019,33 +1454,42 @@ export function DatasetWorkspace() {
         </div>
         <button
           type="button"
-          className="no-drag inline-flex h-8 shrink-0 items-center gap-2 rounded-md border border-slate-200 bg-white px-3 text-[13px] font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+          className="no-drag inline-flex h-8 shrink-0 items-center gap-2 rounded-md border border-neutral-200 bg-white px-3 text-[13px] font-medium text-neutral-700 transition hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-50"
           onClick={() => void prepareFolderImageImport()}
           disabled={!canImportImagesToFolder || isPreparingFolderImport}
           title={
             canImportImagesToFolder
-              ? folderImageImportCopy.button
-              : folderImageImportCopy.unsupported
+              ? t("folderImport.button")
+              : t("folderImport.unsupported")
           }
         >
           <ImagePlus size={15} />
-          <span>{folderImageImportCopy.button}</span>
+          <span>{t("folderImport.button")}</span>
         </button>
         <div className="relative w-72">
           <Search
-            className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
-            size={17}
+            className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400"
+            size={15}
           />
           <input
             value={search}
             onChange={(event) => setSearch(event.target.value)}
-            className="glass-input h-8 w-full pl-9 pr-3 text-[13px] placeholder:text-slate-400"
+            className="glass-input h-8 w-full pl-9 pr-8 text-[13px] placeholder:text-neutral-400"
             placeholder={t("toolbar.searchPlaceholder")}
           />
+          {search ? (
+            <button
+              type="button"
+              className="absolute right-2 top-1/2 -translate-y-1/2 inline-flex h-5 w-5 items-center justify-center rounded text-neutral-400 transition hover:text-neutral-700"
+              onClick={() => setSearch("")}
+            >
+              <X size={14} />
+            </button>
+          ) : null}
         </div>
       </div>
 
-      <div className="mb-3 flex items-center gap-1 border-b border-slate-100 px-1.5">
+      <div className="mb-3 flex items-center gap-1 border-b border-neutral-100 px-1.5">
         {tabs.map((tab) => {
           const Icon = tab.icon;
           const isActive = activeTab === tab.id;
@@ -1056,8 +1500,8 @@ export function DatasetWorkspace() {
               className={cn(
                 "no-drag flex h-9 items-center gap-2 border-b-2 px-3 text-[13px] transition",
                 isActive
-                  ? "border-slate-900 text-slate-950"
-                  : "border-transparent text-slate-500 hover:text-slate-900"
+                  ? "border-neutral-900 text-neutral-950"
+                  : "border-transparent text-neutral-500 hover:text-neutral-900"
               )}
               onClick={() => setWorkspaceTab(tab.id)}
             >
@@ -1070,19 +1514,24 @@ export function DatasetWorkspace() {
 
       {activeTab === "overview" ? (
         <DatasetOverview
-          images={visibleImages}
+          images={overviewImages}
           selectedProject={selectedProject}
           profiles={profiles}
           isCheckingProblemItems={isCheckingProblemItems}
           checkProblemItems={checkProblemItems}
+          createAnnotationProfile={createAnnotationProfile}
+          renameAnnotationProfile={renameAnnotationProfile}
+          duplicateAnnotationProfile={duplicateAnnotationProfile}
+          deleteAnnotationProfile={deleteAnnotationProfile}
+          addAppLog={addAppLog}
         />
       ) : shouldShowFilterEmptyState ? (
-        <div className="flex flex-1 flex-col items-center justify-center rounded-lg border border-slate-200 bg-slate-50 p-12 text-center">
-          <ImageIcon size={44} className="mb-4 text-slate-300" />
-          <h2 className="m-0 text-xl font-semibold text-slate-900">
+        <div className="flex flex-1 flex-col items-center justify-center rounded-lg border border-neutral-200 bg-neutral-50 p-12 text-center">
+          <ImageIcon size={44} className="mb-4 text-neutral-300" />
+          <h2 className="m-0 text-xl font-semibold text-neutral-900">
             {t("workspace.noFilterMatches")}
           </h2>
-          <p className="mt-2 max-w-md text-sm text-slate-500">
+          <p className="mt-2 max-w-md text-sm text-neutral-500">
             {t("workspace.filterHiddenHint")}
           </p>
         </div>
@@ -1107,15 +1556,15 @@ export function DatasetWorkspace() {
               <div className="app-dropdown-backdrop" />
               <button
                 type="button"
-                className="app-dropdown-item flex h-9 w-full items-center px-3.5 text-left text-[12px] font-medium text-slate-700 transition hover:bg-slate-100"
+                className="app-dropdown-item flex h-9 w-full items-center px-3.5 text-left text-[12px] font-medium text-neutral-700 transition hover:bg-neutral-100"
                 onClick={() => startRenameImage(imageContextMenu.image)}
               >
                 <span>{t("itemMenu.rename")}</span>
               </button>
-              <div className="app-dropdown-separator my-1.5 h-px bg-slate-200" />
+              <div className="app-dropdown-separator my-1.5 h-px bg-neutral-200" />
               <button
                 type="button"
-                className="app-dropdown-item flex h-9 w-full items-center px-3.5 text-left text-[12px] font-medium text-slate-700 transition hover:bg-slate-100"
+                className="app-dropdown-item flex h-9 w-full items-center px-3.5 text-left text-[12px] font-medium text-neutral-700 transition hover:bg-neutral-100"
                 onClick={() => startDeleteImage(imageContextMenu.image)}
               >
                 <span>{t("itemMenu.delete")}</span>

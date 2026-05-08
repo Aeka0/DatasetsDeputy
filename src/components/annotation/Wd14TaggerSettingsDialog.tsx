@@ -91,7 +91,7 @@ export function Wd14TaggerSettingsDialog({ onClose }: Wd14TaggerSettingsDialogPr
     onChange: (value: number) => void
   ) => (
     <label className="grid grid-cols-[148px_minmax(0,1fr)_44px] items-center gap-3 px-4 py-3">
-      <span className="text-[13px] text-slate-700">{label}</span>
+      <span className="text-[13px] text-neutral-700">{label}</span>
       <input
         type="range"
         min={0}
@@ -101,7 +101,7 @@ export function Wd14TaggerSettingsDialog({ onClose }: Wd14TaggerSettingsDialogPr
         onChange={(event) => onChange(Number(event.target.value))}
         className="no-drag w-full"
       />
-      <span className="text-right text-[12px] tabular-nums text-slate-500">
+      <span className="text-right text-[12px] tabular-nums text-neutral-500">
         {value.toFixed(2)}
       </span>
     </label>
@@ -109,18 +109,18 @@ export function Wd14TaggerSettingsDialog({ onClose }: Wd14TaggerSettingsDialogPr
 
   return createPortal(
     <div
-      className="no-drag fixed inset-0 z-50 flex items-center justify-center bg-slate-950/18 px-5"
+      className="no-drag fixed inset-0 z-50 flex items-center justify-center bg-neutral-950/18 px-5"
     >
       <section
-        className="flex w-full max-w-[560px] flex-col overflow-hidden rounded-lg border border-slate-200 bg-white shadow-[0_24px_72px_rgba(15,23,42,0.22)]"
+        className="flex w-full max-w-[560px] flex-col overflow-hidden rounded-lg border border-neutral-200 bg-white shadow-[0_24px_72px_rgba(23,23,23,0.22)]"
         role="dialog"
         aria-modal="true"
         aria-labelledby="wd14-settings-title"
       >
-        <header className="flex h-14 shrink-0 items-center justify-between border-b border-slate-200 px-5">
+        <header className="flex h-14 shrink-0 items-center justify-between border-b border-neutral-200 px-5">
           <h2
             id="wd14-settings-title"
-            className="m-0 text-[15px] font-semibold text-slate-950"
+            className="m-0 text-[15px] font-semibold text-neutral-950"
           >
             {t("wd14Settings.title")}
           </h2>
@@ -136,10 +136,10 @@ export function Wd14TaggerSettingsDialog({ onClose }: Wd14TaggerSettingsDialogPr
           </Button>
         </header>
 
-        <div className="bg-slate-50/42 p-5">
-          <div className="rounded-lg border border-slate-200 bg-white">
+        <div className="bg-neutral-50/42 p-5">
+          <div className="rounded-lg border border-neutral-200 bg-white">
             <div className="divide-y divide-black/[0.06]">
-              <label className="flex min-h-10 items-center gap-2 px-4 py-2 text-[13px] text-slate-700">
+              <label className="flex min-h-10 items-center gap-2 px-4 py-2 text-[13px] text-neutral-700">
                 <input
                   type="checkbox"
                   checked={settings.wd14Tagger.addCharacterTags}
@@ -149,7 +149,7 @@ export function Wd14TaggerSettingsDialog({ onClose }: Wd14TaggerSettingsDialogPr
                 />
                 {t("wd14Settings.addCharacterTags")}
               </label>
-              <label className="flex min-h-10 items-center gap-2 px-4 py-2 text-[13px] text-slate-700">
+              <label className="flex min-h-10 items-center gap-2 px-4 py-2 text-[13px] text-neutral-700">
                 <input
                   type="checkbox"
                   checked={settings.wd14Tagger.addCopyrightTags}
@@ -159,7 +159,7 @@ export function Wd14TaggerSettingsDialog({ onClose }: Wd14TaggerSettingsDialogPr
                 />
                 {t("wd14Settings.addCopyrightTags")}
               </label>
-              <label className="flex min-h-10 items-center gap-2 px-4 py-2 text-[13px] text-slate-700">
+              <label className="flex min-h-10 items-center gap-2 px-4 py-2 text-[13px] text-neutral-700">
                 <input
                   type="checkbox"
                   checked={settings.wd14Tagger.replaceUnderscoresWithSpaces}
@@ -185,13 +185,13 @@ export function Wd14TaggerSettingsDialog({ onClose }: Wd14TaggerSettingsDialogPr
           </div>
 
           <div className="mt-4 flex items-center justify-between gap-3">
-            <div className="min-w-0 truncate text-[12px] text-slate-500">
+            <div className="min-w-0 truncate text-[12px] text-neutral-500">
               {message}
             </div>
             <div className="flex shrink-0 justify-end">
               <button
                 type="button"
-                className="no-drag h-8 rounded-md border border-slate-900 bg-slate-900 px-3 text-[13px] font-medium text-white transition hover:bg-slate-800"
+                className="no-drag h-8 rounded-md border border-neutral-900 bg-neutral-900 px-3 text-[13px] font-medium text-white transition hover:bg-neutral-800"
                 onClick={() => void save()}
               >
                 {t("actions.save")}

@@ -277,7 +277,7 @@ function SettingsSelect({ value, options, onChange, className = "" }: SettingsSe
         <span className="truncate">{selectedOption?.label}</span>
         <ChevronDown
           size={14}
-          className={`shrink-0 text-slate-400 transition ${open ? "rotate-180" : ""}`}
+          className={`shrink-0 text-neutral-400 transition ${open ? "rotate-180" : ""}`}
         />
       </button>
 
@@ -291,8 +291,8 @@ function SettingsSelect({ value, options, onChange, className = "" }: SettingsSe
               <button
                 key={option.value}
                 type="button"
-                className={`app-dropdown-item flex h-9 w-full items-center gap-2 px-3.5 text-left text-[13px] font-medium transition hover:bg-slate-100 ${
-                  selected ? "text-slate-950" : "text-slate-600"
+                className={`app-dropdown-item flex h-9 w-full items-center gap-2 px-3.5 text-left text-[13px] font-medium transition hover:bg-neutral-100 ${
+                  selected ? "text-neutral-950" : "text-neutral-600"
                 }`}
                 role="option"
                 aria-selected={selected}
@@ -765,18 +765,18 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
 
   return createPortal(
     <div
-      className="no-drag fixed inset-0 z-50 flex items-center justify-center bg-slate-950/18 px-5"
+      className="no-drag fixed inset-0 z-50 flex items-center justify-center bg-neutral-950/18 px-5"
     >
       <section
-        className="flex h-[560px] w-full max-w-[820px] overflow-hidden rounded-lg border border-slate-200 bg-white shadow-[0_24px_72px_rgba(15,23,42,0.22)]"
+        className="flex h-[560px] w-full max-w-[820px] overflow-hidden rounded-lg border border-neutral-200 bg-white shadow-[0_24px_72px_rgba(23,23,23,0.22)]"
         role="dialog"
         aria-modal="true"
         aria-labelledby="settings-title"
       >
-        <aside className="flex w-[220px] shrink-0 flex-col border-r border-slate-200 bg-slate-50/90">
-          <div className="flex h-14 items-center gap-2 border-b border-slate-200 px-4">
-            <Globe2 size={17} className="text-slate-700" />
-            <h2 id="settings-title" className="m-0 text-[15px] font-semibold text-slate-950">
+        <aside className="flex w-[220px] shrink-0 flex-col border-r border-neutral-200 bg-neutral-50/90">
+          <div className="flex h-14 items-center gap-2 border-b border-neutral-200 px-4">
+            <Globe2 size={17} className="text-neutral-700" />
+            <h2 id="settings-title" className="m-0 text-[15px] font-semibold text-neutral-950">
               {t("settings.title")}
             </h2>
           </div>
@@ -806,9 +806,9 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
         </aside>
 
         <div className="flex min-w-0 flex-1 flex-col bg-white">
-          <header className="flex h-14 shrink-0 items-center justify-between border-b border-slate-200 px-5">
+          <header className="flex h-14 shrink-0 items-center justify-between border-b border-neutral-200 px-5">
             <div className="min-w-0">
-              <div className="text-[15px] font-semibold text-slate-950">
+              <div className="text-[15px] font-semibold text-neutral-950">
                 {t(active.labelKey)}
               </div>
             </div>
@@ -825,17 +825,17 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
           </header>
 
           <div
-            className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden bg-slate-50/42 p-5"
+            className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden bg-neutral-50/42 p-5"
             style={{ scrollbarGutter: "stable" }}
           >
             {activeSection === "general" ? (
-              <div className="rounded-lg border border-slate-200 bg-white">
+              <div className="rounded-lg border border-neutral-200 bg-white">
                 <label className="flex min-h-12 items-center justify-between gap-4 px-4 py-3">
                   <div className="min-w-0">
-                    <div className="text-[13px] font-medium text-slate-900">
+                    <div className="text-[13px] font-medium text-neutral-900">
                       {t("settings.highlightCellState")}
                     </div>
-                    <div className="mt-0.5 text-[12px] text-slate-500">
+                    <div className="mt-0.5 text-[12px] text-neutral-500">
                       {t("settings.highlightCellStateDescription")}
                     </div>
                   </div>
@@ -846,12 +846,12 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
                     onChange={(event) => setHighlightCellState(event.target.checked)}
                     />
                   </label>
-                  <label className="flex min-h-12 items-center justify-between gap-4 border-t border-slate-100 px-4 py-3">
+                  <label className="flex min-h-12 items-center justify-between gap-4 border-t border-neutral-100 px-4 py-3">
                     <div className="min-w-0">
-                      <div className="text-[13px] font-medium text-slate-900">
+                      <div className="text-[13px] font-medium text-neutral-900">
                         {t("settings.autoSaveAfterAnnotation")}
                       </div>
-                      <div className="mt-0.5 text-[12px] text-slate-500">
+                      <div className="mt-0.5 text-[12px] text-neutral-500">
                         {t("settings.autoSaveAfterAnnotationDescription")}
                       </div>
                     </div>
@@ -864,13 +864,13 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
                   </label>
                 </div>
               ) : activeSection === "language" ? (
-              <div className="rounded-lg border border-slate-200 bg-white">
-                <div className="flex min-h-12 items-center justify-between gap-4 border-b border-slate-100 px-4 py-3 last:border-b-0">
+              <div className="rounded-lg border border-neutral-200 bg-white">
+                <div className="flex min-h-12 items-center justify-between gap-4 border-b border-neutral-100 px-4 py-3 last:border-b-0">
                   <div className="min-w-0">
-                    <div className="text-[13px] font-medium text-slate-900">
+                    <div className="text-[13px] font-medium text-neutral-900">
                       {t("settings.languageNative")}
                     </div>
-                    <div className="mt-0.5 text-[12px] text-slate-500">
+                    <div className="mt-0.5 text-[12px] text-neutral-500">
                       {t("settings.languageDescription")}
                     </div>
                   </div>
@@ -887,7 +887,7 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
               </div>
             ) : activeSection === "localFiles" ? (
               <div className="space-y-3">
-                <div className="flex items-center gap-1 border-b border-slate-100 px-1.5">
+                <div className="flex items-center gap-1 border-b border-neutral-100 px-1.5">
                   {[
                     { key: "environment" as const, label: t("settings.localFilesEnvironment") },
                     { key: "models" as const, label: t("settings.localFilesModels") },
@@ -901,8 +901,8 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
                         className={cn(
                           "no-drag h-9 border-b-2 px-3 text-[13px] transition",
                           isActive
-                            ? "border-slate-900 text-slate-950"
-                            : "border-transparent text-slate-500 hover:text-slate-900"
+                            ? "border-neutral-900 text-neutral-950"
+                            : "border-transparent text-neutral-500 hover:text-neutral-900"
                         )}
                         onClick={() => setActiveLocalFilesSection(item.key)}
                       >
@@ -913,14 +913,14 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
                 </div>
 
                 {activeLocalFilesSection === "environment" ? (
-                  <div className="rounded-lg border border-slate-200 bg-white">
-                    <div className="flex h-11 items-center justify-between gap-3 border-b border-slate-200 px-3">
-                      <div className="min-w-0 text-[13px] font-semibold text-slate-900">
+                  <div className="rounded-lg border border-neutral-200 bg-white">
+                    <div className="flex h-11 items-center justify-between gap-3 border-b border-neutral-200 px-3">
+                      <div className="min-w-0 text-[13px] font-semibold text-neutral-900">
                         {t("settings.pythonEnvTitle")}
                       </div>
                       <button
                         type="button"
-                        className="no-drag h-7 shrink-0 rounded-md border border-slate-300 bg-white px-2.5 text-[12px] text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                        className="no-drag h-7 shrink-0 rounded-md border border-neutral-300 bg-white px-2.5 text-[12px] text-neutral-700 transition hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-50"
                         disabled={isPythonEnvBusy}
                         onClick={() => void probePythonEnv()}
                       >
@@ -930,7 +930,7 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
 
                     <div className="py-1">
                       <div className="grid min-h-11 grid-cols-[132px_minmax(0,1fr)] items-center gap-3 px-3 py-2">
-                        <div className="text-[12px] text-slate-500">
+                        <div className="text-[12px] text-neutral-500">
                           {t("settings.pythonEnvMode")}
                         </div>
                         <SettingsSelect
@@ -946,7 +946,7 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
                       </div>
 
                       <div className="grid min-h-11 grid-cols-[132px_minmax(0,1fr)] items-center gap-3 px-3 py-2">
-                        <div className="text-[12px] text-slate-500">
+                        <div className="text-[12px] text-neutral-500">
                           {pythonEnvSettings.mode === "externalVenv"
                             ? t("settings.pythonEnvExternal")
                             : t("settings.runtimeManagedSource")}
@@ -966,7 +966,7 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
                             />
                             <button
                               type="button"
-                              className="no-drag h-8 rounded-md border border-slate-300 bg-white px-2 text-[12px] text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                              className="no-drag h-8 rounded-md border border-neutral-300 bg-white px-2 text-[12px] text-neutral-700 transition hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-50"
                               disabled={isPythonEnvBusy}
                               onClick={() => void pickPythonEnvPath()}
                             >
@@ -975,7 +975,7 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
                           </div>
                         ) : (
                           <div
-                            className="min-w-0 truncate text-[12px] text-slate-700"
+                            className="min-w-0 truncate text-[12px] text-neutral-700"
                             title={
                               pythonEnvSettings.managedPath ||
                               t("settings.runtimeManagedPathPending")
@@ -988,7 +988,7 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
                     </div>
 
                     <div>
-                      <div className="grid grid-cols-[112px_92px_120px_minmax(0,1fr)] border-b border-black/[0.06] px-3 py-2 text-[11px] font-semibold uppercase text-slate-500">
+                      <div className="grid grid-cols-[112px_92px_120px_minmax(0,1fr)] border-b border-black/[0.06] px-3 py-2 text-[11px] font-semibold uppercase text-neutral-500">
                         <div>{t("settings.pythonEnvProbeResult")}</div>
                         <div>{t("settings.pythonEnvStatus")}</div>
                         <div>{t("settings.pythonEnvPythonVersion")}</div>
@@ -996,7 +996,7 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
                       </div>
 
                       <div className="grid min-h-10 grid-cols-[112px_92px_120px_minmax(0,1fr)] items-center border-b border-black/[0.06] px-3 py-2 text-[12px]">
-                        <div className="font-medium text-slate-900">
+                        <div className="font-medium text-neutral-900">
                           {t("settings.pytorchRuntime")}
                         </div>
                         <div
@@ -1006,7 +1006,7 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
                               ? "text-emerald-700"
                               : pythonEnvProbe
                                 ? "text-amber-700"
-                                : "text-slate-500"
+                                : "text-neutral-500"
                           )}
                         >
                           {pythonEnvProbe
@@ -1015,11 +1015,11 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
                               : t("settings.runtimeUnavailable")
                             : t("settings.runtimeNotChecked")}
                         </div>
-                        <div className="min-w-0 truncate text-slate-700">
+                        <div className="min-w-0 truncate text-neutral-700">
                           {pythonEnvProbe?.torchVersion ?? "-"}
                         </div>
                         <div
-                          className="min-w-0 truncate text-slate-700"
+                          className="min-w-0 truncate text-neutral-700"
                           title={torchDeviceSummary}
                         >
                           {torchDeviceSummary}
@@ -1027,7 +1027,7 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
                       </div>
 
                       <div className="grid min-h-10 grid-cols-[112px_92px_120px_minmax(0,1fr)] items-center px-3 py-2 text-[12px]">
-                        <div className="font-medium text-slate-900">
+                        <div className="font-medium text-neutral-900">
                           {t("settings.onnxRuntime")}
                         </div>
                         <div
@@ -1037,7 +1037,7 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
                               ? "text-emerald-700"
                               : pythonEnvProbe
                                 ? "text-amber-700"
-                                : "text-slate-500"
+                                : "text-neutral-500"
                           )}
                         >
                           {pythonEnvProbe
@@ -1046,11 +1046,11 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
                               : t("settings.runtimeUnavailable")
                             : t("settings.runtimeNotChecked")}
                         </div>
-                        <div className="min-w-0 truncate text-slate-700">
+                        <div className="min-w-0 truncate text-neutral-700">
                           {pythonEnvProbe?.onnxRuntimeVersion ?? "-"}
                         </div>
                         <div
-                          className="min-w-0 truncate text-slate-700"
+                          className="min-w-0 truncate text-neutral-700"
                           title={onnxProviderSummary}
                         >
                           {onnxProviderSummary}
@@ -1061,7 +1061,7 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
                     {pythonEnvSettings.mode === "managedVenv" ? (
                       <div className="pt-2 pb-1">
                         <div className="grid grid-cols-[112px_minmax(0,180px)_96px] items-center gap-2 border-b border-black/[0.06] px-3 py-2">
-                          <div className="text-[12px] font-medium text-slate-900">
+                          <div className="text-[12px] font-medium text-neutral-900">
                             {t("settings.pytorchRuntime")}
                           </div>
                           <SettingsSelect
@@ -1078,7 +1078,7 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
                           />
                           <button
                             type="button"
-                            className="no-drag h-8 rounded-md border border-slate-900 bg-slate-900 px-2 text-[11px] font-medium text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+                            className="no-drag h-8 rounded-md border border-neutral-900 bg-neutral-900 px-2 text-[11px] font-medium text-white transition hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-50"
                             disabled={isPythonEnvBusy}
                             onClick={() => void installManagedPythonDeps()}
                           >
@@ -1086,7 +1086,7 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
                           </button>
                         </div>
                         <div className="grid grid-cols-[112px_minmax(0,180px)_96px] items-center gap-2 px-3 py-2">
-                          <div className="text-[12px] font-medium text-slate-900">
+                          <div className="text-[12px] font-medium text-neutral-900">
                             {t("settings.onnxRuntime")}
                           </div>
                           <SettingsSelect
@@ -1103,7 +1103,7 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
                           />
                           <button
                             type="button"
-                            className="no-drag h-8 rounded-md border border-slate-900 bg-slate-900 px-2 text-[11px] font-medium text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+                            className="no-drag h-8 rounded-md border border-neutral-900 bg-neutral-900 px-2 text-[11px] font-medium text-white transition hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-50"
                             disabled={isPythonEnvBusy}
                             onClick={() => void installManagedOnnxDeps()}
                           >
@@ -1113,7 +1113,7 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
                       </div>
                     ) : (
                       <div
-                        className="truncate px-3 py-2 text-[12px] text-slate-500"
+                        className="truncate px-3 py-2 text-[12px] text-neutral-500"
                         title={t("settings.runtimeExternalHint")}
                       >
                         {t("settings.runtimeExternalHint")}
@@ -1122,9 +1122,9 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
 
                     {pythonEnvProbe?.pythonPath || pythonEnvProbe?.pythonVersion ? (
                       <div className="grid grid-cols-[132px_minmax(0,1fr)] gap-3 border-t border-black/[0.06] px-3 py-2 text-[12px]">
-                        <div className="text-slate-500">{t("settings.pythonEnvPythonPath")}</div>
+                        <div className="text-neutral-500">{t("settings.pythonEnvPythonPath")}</div>
                         <div
-                          className="min-w-0 truncate text-slate-700"
+                          className="min-w-0 truncate text-neutral-700"
                           title={pythonEnvProbe.pythonPath ?? "-"}
                         >
                           {pythonEnvProbe.pythonPath ?? "-"}
@@ -1146,7 +1146,7 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
 
                     {pythonEnvMessage ? (
                       <div
-                        className="truncate border-t border-black/[0.06] px-3 py-2 text-[12px] text-slate-500"
+                        className="truncate border-t border-black/[0.06] px-3 py-2 text-[12px] text-neutral-500"
                         title={pythonEnvMessage}
                       >
                         {pythonEnvMessage}
@@ -1156,12 +1156,12 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
                 ) : null}
 
                 {activeLocalFilesSection === "models" ? (
-                  <div className="rounded-lg border border-slate-200 bg-white">
-                    <div className="flex h-11 items-center justify-between gap-3 border-b border-slate-200 px-3">
-                      <div className="min-w-0 text-[13px] font-semibold text-slate-900">
+                  <div className="rounded-lg border border-neutral-200 bg-white">
+                    <div className="flex h-11 items-center justify-between gap-3 border-b border-neutral-200 px-3">
+                      <div className="min-w-0 text-[13px] font-semibold text-neutral-900">
                         {t("settings.wd14Tagger")}
                       </div>
-                      <div className="shrink-0 text-[12px] text-slate-500">
+                      <div className="shrink-0 text-[12px] text-neutral-500">
                         {modelSettings.wd14Tagger.modelPath
                           ? t(`settings.modelType${modelSettings.wd14Tagger.modelType}`)
                           : t("settings.modelTypeUnset")}
@@ -1170,7 +1170,7 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
 
                     <div className="divide-y divide-black/[0.06]">
                       <div className="grid min-h-12 grid-cols-[132px_minmax(0,1fr)_104px] items-center gap-2 px-3 py-2">
-                        <div className="text-[12px] text-slate-500">
+                        <div className="text-[12px] text-neutral-500">
                           {t("settings.wd14ModelPath")}
                         </div>
                         <input
@@ -1181,7 +1181,7 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
                         />
                         <button
                           type="button"
-                          className="no-drag h-8 rounded-md border border-slate-300 bg-white px-2 text-[12px] text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                          className="no-drag h-8 rounded-md border border-neutral-300 bg-white px-2 text-[12px] text-neutral-700 transition hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-50"
                           disabled={isModelSettingsBusy}
                           onClick={() => void pickWd14ModelPath()}
                         >
@@ -1192,7 +1192,7 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
 
                     {modelSettingsMessage ? (
                       <div
-                        className="truncate border-t border-black/[0.06] px-3 py-2 text-[12px] text-slate-500"
+                        className="truncate border-t border-black/[0.06] px-3 py-2 text-[12px] text-neutral-500"
                         title={modelSettingsMessage}
                       >
                         {modelSettingsMessage}
@@ -1202,23 +1202,23 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
                 ) : null}
 
                 {activeLocalFilesSection === "tempFiles" ? (
-              <div className="rounded-lg border border-slate-200 bg-white">
-                <div className="flex min-h-12 items-center justify-between gap-4 border-b border-slate-100 px-4 py-3 last:border-b-0">
+              <div className="rounded-lg border border-neutral-200 bg-white">
+                <div className="flex min-h-12 items-center justify-between gap-4 border-b border-neutral-100 px-4 py-3 last:border-b-0">
                   <div className="min-w-0">
-                    <div className="text-[13px] font-medium text-slate-900">
+                    <div className="text-[13px] font-medium text-neutral-900">
                       {t("settings.thumbnailCache")}
                     </div>
-                    <div className="mt-0.5 text-[12px] text-slate-500">
+                    <div className="mt-0.5 text-[12px] text-neutral-500">
                       {t("settings.thumbnailCacheDescription")}
                     </div>
                   </div>
                   <div className="flex shrink-0 items-center gap-2">
-                    <span className="min-w-20 text-right text-[13px] font-medium text-slate-700">
+                    <span className="min-w-20 text-right text-[13px] font-medium text-neutral-700">
                       {formatBytes(thumbnailCacheInfo.sizeBytes)}
                     </span>
                     <button
                       type="button"
-                      className="no-drag h-8 rounded-md border border-slate-200 bg-white px-3 text-[13px] text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                      className="no-drag h-8 rounded-md border border-neutral-200 bg-white px-3 text-[13px] text-neutral-700 transition hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-50"
                       disabled={isTemporaryFilesBusy}
                       onClick={() => void refreshTemporaryFilesInfo()}
                     >
@@ -1226,7 +1226,7 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
                     </button>
                     <button
                       type="button"
-                      className="no-drag h-8 rounded-md border border-slate-900 bg-slate-900 px-3 text-[13px] font-medium text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+                      className="no-drag h-8 rounded-md border border-neutral-900 bg-neutral-900 px-3 text-[13px] font-medium text-white transition hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-50"
                       disabled={isTemporaryFilesBusy || thumbnailCacheInfo.sizeBytes === 0}
                       onClick={() => void clearThumbnailCache()}
                     >
@@ -1234,22 +1234,22 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
                     </button>
                   </div>
                 </div>
-                <div className="flex min-h-12 items-center justify-between gap-4 border-b border-slate-100 px-4 py-3 last:border-b-0">
+                <div className="flex min-h-12 items-center justify-between gap-4 border-b border-neutral-100 px-4 py-3 last:border-b-0">
                   <div className="min-w-0">
-                    <div className="text-[13px] font-medium text-slate-900">
+                    <div className="text-[13px] font-medium text-neutral-900">
                       {t("settings.logFiles")}
                     </div>
-                    <div className="mt-0.5 text-[12px] text-slate-500">
+                    <div className="mt-0.5 text-[12px] text-neutral-500">
                       {t("settings.logFilesDescription")}
                     </div>
                   </div>
                   <div className="flex shrink-0 items-center gap-2">
-                    <span className="min-w-20 text-right text-[13px] font-medium text-slate-700">
+                    <span className="min-w-20 text-right text-[13px] font-medium text-neutral-700">
                       {formatBytes(logFilesInfo.sizeBytes)}
                     </span>
                     <button
                       type="button"
-                      className="no-drag h-8 rounded-md border border-slate-900 bg-slate-900 px-3 text-[13px] font-medium text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+                      className="no-drag h-8 rounded-md border border-neutral-900 bg-neutral-900 px-3 text-[13px] font-medium text-white transition hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-50"
                       disabled={isTemporaryFilesBusy || logFilesInfo.sizeBytes === 0}
                       onClick={() => void clearLogFiles()}
                     >
@@ -1258,7 +1258,7 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
                   </div>
                 </div>
                 {localFilesMessage ? (
-                  <div className="px-4 py-3 text-[12px] text-slate-500">
+                  <div className="px-4 py-3 text-[12px] text-neutral-500">
                     {localFilesMessage}
                   </div>
                 ) : null}
@@ -1266,13 +1266,13 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
                 ) : null}
               </div>
             ) : activeSection === "appearance" ? (
-              <div className="rounded-lg border border-slate-200 bg-white">
-                <div className="flex min-h-12 items-center justify-between gap-4 border-b border-slate-100 px-4 py-3 last:border-b-0">
+              <div className="rounded-lg border border-neutral-200 bg-white">
+                <div className="flex min-h-12 items-center justify-between gap-4 border-b border-neutral-100 px-4 py-3 last:border-b-0">
                   <div className="min-w-0">
-                    <div className="text-[13px] font-medium text-slate-900">
+                    <div className="text-[13px] font-medium text-neutral-900">
                       {t("settings.theme")}
                     </div>
-                    <div className="mt-0.5 text-[12px] text-slate-500">
+                    <div className="mt-0.5 text-[12px] text-neutral-500">
                       {t("settings.themeDescription")}
                     </div>
                   </div>
@@ -1288,12 +1288,12 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
                     }
                   />
                 </div>
-                <div className="flex min-h-12 items-center justify-between gap-4 border-b border-slate-100 px-4 py-3 last:border-b-0">
+                <div className="flex min-h-12 items-center justify-between gap-4 border-b border-neutral-100 px-4 py-3 last:border-b-0">
                   <div className="min-w-0">
-                    <div className="text-[13px] font-medium text-slate-900">
+                    <div className="text-[13px] font-medium text-neutral-900">
                       {t("settings.bottomUiOpacity")}
                     </div>
-                    <div className="mt-0.5 text-[12px] text-slate-500">
+                    <div className="mt-0.5 text-[12px] text-neutral-500">
                       {t("settings.bottomUiOpacityDescription")}
                     </div>
                   </div>
@@ -1306,17 +1306,17 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
                       onChange={(event) => updateBottomUiOpacity(Number(event.target.value))}
                       className="no-drag w-full"
                     />
-                    <span className="w-10 text-right text-[12px] text-slate-500">
+                    <span className="w-10 text-right text-[12px] text-neutral-500">
                       {bottomUiOpacity}%
                     </span>
                   </div>
                 </div>
-                <div className="flex min-h-12 items-center justify-between gap-4 border-b border-slate-100 px-4 py-3 last:border-b-0">
+                <div className="flex min-h-12 items-center justify-between gap-4 border-b border-neutral-100 px-4 py-3 last:border-b-0">
                   <div className="min-w-0">
-                    <div className="text-[13px] font-medium text-slate-900">
+                    <div className="text-[13px] font-medium text-neutral-900">
                       {t("settings.topUiOpacity")}
                     </div>
-                    <div className="mt-0.5 text-[12px] text-slate-500">
+                    <div className="mt-0.5 text-[12px] text-neutral-500">
                       {t("settings.topUiOpacityDescription")}
                     </div>
                   </div>
@@ -1329,7 +1329,7 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
                       onChange={(event) => updateTopUiOpacity(Number(event.target.value))}
                       className="no-drag w-full"
                     />
-                    <span className="w-10 text-right text-[12px] text-slate-500">
+                    <span className="w-10 text-right text-[12px] text-neutral-500">
                       {topUiOpacity}%
                     </span>
                   </div>
@@ -1337,7 +1337,7 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
               </div>
             ) : activeSection === "network" ? (
               <div className="space-y-3">
-                <div className="flex items-center gap-1 border-b border-slate-100 px-1.5">
+                <div className="flex items-center gap-1 border-b border-neutral-100 px-1.5">
                   {[
                     { key: "gemini" as const, label: t("settings.networkGemini") },
                     { key: "proxy" as const, label: t("settings.networkProxyShort") },
@@ -1351,8 +1351,8 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
                         className={cn(
                           "no-drag h-9 border-b-2 px-3 text-[13px] transition",
                           isActive
-                            ? "border-slate-900 text-slate-950"
-                            : "border-transparent text-slate-500 hover:text-slate-900"
+                            ? "border-neutral-900 text-neutral-950"
+                            : "border-transparent text-neutral-500 hover:text-neutral-900"
                         )}
                         onClick={() => setActiveNetworkSection(item.key)}
                       >
@@ -1363,19 +1363,19 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
                 </div>
 
                 {activeNetworkSection === "gemini" ? (
-                  <div className="rounded-lg border border-slate-200 bg-white">
-                    <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-4 py-3">
+                  <div className="rounded-lg border border-neutral-200 bg-white">
+                    <div className="flex items-center justify-between gap-3 border-b border-neutral-100 px-4 py-3">
                       <div className="min-w-0">
-                        <div className="text-[13px] font-semibold text-slate-900">
+                        <div className="text-[13px] font-semibold text-neutral-900">
                           {t("settings.geminiApi")}
                         </div>
-                        <div className="mt-0.5 text-[12px] text-slate-500">
+                        <div className="mt-0.5 text-[12px] text-neutral-500">
                           {t("settings.geminiApiDescription")}
                         </div>
                       </div>
                       <button
                         type="button"
-                        className="no-drag h-8 shrink-0 rounded-md border border-slate-200 bg-white px-3 text-[13px] text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                        className="no-drag h-8 shrink-0 rounded-md border border-neutral-200 bg-white px-3 text-[13px] text-neutral-700 transition hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-50"
                         disabled={isGeminiBusy}
                         onClick={() => void runGeminiAction("test")}
                       >
@@ -1385,7 +1385,7 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
 
                     <div className="space-y-3 px-4 py-3">
                       <label className="block">
-                        <span className="mb-1 block text-[12px] font-medium text-slate-600">
+                        <span className="mb-1 block text-[12px] font-medium text-neutral-600">
                           {t("settings.geminiApiKey")}
                         </span>
                         <input
@@ -1399,7 +1399,7 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
 
                       <div className="grid grid-cols-[minmax(0,1fr)_110px] items-end gap-2">
                         <label className="block min-w-0">
-                          <span className="mb-1 block text-[12px] font-medium text-slate-600">
+                          <span className="mb-1 block text-[12px] font-medium text-neutral-600">
                             {t("settings.geminiModel")}
                           </span>
                           <SettingsSelect
@@ -1416,7 +1416,7 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
                         </label>
                         <button
                           type="button"
-                          className="no-drag h-8 rounded-md border border-slate-200 bg-white px-2 text-[12px] text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                          className="no-drag h-8 rounded-md border border-neutral-200 bg-white px-2 text-[12px] text-neutral-700 transition hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-50"
                           disabled={isGeminiBusy}
                           onClick={() => void runGeminiAction("fetch")}
                         >
@@ -1425,7 +1425,7 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
                       </div>
 
                       <label className="block">
-                        <span className="mb-1 block text-[12px] font-medium text-slate-600">
+                        <span className="mb-1 block text-[12px] font-medium text-neutral-600">
                           {t("settings.geminiRpmLimit")}
                         </span>
                         <input
@@ -1439,13 +1439,13 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
                             })
                           }
                         />
-                        <span className="mt-1 block text-[11px] text-slate-500">
+                        <span className="mt-1 block text-[11px] text-neutral-500">
                           {t("settings.geminiRpmLimitDescription")}
                         </span>
                       </label>
 
                       {geminiMessage ? (
-                        <div className="truncate text-[12px] text-slate-500">
+                        <div className="truncate text-[12px] text-neutral-500">
                           {geminiMessage}
                         </div>
                       ) : null}
@@ -1454,17 +1454,17 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
                 ) : null}
 
                 {activeNetworkSection === "proxy" ? (
-                  <div className="rounded-lg border border-slate-200 bg-white">
-                  <div className="border-b border-slate-100 px-4 py-3">
-                    <div className="text-[13px] font-semibold text-slate-900">
+                  <div className="rounded-lg border border-neutral-200 bg-white">
+                  <div className="border-b border-neutral-100 px-4 py-3">
+                    <div className="text-[13px] font-semibold text-neutral-900">
                       {t("settings.networkProxy")}
                     </div>
-                    <div className="mt-0.5 text-[12px] text-slate-500">
+                    <div className="mt-0.5 text-[12px] text-neutral-500">
                       {t("settings.networkProxyDescription")}
                     </div>
                   </div>
                   <div className="grid grid-cols-[minmax(0,1fr)_160px] gap-4 px-4 py-3">
-                    <label className="flex items-center gap-2 text-[13px] text-slate-700">
+                    <label className="flex items-center gap-2 text-[13px] text-neutral-700">
                       <input
                         type="checkbox"
                         checked={geminiSettings.useProxy}
@@ -1475,7 +1475,7 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
                       {t("settings.geminiUseProxy")}
                     </label>
                     <label className="block">
-                      <span className="mb-1 block text-[12px] font-medium text-slate-600">
+                      <span className="mb-1 block text-[12px] font-medium text-neutral-600">
                         {t("settings.geminiProxyPort")}
                       </span>
                       <input
@@ -1484,7 +1484,7 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
                         disabled={!geminiSettings.useProxy}
                         onChange={(event) => patchGeminiSettings({ proxyPort: event.target.value })}
                       />
-                      <span className="mt-1 block text-[11px] text-slate-500">
+                      <span className="mt-1 block text-[11px] text-neutral-500">
                         {t("settings.geminiProxyPortDescription")}
                       </span>
                     </label>
@@ -1493,18 +1493,18 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
                 ) : null}
 
                 {activeNetworkSection === "imageTransfer" ? (
-                  <div className="rounded-lg border border-slate-200 bg-white">
-                    <div className="border-b border-slate-100 px-4 py-3">
-                      <div className="text-[13px] font-semibold text-slate-900">
+                  <div className="rounded-lg border border-neutral-200 bg-white">
+                    <div className="border-b border-neutral-100 px-4 py-3">
+                      <div className="text-[13px] font-semibold text-neutral-900">
                         {t("settings.networkImageTransfer")}
                       </div>
-                      <div className="mt-0.5 text-[12px] text-slate-500">
+                      <div className="mt-0.5 text-[12px] text-neutral-500">
                         {t("settings.networkImageTransferDescription")}
                       </div>
                     </div>
                     <div className="grid grid-cols-2 gap-3 px-4 py-3">
                       <label className="block">
-                        <span className="mb-1 block text-[12px] font-medium text-slate-600">
+                        <span className="mb-1 block text-[12px] font-medium text-neutral-600">
                           {t("settings.geminiImageResize")}
                         </span>
                         <SettingsSelect
@@ -1520,7 +1520,7 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
                         />
                       </label>
                       <label className="block">
-                        <span className="mb-1 block text-[12px] font-medium text-slate-600">
+                        <span className="mb-1 block text-[12px] font-medium text-neutral-600">
                           {t("settings.geminiImageFormat")}
                         </span>
                         <SettingsSelect
@@ -1540,7 +1540,7 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
                 ) : null}
               </div>
             ) : (
-              <div className="h-full rounded-lg border border-dashed border-slate-200 bg-white/72" />
+              <div className="h-full rounded-lg border border-dashed border-neutral-200 bg-white/72" />
             )}
           </div>
         </div>

@@ -731,6 +731,81 @@ impl Database {
         Ok(())
     }
 
+    pub fn rename_annotation_profile(&mut self, profile_id: i64, new_name: String) -> AppResult<()> {
+        let new_name = new_name.trim().to_owned();
+        if new_name.is_empty() {
+            return Err(crate::errors::AppError::InvalidInput(
+                "Annotation profile name cannot be empty".to_owned(),
+            ));
+        }
+        let conflict: Option<i64> = self
+            .conn
+            .query_row(
+                "SELECT id FROM annotation_profiles WHERE name = ?1 COLLATE NOCASE AND id != ?2",
+                params![new_name, profile_id],
+                |row| row.get(0),
+            )
+            .optional()?;
+        if conflict.is_some() {
+            return Err(crate::errors::AppError::InvalidInput(
+                "Annotation profile name already exists".to_owned(),
+            ));
+        }
+        self.conn.execute(
+            "UPDATE annotation_profiles SET name = ?1 WHERE id = ?2",
+            params![new_name, profile_id],
+        )?;
+        Ok(())
+    }
+
+    pub fn duplicate_annotation_profile(
+        &mut self,
+        source_profile_id: i64,
+        new_name: String,
+    ) -> AppResult<i64> {
+        let new_name = new_name.trim().to_owned();
+        if new_name.is_empty() {
+            return Err(crate::errors::AppError::InvalidInput(
+                "Annotation profile name cannot be empty".to_owned(),
+            ));
+        }
+        let conflict: Option<i64> = self
+            .conn
+            .query_row(
+                "SELECT id FROM annotation_profiles WHERE name = ?1 COLLATE NOCASE",
+                params![new_name],
+                |row| row.get(0),
+            )
+            .optional()?;
+        if conflict.is_some() {
+            return Err(crate::errors::AppError::InvalidInput(
+                "Annotation profile name already exists".to_owned(),
+            ));
+        }
+        let tx = self.conn.transaction()?;
+        tx.execute(
+            "INSERT INTO annotation_profiles (name) VALUES (?1)",
+            params![new_name],
+        )?;
+        let new_profile_id = tx.last_insert_rowid();
+        tx.execute(
+            "INSERT INTO annotations (image_id, profile_id, content, instruction, confidence, created_at, updated_at)
+             SELECT image_id, ?1, content, instruction, confidence, created_at, updated_at
+             FROM annotations WHERE profile_id = ?2",
+            params![new_profile_id, source_profile_id],
+        )?;
+        tx.commit()?;
+        Ok(new_profile_id)
+    }
+
+    pub fn delete_annotation_profile(&mut self, profile_id: i64) -> AppResult<()> {
+        self.conn.execute(
+            "DELETE FROM annotation_profiles WHERE id = ?1",
+            params![profile_id],
+        )?;
+        Ok(())
+    }
+
     pub fn clear_annotation(&mut self, annotation_id: i64) -> AppResult<()> {
         let annotation: Option<(i64, i64)> = self
             .conn

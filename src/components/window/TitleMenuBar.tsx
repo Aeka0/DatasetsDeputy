@@ -786,8 +786,8 @@ export function TitleMenuBar({
               type="button"
               className={`title-menu-button h-7 rounded-md px-3 text-[12px] font-medium leading-7 transition ${
                 openMenu === menu.key
-                  ? "bg-slate-900/8 text-black"
-                  : "text-black/78 hover:bg-slate-900/6 hover:text-black"
+                  ? "bg-neutral-900/8 text-black"
+                  : "text-black/78 hover:bg-neutral-900/6 hover:text-black"
               }`}
               onClick={(event) => toggleMenu(menu.key, event.currentTarget)}
             >
@@ -809,7 +809,7 @@ export function TitleMenuBar({
             entry.type === "separator" ? (
               <div
                 key={`${openMenu}-separator-${index}`}
-                className="app-dropdown-separator my-1.5 h-px bg-slate-200/90"
+                className="app-dropdown-separator my-1.5 h-px bg-neutral-200/90"
               />
             ) : entry.type === "submenu" ? (
               <div
@@ -819,7 +819,7 @@ export function TitleMenuBar({
               >
                 <button
                   type="button"
-                  className="app-dropdown-item flex h-9 w-full items-center gap-2 px-3.5 text-left text-[12px] font-medium leading-4 text-slate-700 transition hover:bg-slate-100"
+                  className="app-dropdown-item flex h-9 w-full items-center gap-2 px-3.5 text-left text-[12px] font-medium leading-4 text-neutral-700 transition hover:bg-neutral-100"
                   onClick={() =>
                     setActiveSubmenu((current) =>
                       current === entry.label ? undefined : entry.label
@@ -828,7 +828,7 @@ export function TitleMenuBar({
                 >
                   <span className="flex w-4 shrink-0 justify-center" />
                   <span className="min-w-0 flex-1 truncate">{entry.label}</span>
-                  <ChevronRight size={14} className="shrink-0 text-slate-400" />
+                  <ChevronRight size={14} className="shrink-0 text-neutral-400" />
                 </button>
                 {activeSubmenu === entry.label ? (
                   <div className="app-dropdown-menu no-drag absolute left-[calc(100%-4px)] top-0 z-[60] min-w-[180px] rounded-lg py-2">
@@ -837,7 +837,7 @@ export function TitleMenuBar({
                       <button
                         key={subEntry.label}
                         type="button"
-                        className="app-dropdown-item flex h-9 w-full items-center gap-2 px-3.5 text-left text-[12px] font-medium leading-4 text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:text-slate-400 disabled:hover:bg-transparent"
+                        className="app-dropdown-item flex h-9 w-full items-center gap-2 px-3.5 text-left text-[12px] font-medium leading-4 text-neutral-700 transition hover:bg-neutral-100 disabled:cursor-not-allowed disabled:text-neutral-400 disabled:hover:bg-transparent"
                         disabled={subEntry.disabled}
                         onClick={() => selectAction(subEntry)}
                       >
@@ -854,7 +854,7 @@ export function TitleMenuBar({
               <button
                 key={entry.label}
                 type="button"
-                className="app-dropdown-item flex h-9 w-full items-center gap-2 px-3.5 text-left text-[12px] font-medium leading-4 text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:text-slate-400 disabled:hover:bg-transparent"
+                className="app-dropdown-item flex h-9 w-full items-center gap-2 px-3.5 text-left text-[12px] font-medium leading-4 text-neutral-700 transition hover:bg-neutral-100 disabled:cursor-not-allowed disabled:text-neutral-400 disabled:hover:bg-transparent"
                 disabled={entry.disabled}
                 onClick={() => selectAction(entry)}
               >
@@ -893,19 +893,19 @@ export function TitleMenuBar({
 
       {dialog === "about"
         ? createPortal(
-        <div className="no-drag fixed inset-0 z-50 flex items-center justify-center bg-slate-950/16">
-          <div className="w-[360px] rounded-md border border-slate-200 bg-white p-5">
-            <h2 className="m-0 text-base font-semibold text-slate-900">
+        <div className="no-drag fixed inset-0 z-50 flex items-center justify-center bg-neutral-950/16">
+          <div className="w-[360px] rounded-md border border-neutral-200 bg-white p-5">
+            <h2 className="m-0 text-base font-semibold text-neutral-900">
               Datasets Deputy
             </h2>
-            <p className="mt-3 text-sm leading-6 text-slate-600">
+            <p className="mt-3 text-sm leading-6 text-neutral-600">
               {t("menu.aboutBody")}
             </p>
-            <div className="mt-3 text-xs text-slate-400">{t("menu.version")}</div>
+            <div className="mt-3 text-xs text-neutral-400">{t("menu.version")}</div>
             <div className="mt-5 flex justify-end">
               <button
                 type="button"
-                className="rounded-md bg-slate-900 px-3 py-1.5 text-sm text-white transition hover:bg-slate-800"
+                className="rounded-md bg-neutral-900 px-3 py-1.5 text-sm text-white transition hover:bg-neutral-800"
                 onClick={() => setDialog(undefined)}
               >
                 {t("menu.close")}

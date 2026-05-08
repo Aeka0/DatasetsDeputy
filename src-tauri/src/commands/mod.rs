@@ -1809,6 +1809,50 @@ pub fn create_annotation_profile(
 }
 
 #[tauri::command]
+pub fn rename_annotation_profile(
+    state: State<'_, AppState>,
+    profile_id: i64,
+    new_name: String,
+) -> AppResult<()> {
+    let (prefix, local_profile_id) = split_public_id(profile_id)?;
+    let (mut db, _) = open_database_by_prefix(&state.dirs, prefix)?;
+    tracing::info!(
+        "重命名标注类型 profile_id={} 为 {:?}",
+        profile_id,
+        new_name
+    );
+    db.rename_annotation_profile(local_profile_id, new_name)
+}
+
+#[tauri::command]
+pub fn duplicate_annotation_profile(
+    state: State<'_, AppState>,
+    profile_id: i64,
+    new_name: String,
+) -> AppResult<i64> {
+    let (prefix, local_profile_id) = split_public_id(profile_id)?;
+    let (mut db, _) = open_database_by_prefix(&state.dirs, prefix)?;
+    tracing::info!(
+        "复制标注类型 profile_id={} 为 {:?}",
+        profile_id,
+        new_name
+    );
+    db.duplicate_annotation_profile(local_profile_id, new_name)
+        .map(|new_id| to_public_id(prefix, new_id))
+}
+
+#[tauri::command]
+pub fn delete_annotation_profile(
+    state: State<'_, AppState>,
+    profile_id: i64,
+) -> AppResult<()> {
+    let (prefix, local_profile_id) = split_public_id(profile_id)?;
+    let (mut db, _) = open_database_by_prefix(&state.dirs, prefix)?;
+    tracing::info!("删除标注类型 profile_id={}", profile_id);
+    db.delete_annotation_profile(local_profile_id)
+}
+
+#[tauri::command]
 pub fn clear_annotation(state: State<'_, AppState>, annotation_id: i64) -> AppResult<()> {
     let (prefix, local_annotation_id) = split_public_id(annotation_id)?;
     let (mut db, _) = open_database_by_prefix(&state.dirs, prefix)?;

@@ -231,7 +231,7 @@ export default function App() {
   };
 
   return (
-    <main className="fluent-shell relative flex h-screen w-screen flex-col overflow-hidden text-slate-950">
+    <main className="fluent-shell relative flex h-screen w-screen flex-col overflow-hidden text-neutral-950">
       <div
         className="app-drag-region fluent-titlebar relative z-10 flex h-10 w-full shrink-0 items-center justify-between pl-3"
         data-tauri-drag-region
@@ -254,7 +254,7 @@ export default function App() {
         {isProjectTreeCollapsed ? null : <ProjectTree />}
 
         <section className="min-w-0 flex-1 p-3">
-          <div className="app-surface relative h-full min-h-0 rounded-lg border border-slate-200 bg-white p-4">
+          <div className="app-surface relative h-full min-h-0 rounded-lg border border-neutral-200 bg-white p-4">
             <button
               type="button"
               className="no-drag absolute left-0 top-1/2 z-20 flex h-36 w-3 -translate-y-1/2 items-center justify-center rounded-r-sm text-black/38 transition hover:bg-black/[0.055] hover:text-black focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black/20"
@@ -297,44 +297,44 @@ export default function App() {
       </div>
       <ExportDialog />
       {showUnsavedExitDialog ? (
-        <div className="no-drag fixed inset-0 z-[90] flex items-center justify-center bg-slate-950/24 px-5">
+        <div className="no-drag fixed inset-0 z-[90] flex items-center justify-center bg-neutral-950/24 px-5">
           <section
-            className="flex max-h-[78vh] w-full max-w-[560px] flex-col overflow-hidden rounded-lg border border-slate-200 bg-white shadow-[0_24px_72px_rgba(15,23,42,0.24)]"
+            className="flex max-h-[78vh] w-full max-w-[560px] flex-col overflow-hidden rounded-lg border border-neutral-200 bg-white shadow-[0_24px_72px_rgba(23,23,23,0.24)]"
             role="dialog"
             aria-modal="true"
             aria-labelledby="unsaved-exit-title"
           >
-            <header className="border-b border-slate-200 px-5 py-4">
-              <h2 id="unsaved-exit-title" className="m-0 text-[15px] font-semibold text-slate-950">
+            <header className="border-b border-neutral-200 px-5 py-4">
+              <h2 id="unsaved-exit-title" className="m-0 text-[15px] font-semibold text-neutral-950">
                 {t("exitGuard.title")}
               </h2>
-              <p className="mt-1 text-[13px] text-slate-600">
+              <p className="mt-1 text-[13px] text-neutral-600">
                 {t("exitGuard.description")}
               </p>
             </header>
 
             <div className="min-h-0 flex-1 overflow-auto px-5 py-3">
-              <div className="mb-2 text-[12px] font-medium text-slate-500">
+              <div className="mb-2 text-[12px] font-medium text-neutral-500">
                 {t("exitGuard.unsavedItems", { count: unsavedExitItems.length })}
               </div>
-              <div className="max-h-72 overflow-auto rounded-md border border-slate-200">
+              <div className="max-h-72 overflow-auto rounded-md border border-neutral-200">
                 {unsavedExitItems.map((item) => (
                   <div
                     key={`${item.profileId}:${item.imageId}`}
-                    className="border-b border-slate-100 px-3 py-2 last:border-b-0"
+                    className="border-b border-neutral-100 px-3 py-2 last:border-b-0"
                   >
                     <div className="flex min-w-0 items-center gap-2">
-                      <div className="min-w-0 flex-1 truncate text-[13px] font-medium text-slate-900">
+                      <div className="min-w-0 flex-1 truncate text-[13px] font-medium text-neutral-900">
                         {item.fileName}
                       </div>
-                      <div className="max-w-[180px] shrink-0 truncate rounded bg-slate-100 px-1.5 py-0.5 text-[11px] text-slate-600">
+                      <div className="max-w-[180px] shrink-0 truncate rounded bg-neutral-100 px-1.5 py-0.5 text-[11px] text-neutral-600">
                         {item.profileName}
                       </div>
                     </div>
-                    <div className="mt-0.5 truncate text-[12px] text-slate-500">
+                    <div className="mt-0.5 truncate text-[12px] text-neutral-500">
                       {item.path}
                     </div>
-                    <div className="mt-1 text-[12px] text-slate-500">
+                    <div className="mt-1 text-[12px] text-neutral-500">
                       {item.fields
                         .map((field) => t(`exitGuard.field.${field}`))
                         .join(" / ")}
@@ -349,10 +349,10 @@ export default function App() {
               ) : null}
             </div>
 
-            <footer className="flex justify-end gap-2 border-t border-slate-200 px-5 py-4">
+            <footer className="flex justify-end gap-2 border-t border-neutral-200 px-5 py-4">
               <button
                 type="button"
-                className="no-drag h-8 rounded-md border border-slate-200 bg-white px-3 text-[13px] text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                className="no-drag h-8 rounded-md border border-neutral-200 bg-white px-3 text-[13px] text-neutral-700 transition hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-50"
                 disabled={isExitSaving}
                 onClick={() => setShowUnsavedExitDialog(false)}
               >
@@ -368,7 +368,7 @@ export default function App() {
               </button>
               <button
                 type="button"
-                className="no-drag h-8 rounded-md border border-slate-900 bg-slate-900 px-3 text-[13px] font-medium text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+                className="no-drag h-8 rounded-md border border-neutral-900 bg-neutral-900 px-3 text-[13px] font-medium text-white transition hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-50"
                 disabled={isExitSaving}
                 onClick={() => void saveAndExit()}
               >

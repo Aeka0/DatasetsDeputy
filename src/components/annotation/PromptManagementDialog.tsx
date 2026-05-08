@@ -100,19 +100,19 @@ export function PromptManagementDialog({ onClose }: PromptManagementDialogProps)
 
   return createPortal(
     <div
-      className="no-drag fixed inset-0 z-50 flex items-center justify-center bg-slate-950/18 px-5"
+      className="no-drag fixed inset-0 z-50 flex items-center justify-center bg-neutral-950/18 px-5"
     >
       <section
-        className="flex h-[600px] w-full max-w-[960px] flex-col overflow-hidden rounded-lg border border-slate-200 bg-white shadow-[0_24px_72px_rgba(15,23,42,0.22)]"
+        className="flex h-[600px] w-full max-w-[960px] flex-col overflow-hidden rounded-lg border border-neutral-200 bg-white shadow-[0_24px_72px_rgba(23,23,23,0.22)]"
         role="dialog"
         aria-modal="true"
         aria-labelledby="prompt-management-title"
       >
-        <header className="flex h-14 shrink-0 items-center justify-between border-b border-slate-200 px-5">
+        <header className="flex h-14 shrink-0 items-center justify-between border-b border-neutral-200 px-5">
           <div className="min-w-0">
             <h2
               id="prompt-management-title"
-              className="m-0 text-[15px] font-semibold text-slate-950"
+              className="m-0 text-[15px] font-semibold text-neutral-950"
             >
               {t("annotationPrompt.title")}
             </h2>
@@ -129,11 +129,11 @@ export function PromptManagementDialog({ onClose }: PromptManagementDialogProps)
           </Button>
         </header>
 
-        <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-0 bg-slate-50/42">
-          <div className="min-h-0 overflow-y-auto border-r border-slate-200 p-5">
-            <div className="rounded-lg border border-slate-200 bg-white">
-              <div className="border-b border-slate-100 px-4 py-3">
-                <div className="text-[13px] font-semibold text-slate-900">
+        <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-0 bg-neutral-50/42">
+          <div className="min-h-0 overflow-y-auto border-r border-neutral-200 p-5">
+            <div className="rounded-lg border border-neutral-200 bg-white">
+              <div className="border-b border-neutral-100 px-4 py-3">
+                <div className="text-[13px] font-semibold text-neutral-900">
                   {t("annotationPrompt.mode")}
                 </div>
               </div>
@@ -146,8 +146,8 @@ export function PromptManagementDialog({ onClose }: PromptManagementDialogProps)
                       type="button"
                       className={`no-drag h-8 rounded-md px-2 text-[13px] font-medium transition ${
                         isActive
-                          ? "bg-slate-900 text-white"
-                          : "border border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+                          ? "bg-neutral-900 text-white"
+                          : "border border-neutral-200 bg-white text-neutral-700 hover:bg-neutral-50"
                       }`}
                       onClick={() => patchSettings({ annotationMode: mode.value })}
                     >
@@ -158,9 +158,9 @@ export function PromptManagementDialog({ onClose }: PromptManagementDialogProps)
               </div>
             </div>
 
-            <div className="mt-3 rounded-lg border border-slate-200 bg-white">
-              <div className="border-b border-slate-100 px-4 py-3">
-                <div className="text-[13px] font-semibold text-slate-900">
+            <div className="mt-3 rounded-lg border border-neutral-200 bg-white">
+              <div className="border-b border-neutral-100 px-4 py-3">
+                <div className="text-[13px] font-semibold text-neutral-900">
                   {t("annotationPrompt.options")}
                 </div>
               </div>
@@ -169,7 +169,7 @@ export function PromptManagementDialog({ onClose }: PromptManagementDialogProps)
                   <label
                     key={option.key}
                     className={`flex min-h-8 items-center gap-2 text-[13px] ${
-                      isEmptyMode ? "text-slate-400" : "text-slate-700"
+                      isEmptyMode ? "text-neutral-400" : "text-neutral-700"
                     }`}
                   >
                     <input
@@ -186,9 +186,9 @@ export function PromptManagementDialog({ onClose }: PromptManagementDialogProps)
               </div>
             </div>
 
-            <div className="mt-3 rounded-lg border border-slate-200 bg-white">
-              <div className="border-b border-slate-100 px-4 py-3">
-                <div className="text-[13px] font-semibold text-slate-900">
+            <div className="mt-3 rounded-lg border border-neutral-200 bg-white">
+              <div className="border-b border-neutral-100 px-4 py-3">
+                <div className="text-[13px] font-semibold text-neutral-900">
                   {t("annotationPrompt.additional")}
                 </div>
               </div>
@@ -206,11 +206,11 @@ export function PromptManagementDialog({ onClose }: PromptManagementDialogProps)
 
           <div className="flex min-h-0 flex-col p-5">
             <div className="mb-2 flex h-8 items-center justify-between gap-3">
-              <div className="text-[13px] font-semibold text-slate-900">
+              <div className="text-[13px] font-semibold text-neutral-900">
                 {t("annotationPrompt.preview")}
               </div>
               {message ? (
-                <div className="min-w-0 truncate text-[12px] text-slate-500">{message}</div>
+                <div className="min-w-0 truncate text-[12px] text-neutral-500">{message}</div>
               ) : null}
             </div>
             <textarea

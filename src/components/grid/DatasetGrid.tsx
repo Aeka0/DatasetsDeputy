@@ -133,13 +133,13 @@ export function DatasetGrid({
                 <button
                   key={image.id}
                   className={cn(
-                    "no-drag group min-w-0 overflow-hidden rounded-lg border border-slate-200 bg-white p-1.5 text-left transition hover:border-slate-300 hover:bg-slate-50",
+                    "no-drag group min-w-0 overflow-hidden rounded-lg border border-neutral-200 bg-white p-1.5 text-left transition hover:border-neutral-300 hover:bg-neutral-50",
                     getAnnotationStateClass(image)
                   )}
                   onClick={() => openImagePreview(image.id)}
                   onContextMenu={(event) => onImageContextMenu?.(image, event)}
                 >
-                  <div className="flex aspect-square items-center justify-center overflow-hidden rounded-md bg-slate-100">
+                  <div className="flex aspect-square items-center justify-center overflow-hidden rounded-md bg-neutral-100">
                     {image.sourceMissing ? (
                       <CircleAlert size={issueIconSize} className="text-red-600" />
                     ) : image.thumbnailPath ? (
@@ -151,12 +151,12 @@ export function DatasetGrid({
                         decoding="async"
                       />
                     ) : (
-                      <ImageIcon size={30} className="text-slate-300" />
+                      <ImageIcon size={30} className="text-neutral-300" />
                     )}
                   </div>
                   <div className="px-1.5 pb-1.5 pt-2">
-                    <div className="truncate text-[13px] text-slate-800">{image.fileName}</div>
-                    <div className="mt-1 flex items-center gap-1.5 text-[12px] text-slate-500">
+                    <div className="truncate text-[13px] text-neutral-800">{image.fileName}</div>
+                    <div className="mt-1 flex items-center gap-1.5 text-[12px] text-neutral-500">
                       <Files size={12} />
                       <span className="truncate">
                         {isFolderMode

@@ -10,15 +10,15 @@ export function AnnotationLogView() {
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="mb-3 flex min-h-11 items-center justify-between border-b border-slate-100 px-1.5 pb-3 pt-0.5">
+      <div className="mb-3 flex min-h-11 items-center justify-between border-b border-neutral-100 px-1.5 pb-3 pt-0.5">
         <div>
-          <h2 className="m-0 text-[14px] font-semibold text-slate-900">
+          <h2 className="m-0 text-[14px] font-semibold text-neutral-900">
             {t("logs.title")}
           </h2>
         </div>
         <button
           type="button"
-          className="no-drag flex h-8 items-center gap-1.5 rounded-md border border-slate-200 bg-white px-3 text-[13px] text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+          className="no-drag flex h-8 items-center gap-1.5 rounded-md border border-neutral-200 bg-white px-3 text-[13px] text-neutral-700 transition hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-50"
           disabled={logs.length === 0}
           onClick={clearAppLogs}
         >
@@ -28,16 +28,16 @@ export function AnnotationLogView() {
       </div>
 
       <div
-        className="selectable-text min-h-0 flex-1 overflow-auto rounded-lg border border-slate-200 bg-white p-3 font-mono text-[12px] leading-5 text-slate-700"
+        className="selectable-text min-h-0 flex-1 overflow-auto rounded-lg border border-neutral-200 bg-white p-3 font-mono text-[12px] leading-5 text-neutral-700"
         data-native-context-menu="true"
       >
         {logs.length === 0 ? (
-          <div className="text-slate-500">{t("logs.empty")}</div>
+          <div className="text-neutral-500">{t("logs.empty")}</div>
         ) : (
           <div className="space-y-1">
             {logs.map((log) => (
               <div key={log.id} className="flex gap-3">
-                <span className="shrink-0 text-slate-400">
+                <span className="shrink-0 text-neutral-400">
                   {new Date(log.timestamp).toLocaleTimeString("en-US", { hour12: false })}
                 </span>
                 <span
