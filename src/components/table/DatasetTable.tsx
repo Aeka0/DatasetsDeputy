@@ -400,6 +400,11 @@ export function DatasetTable({
     }
   };
 
+  const saveDirtyCellsRef = useRef(saveDirtyCells);
+  saveDirtyCellsRef.current = saveDirtyCells;
+  const saveCurrentRef = useRef(saveCurrentImageDirtyCells);
+  saveCurrentRef.current = saveCurrentImageDirtyCells;
+
   useEffect(() => {
     const saveWithKeyboard = (event: KeyboardEvent) => {
       if (!(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== "s") return;
@@ -407,15 +412,15 @@ export function DatasetTable({
       event.stopPropagation();
 
       if (event.shiftKey) {
-        void saveDirtyCells();
+        void saveDirtyCellsRef.current();
       } else {
-        void saveCurrentImageDirtyCells();
+        void saveCurrentRef.current();
       }
     };
 
     window.addEventListener("keydown", saveWithKeyboard);
     return () => window.removeEventListener("keydown", saveWithKeyboard);
-  });
+  }, []);
 
   const trimmedNewProfileName = newProfileName.trim();
   const normalizedNewProfileName = trimmedNewProfileName.toLocaleLowerCase();
