@@ -16,6 +16,7 @@ import type { MouseEvent as ReactMouseEvent } from "react";
 import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
+import { useShallow } from "zustand/react/shallow";
 
 import { cn } from "../../lib/cn";
 import { formatAppError } from "../../lib/errors";
@@ -713,7 +714,34 @@ export function DatasetWorkspace() {
     selectImage,
     renameDatasetImage,
     deleteDatasetImage
-  } = useDatasetStore();
+  } = useDatasetStore(
+    useShallow((state) => ({
+      images: state.images,
+      projects: state.projects,
+      profiles: state.profiles,
+      workspaceTab: state.workspaceTab,
+      selectedProjectId: state.selectedProjectId,
+      selectedImageIds: state.selectedImageIds,
+      search: state.search,
+      viewFilterMode: state.viewFilterMode,
+      viewFilterProjectId: state.viewFilterProjectId,
+      viewFilterImageIds: state.viewFilterImageIds,
+      activeProfileId: state.activeProfileId,
+      tableDraftProfileId: state.tableDraftProfileId,
+      tableAnnotationDrafts: state.tableAnnotationDrafts,
+      tableInstructionDrafts: state.tableInstructionDrafts,
+      isCheckingProblemItems: state.isCheckingProblemItems,
+      setSearch: state.setSearch,
+      setViewFilter: state.setViewFilter,
+      setWorkspaceTab: state.setWorkspaceTab,
+      refreshImages: state.refreshImages,
+      addAppLog: state.addAppLog,
+      checkProblemItems: state.checkProblemItems,
+      selectImage: state.selectImage,
+      renameDatasetImage: state.renameDatasetImage,
+      deleteDatasetImage: state.deleteDatasetImage
+    }))
+  );
   const [folderImportPreview, setFolderImportPreview] = useState<FolderImageImportPreview>();
   const [folderImportProfileId, setFolderImportProfileId] = useState<number>();
   const [folderImportError, setFolderImportError] = useState("");

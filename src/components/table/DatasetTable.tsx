@@ -8,6 +8,7 @@ import type {
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
+import { useShallow } from "zustand/react/shallow";
 
 import { getAnnotationForProfile, getAnnotationText, getInstructionText } from "../../lib/annotations";
 import { cn } from "../../lib/cn";
@@ -109,7 +110,35 @@ export function DatasetTable({
     markTableCellSaved,
     createAnnotationProfile,
     saveAnnotationChanges
-  } = useDatasetStore();
+  } = useDatasetStore(
+    useShallow((state) => ({
+      activeProfileId: state.activeProfileId,
+      selectedImageId: state.selectedImageId,
+      selectedImageIds: state.selectedImageIds,
+      selectionAnchorImageId: state.selectionAnchorImageId,
+      tableDraftProfileId: state.tableDraftProfileId,
+      tableAnnotationDrafts: state.tableAnnotationDrafts,
+      tableInstructionDrafts: state.tableInstructionDrafts,
+      tableProfileAnnotationDrafts: state.tableProfileAnnotationDrafts,
+      tableProfileInstructionDrafts: state.tableProfileInstructionDrafts,
+      tableSavedCellKeys: state.tableSavedCellKeys,
+      tableFailedCellKeys: state.tableFailedCellKeys,
+      annotatingImageIds: state.annotatingImageIds,
+      highlightCellState: state.highlightCellState,
+      selectImage: state.selectImage,
+      setImageSelection: state.setImageSelection,
+      toggleImageSelection: state.toggleImageSelection,
+      openImagePreview: state.openImagePreview,
+      setActiveProfile: state.setActiveProfile,
+      resetTableDrafts: state.resetTableDrafts,
+      mergeTableDrafts: state.mergeTableDrafts,
+      updateTableAnnotationDraft: state.updateTableAnnotationDraft,
+      updateTableInstructionDraft: state.updateTableInstructionDraft,
+      markTableCellSaved: state.markTableCellSaved,
+      createAnnotationProfile: state.createAnnotationProfile,
+      saveAnnotationChanges: state.saveAnnotationChanges
+    }))
+  );
   const parentRef = useRef<HTMLDivElement>(null);
   const headerScrollRef = useRef<HTMLDivElement>(null);
   const profileButtonRef = useRef<HTMLButtonElement>(null);

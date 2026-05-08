@@ -3,6 +3,7 @@ import { Check, ChevronDown, FolderOpen, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
+import { useShallow } from "zustand/react/shallow";
 
 import { formatAppError } from "../../lib/errors";
 import { formatBytes } from "../../lib/format";
@@ -51,7 +52,19 @@ export function ExportDialog() {
     closeExportDialog,
     prepareExportDataset,
     startExportDataset
-  } = useDatasetStore();
+  } = useDatasetStore(
+    useShallow((state) => ({
+      projects: state.projects,
+      profiles: state.profiles,
+      selectedProjectId: state.selectedProjectId,
+      showExportDialog: state.showExportDialog,
+      exportPreview: state.exportPreview,
+      exportProgress: state.exportProgress,
+      closeExportDialog: state.closeExportDialog,
+      prepareExportDataset: state.prepareExportDataset,
+      startExportDataset: state.startExportDataset
+    }))
+  );
   const [outputDir, setOutputDir] = useState("");
   const [selectedProfileId, setSelectedProfileId] = useState<number>();
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);

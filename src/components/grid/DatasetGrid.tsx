@@ -3,6 +3,7 @@ import { CircleAlert, Files, ImageIcon } from "lucide-react";
 import type { MouseEvent as ReactMouseEvent } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { useShallow } from "zustand/react/shallow";
 
 import { resolveAssetSrc } from "../../lib/tauri";
 import { cn } from "../../lib/cn";
@@ -29,7 +30,17 @@ export function DatasetGrid({
     tableFailedCellKeys,
     highlightCellState,
     openImagePreview
-  } = useDatasetStore();
+  } = useDatasetStore(
+    useShallow((state) => ({
+      activeProfileId: state.activeProfileId,
+      tableDraftProfileId: state.tableDraftProfileId,
+      tableAnnotationDrafts: state.tableAnnotationDrafts,
+      tableSavedCellKeys: state.tableSavedCellKeys,
+      tableFailedCellKeys: state.tableFailedCellKeys,
+      highlightCellState: state.highlightCellState,
+      openImagePreview: state.openImagePreview
+    }))
+  );
   const parentRef = useRef<HTMLDivElement>(null);
   const [containerWidth, setContainerWidth] = useState(0);
   const profiles = useDatasetStore((state) => state.profiles);

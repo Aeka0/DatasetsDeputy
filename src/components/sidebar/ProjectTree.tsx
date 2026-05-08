@@ -13,6 +13,7 @@ import type { MouseEvent } from "react";
 import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
+import { useShallow } from "zustand/react/shallow";
 
 import { cn } from "../../lib/cn";
 import { useDatasetStore } from "../../stores/datasetStore";
@@ -45,7 +46,8 @@ function ProjectNode({
   openContextMenu: (event: MouseEvent, project: DatasetProject) => void;
   problemImageIds: Set<number>;
 }) {
-  const { selectedProjectId, selectProject } = useDatasetStore();
+  const selectedProjectId = useDatasetStore((state) => state.selectedProjectId);
+  const selectProject = useDatasetStore((state) => state.selectProject);
   const isSelected = selectedProjectId === project.id;
   const hasChildren = Boolean(project.children?.length);
   const isExpanded = expandedIds.has(project.id);
@@ -204,7 +206,20 @@ export function ProjectTree() {
     removeDataset,
     renameDatasetFolder,
     createDatasetSubfolder
-  } = useDatasetStore();
+  } = useDatasetStore(
+    useShallow((state) => ({
+      images: state.images,
+      projects: state.projects,
+      openImportWizard: state.openImportWizard,
+      isLoading: state.isLoading,
+      pendingImportKind: state.pendingImportKind,
+      refreshImages: state.refreshImages,
+      checkProblemItems: state.checkProblemItems,
+      removeDataset: state.removeDataset,
+      renameDatasetFolder: state.renameDatasetFolder,
+      createDatasetSubfolder: state.createDatasetSubfolder
+    }))
+  );
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const [contextMenu, setContextMenu] = useState<{
     x: number;

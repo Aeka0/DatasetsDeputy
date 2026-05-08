@@ -12,6 +12,7 @@ import {
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
+import { useShallow } from "zustand/react/shallow";
 
 import i18next from "../../i18n";
 import { cn } from "../../lib/cn";
@@ -346,7 +347,15 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
     setHighlightCellState,
     setAutoSaveAfterAnnotation,
     refreshImages
-  } = useDatasetStore();
+  } = useDatasetStore(
+    useShallow((state) => ({
+      highlightCellState: state.highlightCellState,
+      autoSaveAfterAnnotation: state.autoSaveAfterAnnotation,
+      setHighlightCellState: state.setHighlightCellState,
+      setAutoSaveAfterAnnotation: state.setAutoSaveAfterAnnotation,
+      refreshImages: state.refreshImages
+    }))
+  );
   const [thumbnailCacheInfo, setThumbnailCacheInfo] =
     useState<ThumbnailCacheInfo>({ sizeBytes: 0 });
   const [logFilesInfo, setLogFilesInfo] = useState<LogFilesInfo>({ sizeBytes: 0 });

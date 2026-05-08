@@ -2,6 +2,7 @@ import { ArrowLeft, CircleAlert, FileText, LoaderCircle, Plus, Save, Trash2 } fr
 import type { KeyboardEvent as ReactKeyboardEvent } from "react";
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { useShallow } from "zustand/react/shallow";
 
 import { formatBytes } from "../../lib/format";
 import { resolveAssetSrc } from "../../lib/tauri";
@@ -31,7 +32,27 @@ export function ImagePreviewView() {
     createAnnotationProfile,
     clearAnnotation,
     applyTableDraft
-  } = useDatasetStore();
+  } = useDatasetStore(
+    useShallow((state) => ({
+      images: state.images,
+      profiles: state.profiles,
+      previewImageId: state.previewImageId,
+      activeProfileId: state.activeProfileId,
+      tableDraftProfileId: state.tableDraftProfileId,
+      tableAnnotationDrafts: state.tableAnnotationDrafts,
+      tableInstructionDrafts: state.tableInstructionDrafts,
+      tableProfileAnnotationDrafts: state.tableProfileAnnotationDrafts,
+      tableProfileInstructionDrafts: state.tableProfileInstructionDrafts,
+      annotatingImageIds: state.annotatingImageIds,
+      closeImagePreview: state.closeImagePreview,
+      setActiveProfile: state.setActiveProfile,
+      saveAnnotation: state.saveAnnotation,
+      saveInstruction: state.saveInstruction,
+      createAnnotationProfile: state.createAnnotationProfile,
+      clearAnnotation: state.clearAnnotation,
+      applyTableDraft: state.applyTableDraft
+    }))
+  );
   const selectedImage = useMemo(
     () => images.find((image) => image.id === previewImageId),
     [images, previewImageId]

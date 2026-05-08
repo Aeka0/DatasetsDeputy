@@ -3,6 +3,7 @@ import { Check, ChevronRight } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
+import { useShallow } from "zustand/react/shallow";
 
 import { getAnnotationForProfile } from "../../lib/annotations";
 import {
@@ -219,7 +220,38 @@ export function TitleMenuBar({
     markTableCellFailed,
     clearTableCellFailure,
     setSearch
-  } = useDatasetStore();
+  } = useDatasetStore(
+    useShallow((state) => ({
+      images: state.images,
+      projects: state.projects,
+      profiles: state.profiles,
+      search: state.search,
+      viewFilterMode: state.viewFilterMode,
+      activeProfileId: state.activeProfileId,
+      selectedProjectId: state.selectedProjectId,
+      selectedImageIds: state.selectedImageIds,
+      previewImageId: state.previewImageId,
+      tableDraftProfileId: state.tableDraftProfileId,
+      tableAnnotationDrafts: state.tableAnnotationDrafts,
+      tableInstructionDrafts: state.tableInstructionDrafts,
+      isLoading: state.isLoading,
+      autoSaveAfterAnnotation: state.autoSaveAfterAnnotation,
+      setAppView: state.setAppView,
+      addAppLog: state.addAppLog,
+      setViewFilter: state.setViewFilter,
+      clearTableSavedCellMarks: state.clearTableSavedCellMarks,
+      openImportWizard: state.openImportWizard,
+      openExportDialog: state.openExportDialog,
+      load: state.load,
+      closeImagePreview: state.closeImagePreview,
+      applyGeneratedAnnotationDraft: state.applyGeneratedAnnotationDraft,
+      saveAnnotationChanges: state.saveAnnotationChanges,
+      markImageAnnotating: state.markImageAnnotating,
+      markTableCellFailed: state.markTableCellFailed,
+      clearTableCellFailure: state.clearTableCellFailure,
+      setSearch: state.setSearch
+    }))
+  );
   const [openMenu, setOpenMenu] = useState<MenuKey>();
   const [activeSubmenu, setActiveSubmenu] = useState<string>();
   const [dialog, setDialog] = useState<DialogKey>();
