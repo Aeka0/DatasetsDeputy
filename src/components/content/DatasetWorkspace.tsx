@@ -897,9 +897,9 @@ function DatasetOverview({
                         <span className="w-[140px] shrink-0 truncate text-[13px] font-medium text-neutral-600 transition-colors group-hover:text-neutral-900">
                           {profile.name}
                         </span>
-                        <div className="h-1 w-36 shrink-0 overflow-hidden rounded-full bg-neutral-100">
+                        <div className="annotation-completeness-track h-1 w-36 shrink-0 overflow-hidden rounded-full bg-neutral-100">
                           <div
-                            className="h-full rounded-full bg-neutral-400 transition-all duration-500 group-hover:bg-neutral-500"
+                            className="annotation-completeness-fill h-full rounded-full bg-neutral-400 transition-all duration-500 group-hover:bg-neutral-500"
                             style={{ width: `${pct}%` }}
                           />
                         </div>

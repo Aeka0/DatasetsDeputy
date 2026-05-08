@@ -257,7 +257,7 @@ export default function App() {
           <div className="app-surface relative h-full min-h-0 rounded-lg border border-neutral-200 bg-white p-4">
             <button
               type="button"
-              className="no-drag absolute left-0 top-1/2 z-20 flex h-36 w-3 -translate-y-1/2 items-center justify-center rounded-r-sm text-black/38 transition hover:bg-black/[0.055] hover:text-black focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black/20"
+              className="sidebar-collapse-toggle no-drag absolute left-0 top-1/2 z-20 flex w-3.5 -translate-y-1/2 items-center justify-center focus-visible:outline-none"
               aria-label={isProjectTreeCollapsed ? "展开树状图" : "收缩树状图"}
               title={isProjectTreeCollapsed ? "展开树状图" : "收缩树状图"}
               onClick={() => setIsProjectTreeCollapsed((collapsed) => !collapsed)}
