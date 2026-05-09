@@ -330,7 +330,7 @@ export function ImagePreviewView() {
               </button>
               </div>
 
-              <div className="min-h-0 flex-1 overflow-auto p-2 pt-0">
+              <div className="hover-scrollbar min-h-0 flex-1 overflow-auto p-2 pt-0">
                 {isCreatingProfile ? (
                   <div className="mb-2 rounded-md border border-neutral-200 bg-neutral-50 p-2">
                     <label className="mb-1 block text-[12px] font-medium text-neutral-600">

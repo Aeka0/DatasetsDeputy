@@ -825,8 +825,7 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
           </header>
 
           <div
-            className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden bg-neutral-50/42 p-5"
-            style={{ scrollbarGutter: "stable" }}
+            className="hover-scrollbar min-h-0 flex-1 overflow-y-auto overflow-x-hidden bg-neutral-50/42 p-5"
           >
             {activeSection === "general" ? (
               <div className="rounded-lg border border-neutral-200 bg-white">
@@ -1133,7 +1132,7 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
                     ) : null}
 
                     {pythonEnvProbe?.torchError || pythonEnvProbe?.onnxRuntimeError || pythonEnvProbe?.error ? (
-                      <div className="max-h-20 space-y-1 overflow-y-auto border-t border-black/[0.06] px-3 py-2 text-[12px] leading-5 text-amber-700">
+                      <div className="hover-scrollbar max-h-20 space-y-1 overflow-y-auto border-t border-black/[0.06] px-3 py-2 text-[12px] leading-5 text-amber-700">
                         {pythonEnvProbe.error ? <div className="break-words">{pythonEnvProbe.error}</div> : null}
                         {pythonEnvProbe.torchError ? (
                           <div className="break-words">{pythonEnvProbe.torchError}</div>

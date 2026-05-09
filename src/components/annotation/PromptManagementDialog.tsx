@@ -130,7 +130,7 @@ export function PromptManagementDialog({ onClose }: PromptManagementDialogProps)
         </header>
 
         <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-0 bg-neutral-50/42">
-          <div className="min-h-0 overflow-y-auto border-r border-neutral-200 p-5">
+          <div className="hover-scrollbar min-h-0 overflow-y-auto border-r border-neutral-200 p-5">
             <div className="rounded-lg border border-neutral-200 bg-white">
               <div className="border-b border-neutral-100 px-4 py-3">
                 <div className="text-[13px] font-semibold text-neutral-900">

@@ -690,7 +690,7 @@ export function DatasetTable({
         </div>
       </div>
 
-      <div ref={parentRef} className="min-h-0 flex-1 overflow-auto" onScroll={syncHeaderScroll}>
+      <div ref={parentRef} className="hover-scrollbar min-h-0 flex-1 overflow-auto" onScroll={syncHeaderScroll}>
         <div
           className="relative min-w-full"
           style={{ height: `${virtualizer.getTotalSize()}px`, width: `${tableWidth}px` }}

@@ -28,7 +28,7 @@ export function AnnotationLogView() {
       </div>
 
       <div
-        className="selectable-text min-h-0 flex-1 overflow-auto rounded-lg border border-neutral-200 bg-white p-3 font-mono text-[12px] leading-5 text-neutral-700"
+        className="hover-scrollbar selectable-text min-h-0 flex-1 overflow-auto rounded-lg border border-neutral-200 bg-white p-3 font-mono text-[12px] leading-5 text-neutral-700"
         data-native-context-menu="true"
       >
         {logs.length === 0 ? (

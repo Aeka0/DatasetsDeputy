@@ -39,7 +39,7 @@ export function ImportPreviewView() {
 
   return (
     <div className="flex h-full min-h-0 flex-col px-3 py-2 text-[13px]">
-      <div className="min-h-0 flex-1 overflow-auto pr-1">
+      <div className="hover-scrollbar min-h-0 flex-1 overflow-auto pr-1">
         <div className="flex items-center gap-3 border-b border-neutral-100 pb-3">
           <button
             type="button"

@@ -24,7 +24,7 @@ export function ImportReportView() {
 
   return (
     <div className="flex h-full min-h-0 flex-col px-3 py-2 text-[13px]">
-      <div className="min-h-0 flex-1 overflow-auto pr-1">
+      <div className="hover-scrollbar min-h-0 flex-1 overflow-auto pr-1">
         <div className="flex items-start gap-2 border-b border-neutral-100 pb-3">
           <CheckCircle2 size={18} className="mt-0.5 shrink-0 text-emerald-700" />
           <div className="min-w-0">
@@ -62,7 +62,7 @@ export function ImportReportView() {
               <AlertTriangle size={16} />
               {copy.warnings}
             </div>
-            <div className="max-h-48 overflow-auto rounded-md border border-amber-200 bg-amber-50">
+            <div className="hover-scrollbar max-h-48 overflow-auto rounded-md border border-amber-200 bg-amber-50">
               {report.warnings.map((warning) => (
                 <div
                   key={`${warning.filePath}:${warning.message}`}
@@ -82,7 +82,7 @@ export function ImportReportView() {
             {copy.failedFiles}
           </div>
           {report.failures.length > 0 ? (
-            <div className="max-h-72 overflow-auto rounded-md border border-neutral-200 bg-white">
+            <div className="hover-scrollbar max-h-72 overflow-auto rounded-md border border-neutral-200 bg-white">
               {report.failures.map((failure) => (
                 <div
                   key={`${failure.filePath}:${failure.reason}`}

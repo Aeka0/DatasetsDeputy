@@ -32,7 +32,7 @@ export function ImportWizardView() {
           </h1>
         </header>
 
-        <div className="grid min-h-0 grid-cols-3 grid-rows-[auto_1fr_auto] gap-5 overflow-auto">
+        <div className="hover-scrollbar grid min-h-0 grid-cols-3 grid-rows-[auto_1fr_auto] gap-5 overflow-auto">
           <button
             type="button"
             className="no-drag group row-span-3 grid min-w-0 grid-rows-subgrid content-start rounded-md bg-transparent px-5 py-8 text-left transition-[background-color,transform] duration-500 ease-in-out hover:bg-neutral-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-300 disabled:cursor-not-allowed disabled:opacity-50"

@@ -180,7 +180,7 @@ export function FormatValidatorDialog({ onClose }: FormatValidatorDialogProps) {
           )}
         </div>
 
-        <div className="min-h-0 flex-1 overflow-auto px-5 py-3">
+        <div className="hover-scrollbar min-h-0 flex-1 overflow-auto px-5 py-3">
           {fixedCount !== null ? (
             <div className="flex h-full flex-col items-center justify-center gap-3">
               <CheckCircle2 size={28} className="text-neutral-600" />

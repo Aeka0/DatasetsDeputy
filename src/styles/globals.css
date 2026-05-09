@@ -26,6 +26,8 @@
   --app-chrome-bg: rgb(var(--app-chrome-rgb) / var(--app-bottom-opacity));
   --app-surface-bg: rgb(var(--app-surface-rgb) / var(--app-top-opacity));
   --app-chrome-border: rgba(255, 255, 255, 0.6);
+  --app-scrollbar-thumb: rgba(28, 28, 28, 0.18);
+  --app-scrollbar-thumb-hover: rgba(28, 28, 28, 0.3);
   font-family:
     "Segoe UI", Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
     sans-serif;
@@ -38,6 +40,9 @@
 
 * {
   box-sizing: border-box;
+  scrollbar-color: transparent transparent;
+  scrollbar-gutter: auto;
+  scrollbar-width: none;
 }
 
 body {
@@ -88,29 +93,67 @@ textarea {
 }
 
 ::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
+  width: 0;
+  height: 0;
+}
+
+::-webkit-scrollbar-button {
+  display: none;
 }
 
 ::-webkit-scrollbar-track {
-  background: transparent;
+  background-color: transparent;
 }
 
 ::-webkit-scrollbar-corner {
-  background: transparent;
+  background-color: transparent;
 }
 
-::-webkit-scrollbar-thumb {
-  background: rgba(28, 28, 28, 0.16);
-  border: 3px solid transparent;
+.hover-scrollbar {
+  position: relative;
+  scrollbar-color: transparent transparent;
+  scrollbar-width: none;
+}
+
+.hover-scrollbar::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+.overlay-scrollbar-thumb {
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: 60;
   border-radius: 999px;
-  background-clip: content-box;
+  background-color: var(--app-scrollbar-thumb);
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    opacity 180ms ease,
+    background-color 180ms ease;
+  will-change: opacity, transform;
 }
 
-::-webkit-scrollbar-thumb:hover {
-  background: rgba(28, 28, 28, 0.28);
-  border: 3px solid transparent;
-  background-clip: content-box;
+.overlay-scrollbar-thumb[hidden] {
+  display: none;
+}
+
+.overlay-scrollbar-thumb-y {
+  width: 6px;
+}
+
+.overlay-scrollbar-thumb-x {
+  height: 6px;
+}
+
+.hover-scrollbar:hover > .overlay-scrollbar-thumb {
+  opacity: 1;
+}
+
+.hover-scrollbar:hover > .overlay-scrollbar-thumb:hover {
+  background-color: var(--app-scrollbar-thumb-hover);
 }
 
 .app-drag-region {
@@ -684,15 +727,7 @@ html[data-theme="dark"] .table-column-resizer::after {
   background: rgba(255, 255, 255, 0.16);
 }
 
-html[data-theme="dark"] ::-webkit-scrollbar-thumb {
-  background: rgba(190, 190, 190, 0.42);
-  border: 3px solid transparent;
-  border-radius: 999px;
-  background-clip: content-box;
-}
-
-html[data-theme="dark"] ::-webkit-scrollbar-thumb:hover {
-  background: rgba(220, 220, 220, 0.6);
-  border: 3px solid transparent;
-  background-clip: content-box;
+html[data-theme="dark"] {
+  --app-scrollbar-thumb: rgba(190, 190, 190, 0.42);
+  --app-scrollbar-thumb-hover: rgba(220, 220, 220, 0.6);
 }

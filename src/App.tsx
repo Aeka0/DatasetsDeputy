@@ -20,6 +20,7 @@ import { useDatasetStore } from "./stores/datasetStore";
 import { hasTauriRuntime, invokeCommand } from "./lib/tauri";
 import { setWindowRenderMode, type WindowRenderingSettings } from "./lib/theme";
 import { formatAppError } from "./lib/errors";
+import { installOverlayScrollbars } from "./lib/overlayScrollbars";
 import {
   getUnsavedTableDraftState,
   type UnsavedTableDraftItem
@@ -78,6 +79,8 @@ export default function App() {
   const importReport = useDatasetStore((state) => state.importReport);
   const showImportWizard = useDatasetStore((state) => state.showImportWizard);
   const images = useDatasetStore((state) => state.images);
+
+  useEffect(() => installOverlayScrollbars(), []);
   const profiles = useDatasetStore((state) => state.profiles);
   const tableDraftProfileId = useDatasetStore((state) => state.tableDraftProfileId);
   const tableAnnotationDrafts = useDatasetStore((state) => state.tableAnnotationDrafts);
@@ -313,11 +316,11 @@ export default function App() {
               </p>
             </header>
 
-            <div className="min-h-0 flex-1 overflow-auto px-5 py-3">
+            <div className="hover-scrollbar min-h-0 flex-1 overflow-auto px-5 py-3">
               <div className="mb-2 text-[12px] font-medium text-neutral-500">
                 {t("exitGuard.unsavedItems", { count: unsavedExitItems.length })}
               </div>
-              <div className="max-h-72 overflow-auto rounded-md border border-neutral-200">
+              <div className="hover-scrollbar max-h-72 overflow-auto rounded-md border border-neutral-200">
                 {unsavedExitItems.map((item) => (
                   <div
                     key={`${item.profileId}:${item.imageId}`}

@@ -757,7 +757,7 @@ function DatasetOverview({
   };
 
   return (
-    <div className="min-h-0 flex-1 overflow-auto px-1.5 pb-4">
+    <div className="hover-scrollbar min-h-0 flex-1 overflow-auto px-1.5 pb-4">
       <div className="max-w-[720px] py-2 px-1">
         <div className="mb-8">
           <h3 className="m-0 text-[24px] font-semibold leading-8 tracking-tight text-neutral-950">

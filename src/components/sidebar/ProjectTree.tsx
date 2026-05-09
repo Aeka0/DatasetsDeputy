@@ -484,7 +484,7 @@ export function ProjectTree() {
         </button>
       </div>
 
-      <div className="mt-4 flex-1 overflow-y-auto px-3">
+      <div className="hover-scrollbar mt-4 flex-1 overflow-y-auto px-3">
         <div className="no-drag space-y-1">
           <ProjectNode
             project={assetDatabaseGroup}

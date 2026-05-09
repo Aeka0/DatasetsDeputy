@@ -110,8 +110,7 @@ export function DatasetGrid({
   return (
     <div
       ref={parentRef}
-      className="min-h-0 flex-1 overflow-y-scroll overflow-x-hidden px-1.5"
-      style={{ scrollbarGutter: "stable" }}
+      className="hover-scrollbar min-h-0 flex-1 overflow-y-scroll overflow-x-hidden px-1.5"
     >
       <div
         className="relative w-full"
