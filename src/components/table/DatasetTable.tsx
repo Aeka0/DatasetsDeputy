@@ -5,13 +5,15 @@ import type {
   MouseEvent as ReactMouseEvent,
   PointerEvent as ReactPointerEvent
 } from "react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
+import { RichTextarea } from "rich-textarea";
 import { useShallow } from "zustand/react/shallow";
 
 import { getAnnotationForProfile, getAnnotationText, getInstructionText } from "../../lib/annotations";
 import { cn } from "../../lib/cn";
+import { highlightSearch } from "../../lib/SearchHighlight";
 import { getUnsavedTableDraftState } from "../../lib/tableDrafts";
 import { resolveAssetSrc } from "../../lib/tauri";
 import { useDatasetStore } from "../../stores/datasetStore";
@@ -77,10 +79,12 @@ function createInstructionDraftMap(images: DatasetImage[], profileId: number) {
 export function DatasetTable({
   images,
   profiles,
+  search,
   onImageContextMenu
 }: {
   images: DatasetImage[];
   profiles: AnnotationProfile[];
+  search?: string;
   onImageContextMenu?: (image: DatasetImage, event: ReactMouseEvent<HTMLElement>) => void;
 }) {
   const { t } = useTranslation();
@@ -151,6 +155,38 @@ export function DatasetTable({
   const [createProfileError, setCreateProfileError] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [columnWidths, setColumnWidths] = useState(loadColumnWidths);
+  const searchQuery = search?.trim() ?? "";
+
+  const searchHighlightRenderer = useCallback(
+    (value: string) => {
+      if (!searchQuery) return value;
+      const lowerQuery = searchQuery.toLowerCase();
+      const lowerValue = value.toLowerCase();
+      const parts: React.ReactNode[] = [];
+      let lastIndex = 0;
+      let matchIndex = lowerValue.indexOf(lowerQuery);
+      let key = 0;
+
+      while (matchIndex !== -1) {
+        if (matchIndex > lastIndex) {
+          parts.push(value.slice(lastIndex, matchIndex));
+        }
+        parts.push(
+          <mark key={key++} className="search-highlight">
+            {value.slice(matchIndex, matchIndex + lowerQuery.length)}
+          </mark>
+        );
+        lastIndex = matchIndex + lowerQuery.length;
+        matchIndex = lowerValue.indexOf(lowerQuery, lastIndex);
+      }
+
+      if (lastIndex === 0) return value;
+      if (lastIndex < value.length) parts.push(value.slice(lastIndex));
+      return <>{parts}</>;
+    },
+    [searchQuery]
+  );
+
   const isFolderMode = images.length > 0 && images.every((image) => image.sourceKind === "folder");
   const selectedImageIdSet = useMemo(() => new Set(selectedImageIds), [selectedImageIds]);
   const selectedProfileId = profiles.some((profile) => profile.id === activeProfileId)
@@ -684,7 +720,7 @@ export function DatasetTable({
                   onClick={(event) => selectTableImage(image.id, event)}
                   title={image.path}
                 >
-                  <span className="block truncate">{image.fileName}</span>
+                  <span className="block truncate">{highlightSearch(image.fileName, search ?? "")}</span>
                 </button>
 
                 <button
@@ -711,7 +747,7 @@ export function DatasetTable({
                 </button>
 
                 <div className="relative px-2">
-                  <textarea
+                  <RichTextarea
                     ref={(node) => {
                       const key = createCellKey(image.id, "annotation");
                       if (node) {
@@ -727,9 +763,12 @@ export function DatasetTable({
                       "glass-input h-[100px] w-full resize-none rounded-md p-2 text-[13px] leading-5 disabled:cursor-wait disabled:opacity-80",
                       getCellStateClass(image.id, "annotation")
                     )}
+                    style={{ width: "100%", height: "100px" }}
                     disabled={!selectedProfileId || isAnnotating}
                     spellCheck={false}
-                  />
+                  >
+                    {searchQuery ? searchHighlightRenderer : undefined}
+                  </RichTextarea>
                   {isAnnotating ? (
                     <div className="pointer-events-none absolute right-4 top-3">
                       <LoaderCircle className="h-5 w-5 animate-spin text-neutral-500" />
@@ -738,7 +777,7 @@ export function DatasetTable({
                 </div>
 
                 <div className="px-2">
-                  <textarea
+                  <RichTextarea
                     ref={(node) => {
                       const key = createCellKey(image.id, "instruction");
                       if (node) {
@@ -754,9 +793,12 @@ export function DatasetTable({
                       "glass-input h-[100px] w-full resize-none rounded-md p-2 text-[13px] leading-5",
                       getCellStateClass(image.id, "instruction")
                     )}
+                    style={{ width: "100%", height: "100px" }}
                     disabled={!selectedProfileId}
                     spellCheck={false}
-                  />
+                  >
+                    {searchQuery ? searchHighlightRenderer : undefined}
+                  </RichTextarea>
                 </div>
               </div>
             );

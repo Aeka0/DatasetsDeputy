@@ -7,6 +7,7 @@ import { useShallow } from "zustand/react/shallow";
 
 import { resolveAssetSrc } from "../../lib/tauri";
 import { cn } from "../../lib/cn";
+import { highlightSearch } from "../../lib/SearchHighlight";
 import { useDatasetStore } from "../../stores/datasetStore";
 import type { DatasetImage } from "../../types";
 
@@ -16,9 +17,11 @@ const cardTextHeight = 52;
 
 export function DatasetGrid({
   images,
+  search,
   onImageContextMenu
 }: {
   images: DatasetImage[];
+  search?: string;
   onImageContextMenu?: (image: DatasetImage, event: ReactMouseEvent<HTMLElement>) => void;
 }) {
   const { t } = useTranslation();
@@ -155,7 +158,7 @@ export function DatasetGrid({
                     )}
                   </div>
                   <div className="px-1.5 pb-1.5 pt-2">
-                    <div className="truncate text-[13px] text-neutral-800">{image.fileName}</div>
+                    <div className="truncate text-[13px] text-neutral-800">{highlightSearch(image.fileName, search ?? "")}</div>
                     <div className="mt-1 flex items-center gap-1.5 text-[12px] text-neutral-500">
                       <Files size={12} />
                       <span className="truncate">

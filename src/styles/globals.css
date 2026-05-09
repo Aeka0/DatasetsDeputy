@@ -300,6 +300,13 @@ html[data-window-render-mode="acrylic"] .fluent-titlebar {
   box-shadow: inset 3px 0 0 var(--app-accent);
 }
 
+mark.search-highlight {
+  background-color: #fef08a;
+  color: inherit;
+  border-radius: 2px;
+  padding: 0;
+}
+
 .sidebar-collapse-toggle {
   height: 60%;
   min-height: 200px;
@@ -567,6 +574,11 @@ html[data-theme="dark"] .sidebar-collapse-toggle:hover {
 html[data-theme="dark"] .sidebar-collapse-toggle:active {
   color: rgba(255, 255, 255, 0.64);
   background: radial-gradient(ellipse at center, rgba(255, 255, 255, 0.09) 0%, transparent 70%);
+}
+
+html[data-theme="dark"] mark.search-highlight {
+  background-color: rgba(202, 138, 4, 0.35);
+  color: #fef08a;
 }
 
 html[data-theme="dark"] .annotation-completeness-track {

@@ -29,6 +29,7 @@
     "react": "^19.2.5",
     "react-dom": "^19.2.5",
     "react-i18next": "^17.0.6",
+    "rich-textarea": "^0.27.0",
     "zustand": "^5.0.12"
   },
   "devDependencies": {
