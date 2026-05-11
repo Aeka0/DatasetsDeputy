@@ -901,6 +901,9 @@ export function TitleMenuBar({
             <p className="mt-3 text-sm leading-6 text-neutral-600">
               {t("menu.aboutBody")}
             </p>
+            <p className="mt-3 border-l-2 border-amber-300 pl-3 text-xs leading-5 text-amber-800">
+              {t("menu.alpha3Notice")}
+            </p>
             <div className="mt-3 text-xs text-neutral-400">{t("menu.version")}</div>
             <div className="mt-5 flex justify-end">
               <button

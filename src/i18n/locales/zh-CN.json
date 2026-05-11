@@ -56,7 +56,8 @@
     "datasetDebug": "训练集除错",
     "formatValidator": "格式校验",
     "aboutBody": "数据集图片预览、标注维度管理与导出工具。",
-    "version": "开发版",
+    "alpha3Notice": "Alpha 3 版提示：本版本仍处于测试阶段，功能和数据结构可能继续调整，请在重要操作前备份数据。",
+    "version": "Alpha 3 测试版",
     "close": "关闭"
   },
   "tools": {

@@ -56,7 +56,8 @@
     "datasetDebug": "Dataset debugging",
     "formatValidator": "Format validator",
     "aboutBody": "Dataset image preview, annotation dimension management, and export tools.",
-    "version": "Development build",
+    "alpha3Notice": "Alpha 3 notice: this build is still in testing. Features and data structures may change, so back up important data before major operations.",
+    "version": "Alpha 3 preview",
     "close": "Close"
   },
   "tools": {

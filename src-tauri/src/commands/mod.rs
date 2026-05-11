@@ -179,7 +179,7 @@ struct DatasetDatabaseRef {
 fn stable_database_prefix(path: &Path) -> i64 {
     let normalized = path
         .file_name()
-        .unwrap_or_else(|| path.as_os_str())
+        .unwrap_or(path.as_os_str())
         .to_string_lossy()
         .to_ascii_lowercase();
     let mut hasher = Sha256::new();
