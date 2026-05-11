@@ -227,10 +227,10 @@ export function ImagePreviewView() {
   const saveCurrentAnnotation = () => {
     if (isAnnotating || selectedProfileId === undefined) return;
     saveAnnotation(selectedImage.id, selectedProfileId, content).catch((error) => {
-      addAppLog(`保存标注失败：${formatAppError(error)}`, "error");
+      addAppLog(t("appLog.saveAnnotationFailed", { message: formatAppError(error) }), "error");
     });
     saveInstruction(selectedImage.id, selectedProfileId, instruction).catch((error) => {
-      addAppLog(`保存指令失败：${formatAppError(error)}`, "error");
+      addAppLog(t("appLog.saveInstructionFailed", { message: formatAppError(error) }), "error");
     });
   };
 
@@ -474,7 +474,10 @@ export function ImagePreviewView() {
                   className="no-drag inline-flex h-8 w-8 items-center justify-center rounded-md border border-rose-200 bg-white text-rose-700 transition hover:bg-rose-50"
                   onClick={() => {
                     clearAnnotation(selectedAnnotation.id).catch((error) => {
-                      addAppLog(`清除标注失败：${formatAppError(error)}`, "error");
+                      addAppLog(
+                        t("appLog.clearAnnotationFailed", { message: formatAppError(error) }),
+                        "error"
+                      );
                     });
                   }}
                   title={t("image.delete")}

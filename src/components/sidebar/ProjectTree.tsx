@@ -47,6 +47,7 @@ function ProjectNode({
   openContextMenu: (event: MouseEvent, project: DatasetProject) => void;
   problemImageIds: Set<number>;
 }) {
+  const { t } = useTranslation();
   const selectedProjectId = useDatasetStore((state) => state.selectedProjectId);
   const selectProject = useDatasetStore((state) => state.selectProject);
   const isSelected = selectedProjectId === project.id;
@@ -111,7 +112,7 @@ function ProjectNode({
             type="button"
             className="no-drag group flex w-[22px] shrink-0 items-center justify-center rounded border-0 bg-transparent p-0 text-inherit outline-none focus-visible:ring-2 focus-visible:ring-black/20"
             aria-expanded={isExpanded}
-            aria-label={isExpanded ? "折叠子文件夹" : "展开子文件夹"}
+            aria-label={isExpanded ? t("aria.collapseSubfolders") : t("aria.expandSubfolders")}
             onClick={(event) => {
               event.stopPropagation();
               toggleExpanded(project);
@@ -749,7 +750,10 @@ export function ProjectTree() {
                   const project = pendingRemoval;
                   setPendingRemoval(undefined);
                   removeDataset(project).catch((error) => {
-                    addAppLog(`移除数据集失败：${formatAppError(error)}`, "error");
+                    addAppLog(
+                      t("appLog.removeDatasetFailed", { message: formatAppError(error) }),
+                      "error"
+                    );
                   });
                 }}
               >

@@ -371,7 +371,7 @@ export function TitleMenuBar({
         onSelect: () => {
           annotationCancelRef.current = true;
           setIsAnnotationRunning(false);
-          addAppLog("用户已停止标注任务。", "warning");
+          addAppLog(t("appLog.annotationStopped"), "warning");
         }
       },
       { type: "separator" },
@@ -424,7 +424,7 @@ export function TitleMenuBar({
         label: t("menu.clearSavedMarks"),
         onSelect: () => {
           clearTableSavedCellMarks();
-          addAppLog("已清理保存标记。");
+          addAppLog(t("appLog.savedMarksCleared"));
         }
       }
     ],
@@ -460,7 +460,7 @@ export function TitleMenuBar({
     setMenuPosition(undefined);
     setActiveSubmenu(undefined);
     Promise.resolve(action.onSelect()).catch((error) => {
-      addAppLog(`菜单操作失败：${formatAppError(error)}`, "error");
+      addAppLog(t("appLog.menuActionFailed", { message: formatAppError(error) }), "error");
     });
   };
 
@@ -565,36 +565,47 @@ export function TitleMenuBar({
     const hasValidProfile = isProfileInProject(selectedProject, selectedProfileId, profiles);
     const targetCount = getAnnotationTargetCount(options.scope, selectedProfileId);
     const scopeLabel =
-      options.scope === "selected" ? "选中图片" : options.scope === "all" ? "所有图片" : "无标图片";
-    const conflictLabel = options.conflictStrategy === "overwrite" ? "覆盖" : "跳过";
-    addAppLog("已请求执行标注。");
-    addAppLog(`数据集：${selectedProject?.name ?? "未知数据集"}`);
-    addAppLog(`标注范围：${scopeLabel}`);
-    addAppLog(`冲突策略：${conflictLabel}`);
+      options.scope === "selected"
+        ? t("appLog.annotationScopeSelected")
+        : options.scope === "all"
+        ? t("appLog.annotationScopeAll")
+        : t("appLog.annotationScopeEmpty");
+    const conflictLabel =
+      options.conflictStrategy === "overwrite"
+        ? t("annotationRun.conflictOverwrite")
+        : t("annotationRun.conflictSkip");
+    addAppLog(t("appLog.annotationRequested"));
     addAppLog(
-      `标注模式：${
-        options.mode === "gemini" ? t("annotationRun.modeGemini") : t("annotationRun.modeWd14")
-      }`
+      t("appLog.annotationDataset", {
+        name: selectedProject?.name ?? t("appLog.unknownDataset")
+      })
     );
-    addAppLog(`目标图片：${targetCount}`);
-    addAppLog(`标注类型：${selectedProfileId ?? "无"}`);
+    addAppLog(t("appLog.annotationScope", { scope: scopeLabel }));
+    addAppLog(t("appLog.annotationConflict", { strategy: conflictLabel }));
+    addAppLog(
+      t("appLog.annotationMode", {
+        mode: options.mode === "gemini" ? t("annotationRun.modeGemini") : t("annotationRun.modeWd14")
+      })
+    );
+    addAppLog(t("appLog.annotationTargetImages", { count: targetCount }));
+    addAppLog(t("appLog.annotationProfile", { profile: selectedProfileId ?? t("appLog.none") }));
     if (options.scope === "selected" && selectedTargetImageIds.length === 0) {
-      addAppLog("未选中任何图片，无法开始标注。", "warning");
+      addAppLog(t("appLog.annotationNoSelection"), "warning");
       setIsAnnotationRunning(false);
       return;
     } else if (targetCount === 0) {
-      addAppLog("没有图片符合当前标注范围。", "warning");
+      addAppLog(t("appLog.annotationNoTargets"), "warning");
       setIsAnnotationRunning(false);
       return;
     }
 
     if (!hasTauriRuntime()) {
-      addAppLog("标注任务需要在 Tauri 桌面环境中运行。", "error");
+      addAppLog(t("appLog.annotationTauriRequired"), "error");
       setIsAnnotationRunning(false);
       return;
     }
     if (selectedProfileId === undefined || !hasValidProfile) {
-      addAppLog("未选择当前数据集的标注类型，无法开始标注。", "error");
+      addAppLog(t("appLog.annotationProfileRequired"), "error");
       setIsAnnotationRunning(false);
       return;
     }

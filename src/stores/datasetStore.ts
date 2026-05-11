@@ -1,6 +1,7 @@
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { create } from "zustand";
 
+import i18next from "../i18n";
 import { formatAppError } from "../lib/errors";
 import { flattenProjects } from "../lib/projects";
 import { hasTauriRuntime, invokeCommand } from "../lib/tauri";
@@ -539,7 +540,7 @@ function hasWritableProfileId(profileId: number | undefined): profileId is numbe
 
 function requireWritableProfileId(profileId: number | undefined) {
   if (!hasWritableProfileId(profileId)) {
-    throw new Error("保存标注需要先选择标注类型。");
+    throw new Error(i18next.t("appLog.saveNeedsProfile"));
   }
   return profileId;
 }
@@ -679,7 +680,11 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
 
       if (progress.done && progress.report) {
         get().addAppLog(
-          `导入完成：已导入 ${progress.imported}，已跳过 ${progress.skipped}，失败 ${progress.failed}。`
+          i18next.t("appLog.importCompleted", {
+            imported: progress.imported,
+            skipped: progress.skipped,
+            failed: progress.failed
+          })
         );
         const [images, profiles] = await Promise.all([
           invokeCommand<DatasetImage[]>("list_images"),
@@ -722,12 +727,17 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
       if (progress.done) {
         if (progress.phase === "failed") {
           get().addAppLog(
-            `导出失败：${progress.error ?? "未知错误"}`,
+            i18next.t("appLog.exportFailed", {
+              message: progress.error ?? i18next.t("errors.unknown")
+            }),
             "error"
           );
         } else {
           get().addAppLog(
-            `导出完成：已导出 ${progress.exported} 张图片，失败 ${progress.failed}。`
+            i18next.t("appLog.exportCompleted", {
+              exported: progress.exported,
+              failed: progress.failed
+            })
           );
         }
       }
@@ -739,7 +749,7 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
     }
 
     set({ isLoading: true });
-    get().addAppLog("正在刷新数据集状态。");
+    get().addAppLog(i18next.t("appLog.refreshStarting"));
     try {
       const [images, profiles] = await Promise.all([
         invokeCommand<DatasetImage[]>("list_images"),
@@ -755,9 +765,17 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
         previewImageId: undefined,
         activeProfileId: profiles[0]?.id
       });
-      get().addAppLog(`刷新完成：已加载 ${images.length} 张图片和 ${profiles.length} 个标注类型。`);
+      get().addAppLog(
+        i18next.t("appLog.refreshCompleted", {
+          imageCount: images.length,
+          profileCount: profiles.length
+        })
+      );
     } catch (error) {
-      get().addAppLog(`刷新数据集状态失败：${formatAppError(error)}`, "error");
+      get().addAppLog(
+        i18next.t("appLog.refreshFailed", { message: formatAppError(error) }),
+        "error"
+      );
     } finally {
       set({ isLoading: false });
     }
@@ -792,7 +810,10 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
         };
       });
     } catch (error) {
-      get().addAppLog(`刷新图片列表失败：${formatAppError(error)}`, "error");
+      get().addAppLog(
+        i18next.t("appLog.refreshImagesFailed", { message: formatAppError(error) }),
+        "error"
+      );
     }
   },
   checkProblemItems: async (project) => {
@@ -808,7 +829,7 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
     }
 
     set({ isCheckingProblemItems: true });
-    get().addAppLog(`开始检查问题条目：${project.name}`);
+    get().addAppLog(i18next.t("appLog.problemCheckStarting", { name: project.name }));
     try {
       const summary = await invokeCommand<ProblemItemCheckSummary>("check_problem_items", {
         datasetId: project.datasetId,
@@ -816,11 +837,19 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
       });
       await get().refreshImages();
       get().addAppLog(
-        `问题条目检查完成：检查 ${summary.checked} 项，更新 ${summary.updated} 项，缺失 ${summary.missing} 项，失败 ${summary.failed} 项。`
+        i18next.t("appLog.problemCheckCompleted", {
+          checked: summary.checked,
+          updated: summary.updated,
+          missing: summary.missing,
+          failed: summary.failed
+        })
       );
       return summary;
     } catch (error) {
-      get().addAppLog(`问题条目检查失败：${formatAppError(error)}`, "error");
+      get().addAppLog(
+        i18next.t("appLog.problemCheckFailed", { message: formatAppError(error) }),
+        "error"
+      );
       return undefined;
     } finally {
       set({ isCheckingProblemItems: false });
@@ -828,7 +857,7 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
   },
   openImportWizard: () =>
     {
-      get().addAppLog("已打开导入向导。");
+      get().addAppLog(i18next.t("appLog.importWizardOpened"));
       set({
       showImportWizard: true,
       appView: "workspace",
@@ -843,7 +872,7 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
       });
     },
   closeImportWizard: () => {
-    get().addAppLog("已关闭导入向导。");
+    get().addAppLog(i18next.t("appLog.importWizardClosed"));
     set({ showImportWizard: false });
   },
   importAssetDatabase: async () => {
@@ -858,11 +887,14 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
       importReport: undefined,
       preparedImportKind: "asset"
     });
-    get().addAppLog("开始准备资产数据库导入。");
+    get().addAppLog(i18next.t("appLog.assetImportPrepareStarting"));
     try {
       const preview = await invokeCommand<ImportPreview>("prepare_import_folder");
       get().addAppLog(
-        `资产数据库导入预览完成：找到 ${preview.imageCount} 张图片，其中 ${preview.annotatedImageCount} 张已有标注。`
+        i18next.t("appLog.assetImportPrepareCompleted", {
+          imageCount: preview.imageCount,
+          annotatedImageCount: preview.annotatedImageCount
+        })
       );
       set({
         importPreview: preview,
@@ -878,9 +910,12 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
     } catch (error) {
       const payload = error as { code?: string };
       if (payload.code !== "dialog_cancelled") {
-        get().addAppLog(`资产数据库导入准备失败：${formatAppError(error)}`, "error");
+        get().addAppLog(
+          i18next.t("appLog.assetImportPrepareFailed", { message: formatAppError(error) }),
+          "error"
+        );
       } else {
-        get().addAppLog("用户已取消资产数据库导入准备。", "warning");
+        get().addAppLog(i18next.t("appLog.assetImportPrepareCancelled"), "warning");
       }
     } finally {
       set({ isLoading: false });
@@ -898,11 +933,14 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
       importReport: undefined,
       preparedImportKind: "database"
     });
-    get().addAppLog("开始准备动态链接数据库导入。");
+    get().addAppLog(i18next.t("appLog.dynamicImportPrepareStarting"));
     try {
       const preview = await invokeCommand<ImportPreview>("prepare_import_folder");
       get().addAppLog(
-        `动态链接数据库导入预览完成：找到 ${preview.imageCount} 张图片，其中 ${preview.annotatedImageCount} 张已有标注。`
+        i18next.t("appLog.dynamicImportPrepareCompleted", {
+          imageCount: preview.imageCount,
+          annotatedImageCount: preview.annotatedImageCount
+        })
       );
       set({
         importPreview: preview,
@@ -918,9 +956,12 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
     } catch (error) {
       const payload = error as { code?: string };
       if (payload.code !== "dialog_cancelled") {
-        get().addAppLog(`动态链接数据库导入准备失败：${formatAppError(error)}`, "error");
+        get().addAppLog(
+          i18next.t("appLog.dynamicImportPrepareFailed", { message: formatAppError(error) }),
+          "error"
+        );
       } else {
-        get().addAppLog("用户已取消动态链接数据库导入准备。", "warning");
+        get().addAppLog(i18next.t("appLog.dynamicImportPrepareCancelled"), "warning");
       }
     } finally {
       set({ isLoading: false });
@@ -939,7 +980,7 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
       preparedImportKind: undefined,
       pendingImportKind: "folder"
     });
-    get().addAppLog("开始挂载工作文件夹。");
+    get().addAppLog(i18next.t("appLog.folderMountStarting"));
     try {
       await invokeCommand<void>("mount_folder_dataset");
       set({
@@ -951,7 +992,7 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
           imported: 0,
           skipped: 0,
           failed: 0,
-          currentPath: "正在扫描工作文件夹...",
+          currentPath: i18next.t("appLog.folderScanning"),
           done: false
         }
       });
@@ -961,7 +1002,7 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
       ]);
       const projects = createProjectTree(images);
       const firstFolder = projects.find((project) => project.sourceKind === "folder");
-      get().addAppLog(`工作文件夹挂载完成：已加载 ${images.length} 张图片。`);
+      get().addAppLog(i18next.t("appLog.folderMountCompleted", { imageCount: images.length }));
       set({
         images,
         profiles,
@@ -981,9 +1022,12 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
       const payload = error as { code?: string };
       set({ importProgress: undefined, pendingImportKind: undefined });
       if (payload.code !== "dialog_cancelled") {
-        get().addAppLog(`工作文件夹挂载失败：${formatAppError(error)}`, "error");
+        get().addAppLog(
+          i18next.t("appLog.folderMountFailed", { message: formatAppError(error) }),
+          "error"
+        );
       } else {
-        get().addAppLog("用户已取消工作文件夹挂载。", "warning");
+        get().addAppLog(i18next.t("appLog.folderMountCancelled"), "warning");
       }
     } finally {
       set({ isLoading: false, importProgress: undefined, pendingImportKind: undefined });
@@ -998,7 +1042,13 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
 
     await get().initImportEvents();
     get().addAppLog(
-      `开始执行已准备的${importMode === "asset" ? "资产数据库" : "动态链接数据库"}导入：${preview.folderPath}`
+      i18next.t("appLog.preparedImportStarting", {
+        mode:
+          importMode === "asset"
+            ? i18next.t("importWizard.assetDatabase")
+            : i18next.t("importWizard.dynamicDatabase"),
+        path: preview.folderPath
+      })
     );
     set({
       isLoading: true,
@@ -1028,7 +1078,10 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
         pendingImportKind: undefined,
         preparedImportKind: undefined
       });
-      get().addAppLog(`已准备的导入失败：${formatAppError(error)}`, "error");
+      get().addAppLog(
+        i18next.t("appLog.preparedImportFailed", { message: formatAppError(error) }),
+        "error"
+      );
     }
   },
   browseImportedDataset: async () => {
@@ -1038,7 +1091,7 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
     }
 
     set({ isLoading: true });
-    get().addAppLog("正在打开已导入的数据集。");
+    get().addAppLog(i18next.t("appLog.browseImportStarting"));
     try {
       const [images, profiles] = await Promise.all([
         invokeCommand<DatasetImage[]>("list_images"),
@@ -1061,9 +1114,12 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
         activeProfileId,
         importReport: undefined
       });
-      get().addAppLog(`已打开导入数据集：加载 ${images.length} 张图片。`);
+      get().addAppLog(i18next.t("appLog.browseImportCompleted", { imageCount: images.length }));
     } catch (error) {
-      get().addAppLog(`打开已导入数据集失败：${formatAppError(error)}`, "error");
+      get().addAppLog(
+        i18next.t("appLog.browseImportFailed", { message: formatAppError(error) }),
+        "error"
+      );
     } finally {
       set({ isLoading: false });
     }
@@ -1118,7 +1174,10 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
           pendingImportKind: undefined
         });
       } catch (refreshError) {
-        get().addAppLog(`移除操作已完成，但刷新数据失败：${formatAppError(refreshError)}`, "error");
+        get().addAppLog(
+          i18next.t("appLog.removeRefreshFailed", { message: formatAppError(refreshError) }),
+          "error"
+        );
       }
       return;
     }
@@ -1227,7 +1286,7 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
         sourceKind: getProjectSourceKind(project),
         datasetId: project.datasetId
       });
-      get().addAppLog(`已创建子文件夹：${trimmedName}`);
+      get().addAppLog(i18next.t("appLog.subfolderCreated", { name: trimmedName }));
       await get().refreshImages();
       return;
     }
@@ -1286,12 +1345,20 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
         const profiles = await invokeCommand<AnnotationProfile[]>("list_annotation_profiles");
         set({ profiles });
       } catch (error) {
-        get().addAppLog(`删除图片后刷新标注类型失败：${formatAppError(error)}`, "error");
+        get().addAppLog(
+          i18next.t("appLog.deleteImageRefreshProfilesFailed", {
+            message: formatAppError(error)
+          }),
+          "error"
+        );
       }
       try {
         await get().refreshImages();
       } catch (error) {
-        get().addAppLog(`删除图片后刷新图片列表失败：${formatAppError(error)}`, "error");
+        get().addAppLog(
+          i18next.t("appLog.deleteImageRefreshImagesFailed", { message: formatAppError(error) }),
+          "error"
+        );
       }
       return;
     }
@@ -1324,7 +1391,7 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
     });
   },
   openExportDialog: () => {
-    get().addAppLog("已打开导出设置。");
+    get().addAppLog(i18next.t("appLog.exportDialogOpened"));
     set({
       showExportDialog: true,
       exportPreview: undefined,
@@ -1364,7 +1431,7 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
   },
   startExportDataset: async (request) => {
     if (!hasTauriRuntime()) {
-      get().addAppLog("当前环境无法执行真实导出。", "warning");
+      get().addAppLog(i18next.t("appLog.realExportUnsupported"), "warning");
       return;
     }
 
@@ -1383,13 +1450,16 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
         done: false
       }
     });
-    get().addAppLog("开始导出数据集。");
+    get().addAppLog(i18next.t("appLog.exportStarting"));
 
     try {
       await invokeCommand<void>("start_export_dataset", { request });
     } catch (error) {
       set({ isLoading: false, exportProgress: undefined });
-      get().addAppLog(`导出启动失败：${formatAppError(error)}`, "error");
+      get().addAppLog(
+        i18next.t("appLog.exportStartFailed", { message: formatAppError(error) }),
+        "error"
+      );
       throw error;
     }
   },
@@ -1898,7 +1968,13 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
           }
         } catch (error) {
           folderSaveFailures++;
-          get().addAppLog(`保存文件夹标注失败 (${image.fileName})：${formatAppError(error)}`, "error");
+          get().addAppLog(
+            i18next.t("appLog.folderAnnotationSaveFailed", {
+              fileName: image.fileName,
+              message: formatAppError(error)
+            }),
+            "error"
+          );
         }
       }
       if (assetChanges.length > 0) {
@@ -1917,7 +1993,9 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
         selectedProjectId: current.selectedProjectId
       }));
       if (folderSaveFailures > 0) {
-        throw new Error(`${folderSaveFailures} 个文件夹标注保存失败，请查看日志。`);
+        throw new Error(
+          i18next.t("appLog.folderAnnotationSaveFailures", { count: folderSaveFailures })
+        );
       }
       return;
     }
@@ -1952,7 +2030,7 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
         normalizeProfileName(profile.name) === normalizeProfileName(trimmedName)
     );
     if (duplicateProfile) {
-      throw new Error("标注类型名称已存在。");
+      throw new Error(i18next.t("image.profileNameExists"));
     }
     const imageIds = selectedProject?.imageIds.length
       ? selectedProject.imageIds

@@ -155,7 +155,7 @@ export default function App() {
     )
       .then((settings) => setWindowRenderMode(settings.mode))
       .catch((error) => {
-        console.error("读取窗口渲染模式失败，使用默认显示模式：", error);
+        console.error(t("appConsole.windowRenderingFallback"), error);
       });
     const preload = Promise.all([
       loadWindowRendering,
@@ -164,7 +164,7 @@ export default function App() {
       store.load()
     ])
       .catch((error) => {
-        console.error("启动预加载失败，仍然显示主窗口：", error);
+        console.error(t("appConsole.startupPreloadFailed"), error);
       });
     const timeout = new Promise<void>((resolve) =>
       window.setTimeout(resolve, STARTUP_PRELOAD_TIMEOUT_MS)
@@ -173,7 +173,7 @@ export default function App() {
     void Promise.race([preload, timeout])
       .then(() => invokeCommand<void>("finish_startup"))
       .catch((error) => {
-        console.error("显示主窗口失败：", error);
+        console.error(t("appConsole.finishStartupFailed"), error);
       });
   }, []);
 
@@ -261,8 +261,8 @@ export default function App() {
             <button
               type="button"
               className="sidebar-collapse-toggle no-drag absolute left-0 top-1/2 z-20 flex w-3.5 -translate-y-1/2 items-center justify-center focus-visible:outline-none"
-              aria-label={isProjectTreeCollapsed ? "展开树状图" : "收缩树状图"}
-              title={isProjectTreeCollapsed ? "展开树状图" : "收缩树状图"}
+              aria-label={isProjectTreeCollapsed ? t("aria.expandTree") : t("aria.collapseTree")}
+              title={isProjectTreeCollapsed ? t("aria.expandTree") : t("aria.collapseTree")}
               onClick={() => setIsProjectTreeCollapsed((collapsed) => !collapsed)}
             >
               {isProjectTreeCollapsed ? (

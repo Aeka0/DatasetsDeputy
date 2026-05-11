@@ -62,6 +62,8 @@ function ProjectPathBreadcrumb({
   currentClassName?: string;
   ancestorClassName?: string;
 }) {
+  const { t } = useTranslation();
+
   if (!trail.length) {
     return fallbackPath ? (
       <span className={cn("truncate", className)}>
@@ -73,7 +75,7 @@ function ProjectPathBreadcrumb({
   return (
     <span
       className={cn("inline-flex min-w-0 flex-wrap items-center gap-x-1 gap-y-0.5", className)}
-      aria-label="Current folder path"
+      aria-label={t("aria.currentFolderPath")}
     >
       {trail.map((project, index) => {
         const isCurrent = index === trail.length - 1;
@@ -762,7 +764,7 @@ function DatasetOverview({
     } catch (error) {
       const message = error instanceof Error ? error.message : t("image.createTypeFailed");
       setCreateProfileError(message);
-      addAppLog(`创建标注类型失败：${message}`, "error");
+      addAppLog(t("appLog.profileCreateFailed", { message }), "error");
     } finally {
       setIsSubmittingProfile(false);
     }
@@ -796,10 +798,10 @@ function DatasetOverview({
     }
     try {
       await duplicateAnnotationProfile(profileId, copyName);
-      addAppLog(`已复制标注类型「${sourceName}」为「${copyName}」`);
+      addAppLog(t("appLog.profileDuplicated", { sourceName, copyName }));
     } catch (error) {
-      const message = error instanceof Error ? error.message : "未知错误";
-      addAppLog(`复制标注类型失败：${message}`, "error");
+      const message = error instanceof Error ? error.message : t("errors.unknown");
+      addAppLog(t("appLog.profileDuplicateFailed", { message }), "error");
     }
   };
 
@@ -809,10 +811,10 @@ function DatasetOverview({
     setDeleteError("");
     try {
       await deleteAnnotationProfile(deletingProfile.id);
-      addAppLog(`已删除标注类型「${deletingProfile.name}」`);
+      addAppLog(t("appLog.profileDeleted", { name: deletingProfile.name }));
       setDeletingProfile(undefined);
     } catch (error) {
-      setDeleteError(error instanceof Error ? error.message : "未知错误");
+      setDeleteError(error instanceof Error ? error.message : t("errors.unknown"));
     } finally {
       setIsDeleting(false);
     }
