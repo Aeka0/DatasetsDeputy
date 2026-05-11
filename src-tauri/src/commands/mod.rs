@@ -297,16 +297,10 @@ fn validate_child_target(root: &Path, folder_path: &str) -> AppResult<PathBuf> {
     }
 
     let canonical_root = dunce::canonicalize(root).map_err(|_| {
-        AppError::InvalidInput(format!(
-            "无法解析根路径：{}",
-            root.to_string_lossy()
-        ))
+        AppError::InvalidInput(format!("无法解析根路径：{}", root.to_string_lossy()))
     })?;
-    let canonical_target = dunce::canonicalize(&target).map_err(|_| {
-        AppError::InvalidInput(format!(
-            "无法解析目标路径：{folder_path}"
-        ))
-    })?;
+    let canonical_target = dunce::canonicalize(&target)
+        .map_err(|_| AppError::InvalidInput(format!("无法解析目标路径：{folder_path}")))?;
 
     if canonical_target == canonical_root || !canonical_target.starts_with(&canonical_root) {
         return Err(AppError::InvalidInput(
@@ -531,38 +525,6 @@ fn export_relative_path(path: &Path, root_path: Option<&str>) -> PathBuf {
     })
 }
 
-fn common_parent_path(paths: &[PathBuf]) -> Option<PathBuf> {
-    let mut parents = paths.iter().filter_map(|path| path.parent()).map(|path| {
-        path.components()
-            .map(|component| component.as_os_str().to_os_string())
-            .collect::<Vec<_>>()
-    });
-    let mut common = parents.next()?;
-
-    for parent in parents {
-        let mut end = common.len().min(parent.len());
-        for index in 0..end {
-            let left = common[index].to_string_lossy().to_ascii_lowercase();
-            let right = parent[index].to_string_lossy().to_ascii_lowercase();
-            if left != right {
-                end = index;
-                break;
-            }
-        }
-        common.truncate(end);
-    }
-
-    if common.is_empty() {
-        return None;
-    }
-
-    let mut path = PathBuf::new();
-    for part in common {
-        path.push(part);
-    }
-    Some(path)
-}
-
 fn deduplicate_relative_path(path: PathBuf, used_paths: &mut HashSet<String>) -> PathBuf {
     let normalized = path
         .to_string_lossy()
@@ -598,26 +560,6 @@ fn deduplicate_relative_path(path: PathBuf, used_paths: &mut HashSet<String>) ->
     }
 
     unreachable!("relative path de-duplication loop should always return")
-}
-
-fn export_relative_path_for_database_image(
-    original_path: &Path,
-    common_parent: Option<&Path>,
-    used_paths: &mut HashSet<String>,
-) -> PathBuf {
-    let relative = common_parent
-        .and_then(|root| original_path.strip_prefix(root).ok())
-        .filter(|relative| {
-            !relative.as_os_str().is_empty()
-                && relative
-                    .components()
-                    .all(|component| matches!(component, Component::Normal(_) | Component::CurDir))
-        })
-        .map(Path::to_path_buf)
-        .or_else(|| original_path.file_name().map(PathBuf::from))
-        .unwrap_or_else(|| PathBuf::from("image"));
-
-    deduplicate_relative_path(relative, used_paths)
 }
 
 fn source_size(path: &Path, fallback: Option<i64>) -> AppResult<u64> {
@@ -685,6 +627,34 @@ fn renamed_folder_path(folder_path: &str, new_name: &str) -> AppResult<PathBuf> 
         ))
     })?;
     Ok(parent.join(new_name))
+}
+
+fn normalize_logical_dataset_path(path: &str) -> String {
+    path.replace('\\', "/")
+        .trim_matches('/')
+        .split('/')
+        .filter(|part| !part.is_empty() && *part != ".")
+        .collect::<Vec<_>>()
+        .join("/")
+}
+
+fn join_logical_dataset_path(parent: &str, name: &str) -> PathBuf {
+    let parent = normalize_logical_dataset_path(parent);
+    if parent.is_empty() {
+        PathBuf::from(name)
+    } else {
+        PathBuf::from(format!("{parent}/{name}"))
+    }
+}
+
+fn import_relative_dataset_path(root: &Path, image_path: &Path) -> PathBuf {
+    image_path
+        .strip_prefix(root)
+        .ok()
+        .filter(|relative| !relative.as_os_str().is_empty())
+        .map(Path::to_path_buf)
+        .or_else(|| image_path.file_name().map(PathBuf::from))
+        .unwrap_or_else(|| PathBuf::from("image"))
 }
 
 fn list_images_for_dirs(dirs: &app_dirs::AppDirs) -> AppResult<Vec<DatasetImage>> {
@@ -1272,8 +1242,20 @@ pub async fn import_images_to_folder(
             if let Some(db) = database.as_mut() {
                 let import_asset_dir =
                     (import_target.source_kind == "asset").then_some(asset_dir.as_path());
-                match files::import_image(db, &source_path, &thumbnail_dir, import_asset_dir, None)
-                {
+                let dataset_path = source_path
+                    .file_name()
+                    .map(|name| {
+                        join_logical_dataset_path(&target_folder_path, &name.to_string_lossy())
+                    })
+                    .unwrap_or_else(|| join_logical_dataset_path(&target_folder_path, "image"));
+                match files::import_image(
+                    db,
+                    &source_path,
+                    &dataset_path,
+                    &thumbnail_dir,
+                    import_asset_dir,
+                    None,
+                ) {
                     Ok(result) => {
                         if let (Some(profile_id), true) =
                             (local_profile_id, has_non_empty_text(&source_annotation))
@@ -1534,9 +1516,11 @@ pub fn start_import_folder(
 
         for (index, path) in paths.iter().enumerate() {
             let import_asset_dir = (source_kind == "asset").then_some(asset_dir.as_path());
+            let dataset_path = import_relative_dataset_path(&folder, path);
             match files::import_image(
                 &mut db,
                 path,
+                &dataset_path,
                 &thumbnail_dir,
                 import_asset_dir,
                 import_profile_id,
@@ -1816,11 +1800,7 @@ pub fn rename_annotation_profile(
 ) -> AppResult<()> {
     let (prefix, local_profile_id) = split_public_id(profile_id)?;
     let (mut db, _) = open_database_by_prefix(&state.dirs, prefix)?;
-    tracing::info!(
-        "重命名标注类型 profile_id={} 为 {:?}",
-        profile_id,
-        new_name
-    );
+    tracing::info!("重命名标注类型 profile_id={} 为 {:?}", profile_id, new_name);
     db.rename_annotation_profile(local_profile_id, new_name)
 }
 
@@ -1832,20 +1812,13 @@ pub fn duplicate_annotation_profile(
 ) -> AppResult<i64> {
     let (prefix, local_profile_id) = split_public_id(profile_id)?;
     let (mut db, _) = open_database_by_prefix(&state.dirs, prefix)?;
-    tracing::info!(
-        "复制标注类型 profile_id={} 为 {:?}",
-        profile_id,
-        new_name
-    );
+    tracing::info!("复制标注类型 profile_id={} 为 {:?}", profile_id, new_name);
     db.duplicate_annotation_profile(local_profile_id, new_name)
         .map(|new_id| to_public_id(prefix, new_id))
 }
 
 #[tauri::command]
-pub fn delete_annotation_profile(
-    state: State<'_, AppState>,
-    profile_id: i64,
-) -> AppResult<()> {
+pub fn delete_annotation_profile(state: State<'_, AppState>, profile_id: i64) -> AppResult<()> {
     let (prefix, local_profile_id) = split_public_id(profile_id)?;
     let (mut db, _) = open_database_by_prefix(&state.dirs, prefix)?;
     tracing::info!("删除标注类型 profile_id={}", profile_id);
@@ -1913,6 +1886,7 @@ pub fn remove_dataset_folder(
     state: State<'_, AppState>,
     folder_path: String,
     source_kind: Option<String>,
+    dataset_id: Option<String>,
 ) -> AppResult<usize> {
     tracing::info!("移除数据库子文件夹记录：path={}", folder_path);
     let source_kind = normalize_database_source_kind(source_kind)?;
@@ -1920,7 +1894,15 @@ pub fn remove_dataset_folder(
     let mut removed = 0;
     let mut asset_storage_paths = Vec::new();
 
+    let target_prefix = dataset_id
+        .as_deref()
+        .and_then(|id| id.split_once(':').map(|(_, value)| value))
+        .and_then(|value| value.parse::<i64>().ok());
+
     for db_ref in dataset_database_refs(&state.dirs)? {
+        if target_prefix.is_some_and(|prefix| prefix != db_ref.prefix) {
+            continue;
+        }
         let mut db = open_database(&db_ref.path)?;
         if db.dataset_source_kind()? != source_kind {
             continue;
@@ -1957,7 +1939,31 @@ pub fn rename_dataset_folder(
     state: State<'_, AppState>,
     folder_path: String,
     new_name: String,
+    source_kind: Option<String>,
+    dataset_id: Option<String>,
 ) -> AppResult<String> {
+    let source_kind = source_kind.as_deref().unwrap_or("folder");
+    if source_kind == "database" || source_kind == "asset" {
+        let dataset_id = dataset_id.ok_or_else(|| {
+            AppError::InvalidInput("Database folder rename requires a dataset id".to_owned())
+        })?;
+        let prefix = dataset_id
+            .split_once(':')
+            .and_then(|(_, value)| value.parse::<i64>().ok())
+            .ok_or_else(|| AppError::InvalidInput(format!("Invalid dataset id: {dataset_id}")))?;
+        let (mut db, _) = open_database_by_prefix(&state.dirs, prefix)?;
+        if db.dataset_source_kind()? != source_kind {
+            return Err(AppError::InvalidInput(format!(
+                "Dataset type mismatch: expected {source_kind}"
+            )));
+        }
+        let new_path = renamed_folder_path(&folder_path, &new_name)?
+            .to_string_lossy()
+            .to_string();
+        db.rename_folder_paths(&folder_path, &new_path)?;
+        return Ok(normalize_logical_dataset_path(&new_path));
+    }
+
     let new_path = renamed_folder_path(&folder_path, &new_name)?;
     let old_path = PathBuf::from(&folder_path);
     if !old_path.is_dir() {
@@ -1982,14 +1988,47 @@ pub fn rename_dataset_folder(
     let new_path_string = new_path.to_string_lossy().to_string();
     for db_ref in dataset_database_refs(&state.dirs)? {
         let mut db = open_database(&db_ref.path)?;
-        db.rename_folder_paths(&folder_path, &new_path_string)?;
+        db.rename_source_folder_paths(&folder_path, &new_path_string)?;
     }
 
     Ok(new_path_string)
 }
 
 #[tauri::command]
-pub fn create_dataset_subfolder(folder_path: String, name: String) -> AppResult<String> {
+pub fn create_dataset_subfolder(
+    state: State<'_, AppState>,
+    folder_path: String,
+    name: String,
+    source_kind: Option<String>,
+    dataset_id: Option<String>,
+) -> AppResult<String> {
+    let source_kind = source_kind.as_deref().unwrap_or("folder");
+    if source_kind == "database" || source_kind == "asset" {
+        let dataset_id = dataset_id.ok_or_else(|| {
+            AppError::InvalidInput("Database folder creation requires a dataset id".to_owned())
+        })?;
+        let prefix = dataset_id
+            .split_once(':')
+            .and_then(|(_, value)| value.parse::<i64>().ok())
+            .ok_or_else(|| AppError::InvalidInput(format!("Invalid dataset id: {dataset_id}")))?;
+        let (db, _) = open_database_by_prefix(&state.dirs, prefix)?;
+        if db.dataset_source_kind()? != source_kind {
+            return Err(AppError::InvalidInput(format!(
+                "Dataset type mismatch: expected {source_kind}"
+            )));
+        }
+        drop(db);
+        let name = name.trim();
+        if name.is_empty() || name.contains('/') || name.contains('\\') {
+            return Err(AppError::InvalidInput(
+                "Folder name cannot be empty or contain path separators".to_owned(),
+            ));
+        }
+        return Ok(normalize_logical_dataset_path(
+            &join_logical_dataset_path(&folder_path, name).to_string_lossy(),
+        ));
+    }
+
     let new_path = renamed_folder_path(&format!("{folder_path}/placeholder"), &name)?;
     let parent = PathBuf::from(&folder_path);
     if !parent.is_dir() {
@@ -2146,17 +2185,10 @@ fn prepare_export(
                 image_ids.is_empty() || image_ids.contains(&public_id)
             })
             .collect::<Vec<_>>();
-        let original_paths = selected_images
-            .iter()
-            .map(|image| PathBuf::from(&image.path))
-            .collect::<Vec<_>>();
-        let common_parent = common_parent_path(&original_paths);
         let mut used_relative_paths = HashSet::new();
         let items = selected_images
             .into_iter()
             .map(|image| {
-                let original_path = PathBuf::from(&image.path);
-
                 let source_path = image
                     .storage_path
                     .as_deref()
@@ -2168,9 +2200,14 @@ fn prepare_export(
                     .find(|annotation| annotation.profile_id == local_profile_id)
                     .map(|annotation| annotation.content.clone())
                     .unwrap_or_default();
-                let relative_path = export_relative_path_for_database_image(
-                    &original_path,
-                    common_parent.as_deref(),
+                let relative_path = deduplicate_relative_path(
+                    PathBuf::from(
+                        image
+                            .dataset_path
+                            .as_deref()
+                            .filter(|value| !value.trim().is_empty())
+                            .unwrap_or(&image.file_name),
+                    ),
                     &mut used_relative_paths,
                 );
                 source_size(&source_path, image.file_size).map(|source_size_bytes| ExportItem {
@@ -2369,14 +2406,10 @@ pub fn start_format_mismatch_scan(
 }
 
 #[tauri::command]
-pub fn fix_format_mismatches(
-    folder: String,
-    items: Vec<FormatMismatch>,
-) -> AppResult<usize> {
+pub fn fix_format_mismatches(folder: String, items: Vec<FormatMismatch>) -> AppResult<usize> {
     let folder_path = PathBuf::from(&folder);
-    let canonical_folder = dunce::canonicalize(&folder_path).map_err(|_| {
-        AppError::InvalidInput(format!("无法解析扫描文件夹路径：{folder}"))
-    })?;
+    let canonical_folder = dunce::canonicalize(&folder_path)
+        .map_err(|_| AppError::InvalidInput(format!("无法解析扫描文件夹路径：{folder}")))?;
 
     let mut fixed = 0;
 
@@ -2387,21 +2420,17 @@ pub fn fix_format_mismatches(
             continue;
         }
 
-        let canonical_source = dunce::canonicalize(&source).map_err(|_| {
-            AppError::InvalidInput(format!(
-                "无法解析文件路径：{}",
-                item.file_path
-            ))
-        })?;
+        let canonical_source = dunce::canonicalize(&source)
+            .map_err(|_| AppError::InvalidInput(format!("无法解析文件路径：{}", item.file_path)))?;
         if !canonical_source.starts_with(&canonical_folder) {
-            tracing::warn!(
-                "格式修复跳过（文件不在扫描文件夹内）：{}",
-                item.file_path
-            );
+            tracing::warn!("格式修复跳过（文件不在扫描文件夹内）：{}", item.file_path);
             continue;
         }
 
-        if item.correct_extension.contains('/') || item.correct_extension.contains('\\') || item.correct_extension.contains("..") {
+        if item.correct_extension.contains('/')
+            || item.correct_extension.contains('\\')
+            || item.correct_extension.contains("..")
+        {
             tracing::warn!(
                 "格式修复跳过（扩展名包含非法字符）：{}",
                 item.correct_extension

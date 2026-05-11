@@ -47,6 +47,64 @@ type ImageContextMenuState = {
   top: number;
 };
 
+function ProjectPathBreadcrumb({
+  trail,
+  fallbackPath,
+  onSelectProject,
+  className,
+  currentClassName = "font-semibold text-neutral-950",
+  ancestorClassName = "font-normal text-neutral-500"
+}: {
+  trail: DatasetProject[];
+  fallbackPath?: string;
+  onSelectProject: (id: string) => void;
+  className?: string;
+  currentClassName?: string;
+  ancestorClassName?: string;
+}) {
+  if (!trail.length) {
+    return fallbackPath ? (
+      <span className={cn("truncate", className)}>
+        {fallbackPath}
+      </span>
+    ) : null;
+  }
+
+  return (
+    <span
+      className={cn("inline-flex min-w-0 flex-wrap items-center gap-x-1 gap-y-0.5", className)}
+      aria-label="Current folder path"
+    >
+      {trail.map((project, index) => {
+        const isCurrent = index === trail.length - 1;
+        const label = project.name || project.path;
+
+        return (
+          <span key={project.id} className="inline-flex min-w-0 items-center gap-1">
+            {index > 0 ? <span className="shrink-0 text-neutral-400">/</span> : null}
+            {isCurrent ? (
+              <span className={cn("max-w-[220px] truncate", currentClassName)}>
+                {label}
+              </span>
+            ) : (
+              <button
+                type="button"
+                className={cn(
+                  "no-drag max-w-[220px] truncate rounded-[3px] border-0 bg-transparent p-0 text-left underline-offset-2 outline-none transition hover:text-neutral-900 hover:underline focus-visible:ring-2 focus-visible:ring-neutral-300",
+                  ancestorClassName
+                )}
+                onClick={() => onSelectProject(project.id)}
+              >
+                {label}
+              </button>
+            )}
+          </span>
+        );
+      })}
+    </span>
+  );
+}
+
 const tabs: Array<{ id: WorkspaceTab; labelKey: string; icon: typeof Info }> = [
   { id: "grid", labelKey: "workspace.grid", icon: Grid3X3 },
   { id: "table", labelKey: "workspace.table", icon: Table2 },
@@ -560,9 +618,11 @@ function ImageDeleteDialog({
 function DatasetOverview({
   images,
   selectedProject,
+  selectedProjectTrail,
   profiles,
   isCheckingProblemItems,
   checkProblemItems,
+  selectProject,
   createAnnotationProfile,
   renameAnnotationProfile,
   duplicateAnnotationProfile,
@@ -571,9 +631,11 @@ function DatasetOverview({
 }: {
   images: DatasetImage[];
   selectedProject: DatasetProject | undefined;
+  selectedProjectTrail: DatasetProject[];
   profiles: AnnotationProfile[];
   isCheckingProblemItems: boolean;
   checkProblemItems: (project?: DatasetProject) => Promise<unknown>;
+  selectProject: (id?: string) => void;
   createAnnotationProfile: (name: string) => Promise<number | undefined>;
   renameAnnotationProfile: (profileId: number, newName: string) => Promise<void>;
   duplicateAnnotationProfile: (profileId: number, newName: string) => Promise<void>;
@@ -768,7 +830,13 @@ function DatasetOverview({
             {selectedProject?.sourceKind === "folder" ? (
               <div className="flex min-w-0 items-center gap-1.5">
                 <FolderOpen size={14} className="shrink-0 text-neutral-400" />
-                <span className="truncate font-mono">{selectedProject.path}</span>
+                <ProjectPathBreadcrumb
+                  trail={selectedProjectTrail}
+                  fallbackPath={selectedProject.path}
+                  onSelectProject={selectProject}
+                  className="font-mono"
+                  currentClassName="font-medium text-neutral-600"
+                />
               </div>
             ) : null}
             <div className="flex shrink-0 items-center gap-1.5">
@@ -1128,6 +1196,7 @@ export function DatasetWorkspace() {
     renameAnnotationProfile,
     duplicateAnnotationProfile,
     deleteAnnotationProfile,
+    selectProject,
     selectImage,
     renameDatasetImage,
     deleteDatasetImage
@@ -1158,6 +1227,7 @@ export function DatasetWorkspace() {
       renameAnnotationProfile: state.renameAnnotationProfile,
       duplicateAnnotationProfile: state.duplicateAnnotationProfile,
       deleteAnnotationProfile: state.deleteAnnotationProfile,
+      selectProject: state.selectProject,
       selectImage: state.selectImage,
       renameDatasetImage: state.renameDatasetImage,
       deleteDatasetImage: state.deleteDatasetImage
@@ -1183,13 +1253,6 @@ export function DatasetWorkspace() {
     () => findProjectTrail(projects, selectedProjectId),
     [projects, selectedProjectId]
   );
-  const titlePathPrefix =
-    selectedProjectTrail.length > 1
-      ? `${selectedProjectTrail
-          .slice(0, -1)
-          .map((project) => project.name)
-          .join("/")}/`
-      : "";
   const visibleImages = useMemo(
     () => getVisibleImages(images, selectedProject, search, viewFilterMode, viewFilterImageIds),
     [images, search, selectedProject, viewFilterImageIds, viewFilterMode]
@@ -1427,12 +1490,12 @@ export function DatasetWorkspace() {
         <div className="min-w-0 flex-1">
           <h2 className="m-0 flex min-w-0 items-center gap-2 text-[14px] text-neutral-900">
             <FolderOpen size={16} className="shrink-0 text-neutral-500" />
-            <span className="min-w-0 flex-1 truncate leading-5">
-              {titlePathPrefix ? (
-                <span className="font-normal text-neutral-500">{titlePathPrefix}</span>
-              ) : null}
-              <span className="font-semibold">{selectedProject?.name}</span>
-            </span>
+            <ProjectPathBreadcrumb
+              trail={selectedProjectTrail}
+              fallbackPath={selectedProject?.path}
+              onSelectProject={selectProject}
+              className="min-w-0 flex-1 leading-5"
+            />
             <span
               className={cn(
                 "shrink-0 rounded-full px-2 py-0.5 text-[11px] font-normal",
@@ -1516,9 +1579,11 @@ export function DatasetWorkspace() {
         <DatasetOverview
           images={overviewImages}
           selectedProject={selectedProject}
+          selectedProjectTrail={selectedProjectTrail}
           profiles={profiles}
           isCheckingProblemItems={isCheckingProblemItems}
           checkProblemItems={checkProblemItems}
+          selectProject={selectProject}
           createAnnotationProfile={createAnnotationProfile}
           renameAnnotationProfile={renameAnnotationProfile}
           duplicateAnnotationProfile={duplicateAnnotationProfile}

@@ -84,6 +84,7 @@ pub fn scan_import_preview(folder: &Path) -> ImportPreview {
 pub fn import_image(
     db: &mut Database,
     path: &Path,
+    dataset_path: &Path,
     thumbnail_dir: &Path,
     asset_dir: Option<&Path>,
     import_profile_id: Option<i64>,
@@ -99,6 +100,7 @@ pub fn import_image(
 
     let image_id = db.insert_image(&NewImage {
         path: path.to_path_buf(),
+        dataset_path: dataset_path.to_path_buf(),
         storage_path,
         thumbnail_path: Some(thumbnail.path),
         width: Some(thumbnail.width),

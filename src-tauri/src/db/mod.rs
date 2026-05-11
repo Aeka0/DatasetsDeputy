@@ -36,6 +36,7 @@ pub struct Annotation {
 pub struct DatasetImage {
     pub id: i64,
     pub path: String,
+    pub dataset_path: Option<String>,
     pub file_name: String,
     pub storage_path: Option<String>,
     pub thumbnail_path: Option<String>,
@@ -49,11 +50,13 @@ pub struct DatasetImage {
     pub annotations: Vec<Annotation>,
     pub source_kind: Option<String>,
     pub dataset_id: Option<String>,
+    pub root_name: Option<String>,
     pub root_path: Option<String>,
 }
 
 pub struct NewImage {
     pub path: PathBuf,
+    pub dataset_path: PathBuf,
     pub storage_path: Option<PathBuf>,
     pub thumbnail_path: Option<PathBuf>,
     pub width: Option<u32>,
@@ -99,6 +102,7 @@ impl Database {
             CREATE TABLE IF NOT EXISTS images (
               id INTEGER PRIMARY KEY AUTOINCREMENT,
               path TEXT NOT NULL UNIQUE,
+              dataset_path TEXT NOT NULL,
               file_name TEXT NOT NULL,
               storage_path TEXT,
               thumbnail_path TEXT,
@@ -136,42 +140,6 @@ impl Database {
             CREATE INDEX IF NOT EXISTS idx_annotations_profile ON annotations(profile_id);
             "#,
         )?;
-        self.ensure_images_storage_path_column()?;
-        self.drop_annotation_profile_legacy_columns()?;
-        Ok(())
-    }
-
-    fn ensure_images_storage_path_column(&self) -> AppResult<()> {
-        let mut stmt = self.conn.prepare("PRAGMA table_info(images)")?;
-        let columns = stmt
-            .query_map([], |row| row.get::<_, String>(1))?
-            .collect::<Result<Vec<_>, _>>()?;
-
-        if !columns.iter().any(|existing| existing == "storage_path") {
-            self.conn
-                .execute("ALTER TABLE images ADD COLUMN storage_path TEXT", [])?;
-        }
-
-        Ok(())
-    }
-
-    fn drop_annotation_profile_legacy_columns(&self) -> AppResult<()> {
-        let mut stmt = self
-            .conn
-            .prepare("PRAGMA table_info(annotation_profiles)")?;
-        let columns = stmt
-            .query_map([], |row| row.get::<_, String>(1))?
-            .collect::<Result<Vec<_>, _>>()?;
-
-        for column in ["format_type", "source_type", "description", "model_info"] {
-            if columns.iter().any(|existing| existing == column) {
-                self.conn.execute(
-                    &format!("ALTER TABLE annotation_profiles DROP COLUMN {column}"),
-                    [],
-                )?;
-            }
-        }
-
         Ok(())
     }
 
@@ -214,7 +182,7 @@ impl Database {
             .list_images()?
             .into_iter()
             .filter_map(|image| {
-                let normalized_path = normalize_dataset_path(&image.path);
+                let normalized_path = normalize_dataset_path(image.dataset_path.as_deref()?);
                 if normalized_path == old_folder_path {
                     Some((image.id, new_folder_path.clone()))
                 } else if normalized_path.starts_with(&old_child_prefix) {
@@ -236,7 +204,7 @@ impl Database {
         let tx = self.conn.transaction()?;
         for (image_id, path) in images {
             tx.execute(
-                "UPDATE images SET path = ?1, updated_at = ?2 WHERE id = ?3",
+                "UPDATE images SET dataset_path = ?1, updated_at = ?2 WHERE id = ?3",
                 params![path, now, image_id],
             )?;
         }
@@ -267,6 +235,48 @@ impl Database {
             )?;
         }
 
+        tx.commit()?;
+        Ok(renamed)
+    }
+
+    pub fn rename_source_folder_paths(
+        &mut self,
+        old_folder_path: &str,
+        new_folder_path: &str,
+    ) -> AppResult<usize> {
+        let old_folder_path = normalize_dataset_path(old_folder_path);
+        let new_folder_path = normalize_dataset_path(new_folder_path);
+        let old_child_prefix = format!("{old_folder_path}/");
+        let now = Utc::now().to_rfc3339();
+        let images = self
+            .list_images()?
+            .into_iter()
+            .filter_map(|image| {
+                let normalized_path = normalize_dataset_path(&image.path);
+                if normalized_path == old_folder_path {
+                    Some((image.id, new_folder_path.clone()))
+                } else if normalized_path.starts_with(&old_child_prefix) {
+                    Some((
+                        image.id,
+                        format!(
+                            "{}{}",
+                            new_folder_path,
+                            &normalized_path[old_folder_path.len()..]
+                        ),
+                    ))
+                } else {
+                    None
+                }
+            })
+            .collect::<Vec<_>>();
+        let renamed = images.len();
+        let tx = self.conn.transaction()?;
+        for (image_id, path) in images {
+            tx.execute(
+                "UPDATE images SET path = ?1, updated_at = ?2 WHERE id = ?3",
+                params![path, now, image_id],
+            )?;
+        }
         tx.commit()?;
         Ok(renamed)
     }
@@ -376,25 +386,34 @@ impl Database {
     }
 
     pub fn list_images(&self) -> AppResult<Vec<DatasetImage>> {
+        let root_name: Option<String> = self
+            .conn
+            .query_row(
+                "SELECT value FROM dataset_metadata WHERE key = 'root_name'",
+                [],
+                |row| row.get(0),
+            )
+            .optional()?;
         let mut stmt = self.conn.prepare(
-            "SELECT id, path, file_name, storage_path, thumbnail_path, width, height, file_size, file_hash, imported_at, updated_at
+            "SELECT id, path, dataset_path, file_name, storage_path, thumbnail_path, width, height, file_size, file_hash, imported_at, updated_at
              FROM images
-             ORDER BY replace(path, '\', '/') COLLATE NOCASE ASC, id ASC",
+             ORDER BY replace(dataset_path, '\', '/') COLLATE NOCASE ASC, id ASC",
         )?;
 
         let image_rows = stmt.query_map([], |row| {
             Ok((
                 row.get::<_, i64>(0)?,
                 row.get::<_, String>(1)?,
-                row.get::<_, String>(2)?,
-                row.get::<_, Option<String>>(3)?,
+                row.get::<_, Option<String>>(2)?,
+                row.get::<_, String>(3)?,
                 row.get::<_, Option<String>>(4)?,
-                row.get::<_, Option<u32>>(5)?,
+                row.get::<_, Option<String>>(5)?,
                 row.get::<_, Option<u32>>(6)?,
-                row.get::<_, Option<i64>>(7)?,
-                row.get::<_, Option<String>>(8)?,
-                row.get::<_, String>(9)?,
+                row.get::<_, Option<u32>>(7)?,
+                row.get::<_, Option<i64>>(8)?,
+                row.get::<_, Option<String>>(9)?,
                 row.get::<_, String>(10)?,
+                row.get::<_, String>(11)?,
             ))
         })?;
 
@@ -404,6 +423,7 @@ impl Database {
             let (
                 id,
                 path,
+                dataset_path,
                 file_name,
                 storage_path,
                 thumbnail_path,
@@ -418,6 +438,7 @@ impl Database {
             images.push(DatasetImage {
                 id,
                 path,
+                dataset_path,
                 file_name,
                 storage_path,
                 thumbnail_path,
@@ -431,6 +452,7 @@ impl Database {
                 annotations: Vec::new(),
                 source_kind: None,
                 dataset_id: None,
+                root_name: root_name.clone(),
                 root_path: None,
             });
         }
@@ -473,17 +495,19 @@ impl Database {
     pub fn insert_image(&self, image: &NewImage) -> AppResult<i64> {
         let now = Utc::now().to_rfc3339();
         let file_name = image
-            .path
+            .dataset_path
             .file_name()
             .and_then(|name| name.to_str())
+            .or_else(|| image.path.file_name().and_then(|name| name.to_str()))
             .unwrap_or("image")
             .to_owned();
 
         self.conn.execute(
-            "INSERT INTO images (path, file_name, storage_path, thumbnail_path, width, height, file_size, file_hash, imported_at, updated_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+            "INSERT INTO images (path, dataset_path, file_name, storage_path, thumbnail_path, width, height, file_size, file_hash, imported_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
             params![
                 image.path.to_string_lossy(),
+                normalize_dataset_path(&image.dataset_path.to_string_lossy()),
                 file_name,
                 image
                     .storage_path
@@ -545,7 +569,7 @@ impl Database {
         }
 
         let old_path: String = self.conn.query_row(
-            "SELECT path FROM images WHERE id = ?1",
+            "SELECT dataset_path FROM images WHERE id = ?1",
             params![image_id],
             |row| row.get(0),
         )?;
@@ -558,7 +582,7 @@ impl Database {
         let now = Utc::now().to_rfc3339();
 
         self.conn.execute(
-            "UPDATE images SET path = ?1, file_name = ?2, updated_at = ?3 WHERE id = ?4",
+            "UPDATE images SET dataset_path = ?1, file_name = ?2, updated_at = ?3 WHERE id = ?4",
             params![new_path_string, new_name, now, image_id],
         )?;
 
@@ -583,8 +607,8 @@ impl Database {
         let mut stmt = self.conn.prepare(
             r#"SELECT storage_path FROM images
                WHERE storage_path IS NOT NULL
-                 AND (replace(path, '\', '/') = ?1
-                  OR replace(path, '\', '/') LIKE ?2 ESCAPE '\')"#,
+                 AND (replace(dataset_path, '\', '/') = ?1
+                  OR replace(dataset_path, '\', '/') LIKE ?2 ESCAPE '\')"#,
         )?;
         let paths = stmt
             .query_map(params![normalized_path, child_pattern], |row| {
@@ -627,8 +651,8 @@ impl Database {
         let child_pattern = format!("{}/%", escape_like_pattern(&normalized_path));
         let deleted = self.conn.execute(
             r#"DELETE FROM images
-               WHERE replace(path, '\', '/') = ?1
-                  OR replace(path, '\', '/') LIKE ?2 ESCAPE '\'"#,
+               WHERE replace(dataset_path, '\', '/') = ?1
+                  OR replace(dataset_path, '\', '/') LIKE ?2 ESCAPE '\'"#,
             params![normalized_path, child_pattern],
         )?;
         Ok(deleted)
@@ -731,7 +755,11 @@ impl Database {
         Ok(())
     }
 
-    pub fn rename_annotation_profile(&mut self, profile_id: i64, new_name: String) -> AppResult<()> {
+    pub fn rename_annotation_profile(
+        &mut self,
+        profile_id: i64,
+        new_name: String,
+    ) -> AppResult<()> {
         let new_name = new_name.trim().to_owned();
         if new_name.is_empty() {
             return Err(crate::errors::AppError::InvalidInput(
@@ -883,7 +911,12 @@ impl Database {
 }
 
 fn normalize_dataset_path(path: &str) -> String {
-    path.replace('\\', "/").trim_end_matches('/').to_owned()
+    path.replace('\\', "/")
+        .trim_matches('/')
+        .split('/')
+        .filter(|part| !part.is_empty() && *part != ".")
+        .collect::<Vec<_>>()
+        .join("/")
 }
 
 fn escape_like_pattern(value: &str) -> String {

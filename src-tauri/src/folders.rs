@@ -291,6 +291,7 @@ pub fn list_folder_images(dirs: &AppDirs) -> AppResult<Vec<DatasetImage>> {
             images.push(DatasetImage {
                 id,
                 path: path.to_string_lossy().to_string(),
+                dataset_path: None,
                 file_name: path
                     .file_name()
                     .and_then(|value| value.to_str())
@@ -317,6 +318,7 @@ pub fn list_folder_images(dirs: &AppDirs) -> AppResult<Vec<DatasetImage>> {
                 }],
                 source_kind: Some("folder".to_owned()),
                 dataset_id: Some(dataset_id.clone()),
+                root_name: None,
                 root_path: Some(root_path.clone()),
             });
         }
@@ -365,10 +367,7 @@ fn require_path_within_registered_folder(dirs: &AppDirs, target: &Path) -> AppRe
 pub fn require_subfolder_of_registered(dirs: &AppDirs, target: &Path) -> AppResult<()> {
     let registry = read_registry(dirs)?;
     let canonical_target = dunce::canonicalize(target).map_err(|_| {
-        AppError::InvalidInput(format!(
-            "无法解析目标路径：{}",
-            target.to_string_lossy()
-        ))
+        AppError::InvalidInput(format!("无法解析目标路径：{}", target.to_string_lossy()))
     })?;
     let normalized_target = normalize_path(&canonical_target);
 
@@ -386,11 +385,7 @@ pub fn require_subfolder_of_registered(dirs: &AppDirs, target: &Path) -> AppResu
     ))
 }
 
-pub fn save_folder_annotation(
-    dirs: &AppDirs,
-    image_path: &str,
-    content: &str,
-) -> AppResult<()> {
+pub fn save_folder_annotation(dirs: &AppDirs, image_path: &str, content: &str) -> AppResult<()> {
     let path = PathBuf::from(image_path);
     require_path_within_registered_folder(dirs, &path)?;
     if !path.is_file() && path.parent().is_none_or(|parent| !parent.is_dir()) {

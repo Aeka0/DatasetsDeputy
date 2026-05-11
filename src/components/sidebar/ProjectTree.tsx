@@ -352,7 +352,8 @@ export function ProjectTree() {
     !isVirtualRoot(project) &&
     !isDatasetRoot(project) &&
     (project.sourceKind === "database" || project.sourceKind === "asset");
-  const canCreateChildFolder = (project: DatasetProject) => isDatasetRoot(project) && Boolean(project.path);
+  const canCreateChildFolder = (project: DatasetProject) =>
+    isDatasetRoot(project) && (project.sourceKind !== "folder" || Boolean(project.path));
   const runProjectCheck = async (project: DatasetProject) => {
     setContextMenu(undefined);
     if (isVirtualRoot(project)) {

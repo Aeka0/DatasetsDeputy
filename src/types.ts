@@ -26,6 +26,7 @@ export interface AnnotationChange {
 export interface DatasetImage {
   id: number;
   path: string;
+  datasetPath?: string;
   fileName: string;
   storagePath?: string;
   thumbnailPath?: string;
@@ -39,6 +40,7 @@ export interface DatasetImage {
   annotations: Annotation[];
   sourceKind?: DatasetSourceKind;
   datasetId?: string;
+  rootName?: string;
   rootPath?: string;
 }
 

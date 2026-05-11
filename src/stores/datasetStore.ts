@@ -37,6 +37,7 @@ const sampleImages: DatasetImage[] = [
   {
     id: 1,
     path: "datasets/sample/aurora-field.png",
+    datasetPath: "aurora-field.png",
     fileName: "aurora-field.png",
     width: 1536,
     height: 1024,
@@ -62,6 +63,7 @@ const sampleImages: DatasetImage[] = [
   {
     id: 2,
     path: "datasets/sample/studio-portrait.png",
+    datasetPath: "studio-portrait.png",
     fileName: "studio-portrait.png",
     width: 1024,
     height: 1536,
@@ -87,6 +89,7 @@ const sampleImages: DatasetImage[] = [
   {
     id: 3,
     path: "datasets/sample/product-glass.png",
+    datasetPath: "product-glass.png",
     fileName: "product-glass.png",
     width: 1400,
     height: 1400,
@@ -187,12 +190,22 @@ function renamePathPrefix(path: string, oldPrefix: string, newPrefix: string) {
 }
 
 function renameProjectIdPrefix(id: string | undefined, oldPrefix: string, newPrefix: string) {
-  if (!id?.startsWith("folder:")) {
+  if (!id) {
     return id;
   }
 
-  const renamedPath = renamePathPrefix(id.slice("folder:".length), oldPrefix, newPrefix);
-  return `folder:${renamedPath}`;
+  if (id.startsWith("folder:")) {
+    const renamedPath = renamePathPrefix(id.slice("folder:".length), oldPrefix, newPrefix);
+    return `folder:${renamedPath}`;
+  }
+
+  const databaseFolderMatch = id.match(/^(database|asset)-folder:([^:]+):(.+)$/);
+  if (!databaseFolderMatch) {
+    return id;
+  }
+
+  const [, sourceKind, datasetId, path] = databaseFolderMatch;
+  return `${sourceKind}-folder:${datasetId}:${renamePathPrefix(path, oldPrefix, newPrefix)}`;
 }
 
 function getCommonDirectory(images: DatasetImage[]) {
@@ -253,14 +266,17 @@ function createProjectTree(
     const groupRootPath = sourceKind === "folder" ? imageRoot : undefined;
     const groupRootName = sourceKind === "folder"
       ? getPathName(imageRoot ?? "", "Folder")
-      : rootName;
+      : groupImages.find((image) => image.rootName)?.rootName ?? rootName;
     const normalizedGroupRoot = groupRootPath ? normalizePath(groupRootPath) : undefined;
     const groupMatchesImportRoot =
+      sourceKind === "folder" &&
       normalizedGroupRoot &&
       groupImages.every((image) => normalizePath(image.path).startsWith(normalizedGroupRoot));
-    const normalizedRoot = groupMatchesImportRoot
-      ? normalizedGroupRoot
-      : normalizePath(getCommonDirectory(groupImages));
+    const normalizedRoot = sourceKind === "folder"
+      ? groupMatchesImportRoot
+        ? normalizedGroupRoot
+        : normalizePath(getCommonDirectory(groupImages))
+      : "";
 
     const rootIdPrefix = sourceKind === "folder"
       ? "folder-root"
@@ -274,9 +290,7 @@ function createProjectTree(
       : "Dataset";
     const root: DatasetProject = {
       id: `${rootIdPrefix}:${groupKey}`,
-      name: groupMatchesImportRoot && groupRootName
-        ? groupRootName
-        : getPathName(normalizedRoot, fallbackRootName),
+      name: groupRootName || getPathName(normalizedRoot, fallbackRootName),
       path: normalizedRoot,
       imageIds: groupImages.map((image) => image.id),
       children: [],
@@ -289,7 +303,9 @@ function createProjectTree(
       let child = parent.children.find((item) => item.path === path);
       if (!child) {
         child = {
-          id: `${sourceKind}-folder:${path}`,
+          id: sourceKind === "folder"
+            ? `${sourceKind}-folder:${path}`
+            : `${sourceKind}-folder:${encodeURIComponent(groupKey)}:${path}`,
           name,
           path,
           imageIds: [],
@@ -303,10 +319,14 @@ function createProjectTree(
     };
 
     for (const image of groupImages) {
-      const directory = getDirectory(image.path);
-      const relative = normalizedRoot && directory.startsWith(normalizedRoot)
-        ? directory.slice(normalizedRoot.length).replace(/^\/+/, "")
-        : "";
+      const directory = sourceKind === "folder"
+        ? getDirectory(image.path)
+        : getDirectory(image.datasetPath ?? image.fileName);
+      const relative = sourceKind === "folder"
+        ? normalizedRoot && directory.startsWith(normalizedRoot)
+          ? directory.slice(normalizedRoot.length).replace(/^\/+/, "")
+          : ""
+        : directory;
 
       if (!relative) continue;
 
@@ -1025,9 +1045,8 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
         invokeCommand<AnnotationProfile[]>("list_annotation_profiles")
       ]);
       const projects = createProjectTree(images, report.rootName, report.rootPath);
-      const selectedProject = projects.find(
-        (project) => report.rootPath && normalizePath(project.path) === normalizePath(report.rootPath)
-      );
+      const selectedProject =
+        projects.find((project) => project.name === report.rootName) ?? projects[0];
       const activeProfileId =
         profiles.find((profile) => profile.datasetId === selectedProject?.datasetId)?.id ??
         profiles[0]?.id;
@@ -1074,7 +1093,8 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
       } else {
         await invokeCommand<number>("remove_dataset_folder", {
           folderPath: project.path,
-          sourceKind: getProjectSourceKind(project)
+          sourceKind: getProjectSourceKind(project),
+          datasetId: project.datasetId
         });
       }
 
@@ -1157,7 +1177,9 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
     if (hasTauriRuntime()) {
       await invokeCommand<string>("rename_dataset_folder", {
         folderPath: project.path,
-        newName: trimmedName
+        newName: trimmedName,
+        sourceKind: getProjectSourceKind(project),
+        datasetId: project.datasetId
       });
       const [images, profiles] = await Promise.all([
         invokeCommand<DatasetImage[]>("list_images"),
@@ -1178,7 +1200,9 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
     set((state) => {
       const images = state.images.map((image) => ({
         ...image,
-        path: renamePathPrefix(image.path, project.path, newPath)
+        ...(getProjectSourceKind(project) === "folder"
+          ? { path: renamePathPrefix(image.path, project.path, newPath) }
+          : { datasetPath: renamePathPrefix(image.datasetPath ?? image.fileName, project.path, newPath) })
       }));
       return {
         images,
@@ -1199,7 +1223,9 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
     if (hasTauriRuntime()) {
       await invokeCommand<string>("create_dataset_subfolder", {
         folderPath: project.path,
-        name: trimmedName
+        name: trimmedName,
+        sourceKind: getProjectSourceKind(project),
+        datasetId: project.datasetId
       });
       get().addAppLog(`已创建子文件夹：${trimmedName}`);
       await get().refreshImages();
@@ -1216,7 +1242,10 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
     }
 
     const nextFileName = getRenamedImageFileName(image, trimmedName);
-    const nextPath = replacePathFileName(image.path, nextFileName);
+    const nextPath = replacePathFileName(
+      image.sourceKind === "folder" ? image.path : image.datasetPath ?? image.fileName,
+      nextFileName
+    );
 
     if (hasTauriRuntime()) {
       await invokeCommand<string>("rename_dataset_image", {
