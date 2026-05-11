@@ -53,7 +53,8 @@ function ProjectPathBreadcrumb({
   onSelectProject,
   className,
   currentClassName = "font-semibold text-neutral-950",
-  ancestorClassName = "font-normal text-neutral-500"
+  ancestorClassName = "font-normal text-neutral-500",
+  showRealFolderPath = false
 }: {
   trail: DatasetProject[];
   fallbackPath?: string;
@@ -61,14 +62,22 @@ function ProjectPathBreadcrumb({
   className?: string;
   currentClassName?: string;
   ancestorClassName?: string;
+  showRealFolderPath?: boolean;
 }) {
   const { t } = useTranslation();
-  const getDisplayName = (project: DatasetProject) =>
-    getProjectDisplayName(project, () => t("tree.looseFiles"));
+  const shouldShowRealFolderPath =
+    showRealFolderPath && trail.some((project) => project.sourceKind === "folder");
+  const getDisplayName = (project: DatasetProject, index: number) => {
+    if (shouldShowRealFolderPath) {
+      return index === 0 ? project.path || project.name : project.name || project.path;
+    }
+
+    return getProjectDisplayName(project, () => t("tree.looseFiles"));
+  };
 
   if (!trail.length) {
     return fallbackPath ? (
-      <span className={cn("truncate", className)}>
+      <span className={cn("truncate", className)} title={showRealFolderPath ? fallbackPath : undefined}>
         {fallbackPath}
       </span>
     ) : null;
@@ -81,13 +90,14 @@ function ProjectPathBreadcrumb({
     >
       {trail.map((project, index) => {
         const isCurrent = index === trail.length - 1;
-        const label = getDisplayName(project);
+        const label = getDisplayName(project, index);
+        const title = shouldShowRealFolderPath ? project.path : undefined;
 
         return (
           <span key={project.id} className="inline-flex min-w-0 items-center gap-1">
             {index > 0 ? <span className="shrink-0 text-neutral-400">/</span> : null}
             {isCurrent ? (
-              <span className={cn("max-w-[220px] truncate", currentClassName)}>
+              <span className={cn("max-w-[220px] truncate", currentClassName)} title={title}>
                 {label}
               </span>
             ) : (
@@ -97,6 +107,7 @@ function ProjectPathBreadcrumb({
                   "no-drag max-w-[220px] truncate rounded-[3px] border-0 bg-transparent p-0 text-left underline-offset-2 outline-none transition hover:text-neutral-900 hover:underline focus-visible:ring-2 focus-visible:ring-neutral-300",
                   ancestorClassName
                 )}
+                title={title}
                 onClick={() => onSelectProject(project.id)}
               >
                 {label}
@@ -622,11 +633,9 @@ function ImageDeleteDialog({
 function DatasetOverview({
   images,
   selectedProject,
-  selectedProjectTrail,
   profiles,
   isCheckingProblemItems,
   checkProblemItems,
-  selectProject,
   createAnnotationProfile,
   renameAnnotationProfile,
   duplicateAnnotationProfile,
@@ -635,11 +644,9 @@ function DatasetOverview({
 }: {
   images: DatasetImage[];
   selectedProject: DatasetProject | undefined;
-  selectedProjectTrail: DatasetProject[];
   profiles: AnnotationProfile[];
   isCheckingProblemItems: boolean;
   checkProblemItems: (project?: DatasetProject) => Promise<unknown>;
-  selectProject: (id?: string) => void;
   createAnnotationProfile: (name: string) => Promise<number | undefined>;
   renameAnnotationProfile: (profileId: number, newName: string) => Promise<void>;
   duplicateAnnotationProfile: (profileId: number, newName: string) => Promise<void>;
@@ -834,18 +841,6 @@ function DatasetOverview({
           </h3>
           
           <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-2 text-[12px] text-neutral-500">
-            {selectedProject?.sourceKind === "folder" ? (
-              <div className="flex min-w-0 items-center gap-1.5">
-                <FolderOpen size={14} className="shrink-0 text-neutral-400" />
-                <ProjectPathBreadcrumb
-                  trail={selectedProjectTrail}
-                  fallbackPath={selectedProject.path}
-                  onSelectProject={selectProject}
-                  className="font-mono"
-                  currentClassName="font-medium text-neutral-600"
-                />
-              </div>
-            ) : null}
             <div className="flex shrink-0 items-center gap-1.5">
               <HardDrive size={14} className="text-neutral-400" />
               <span>{formatBytes(totalSize)}</span>
@@ -854,6 +849,14 @@ function DatasetOverview({
               <Clock size={14} className="text-neutral-400" />
               <span>{latestUpdate ? new Date(latestUpdate).toLocaleString() : "-"}</span>
             </div>
+            {selectedProject?.sourceKind === "folder" ? (
+              <div className="flex min-w-0 items-center gap-1.5">
+                <FolderOpen size={14} className="shrink-0 text-neutral-400" />
+                <span className="truncate font-mono font-medium text-neutral-600" title={selectedProject.path}>
+                  {selectedProject.path}
+                </span>
+              </div>
+            ) : null}
           </div>
         </div>
 
@@ -1502,6 +1505,7 @@ export function DatasetWorkspace() {
               fallbackPath={selectedProject?.path}
               onSelectProject={selectProject}
               className="min-w-0 flex-1 leading-5"
+              showRealFolderPath={selectedProject?.sourceKind === "folder"}
             />
             <span
               className={cn(
@@ -1586,11 +1590,9 @@ export function DatasetWorkspace() {
         <DatasetOverview
           images={overviewImages}
           selectedProject={selectedProject}
-          selectedProjectTrail={selectedProjectTrail}
           profiles={profiles}
           isCheckingProblemItems={isCheckingProblemItems}
           checkProblemItems={checkProblemItems}
-          selectProject={selectProject}
           createAnnotationProfile={createAnnotationProfile}
           renameAnnotationProfile={renameAnnotationProfile}
           duplicateAnnotationProfile={duplicateAnnotationProfile}
