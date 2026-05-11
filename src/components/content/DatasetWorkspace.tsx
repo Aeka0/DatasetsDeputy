@@ -1505,7 +1505,6 @@ export function DatasetWorkspace() {
               fallbackPath={selectedProject?.path}
               onSelectProject={selectProject}
               className="min-w-0 flex-1 leading-5"
-              showRealFolderPath={selectedProject?.sourceKind === "folder"}
             />
             <span
               className={cn(
