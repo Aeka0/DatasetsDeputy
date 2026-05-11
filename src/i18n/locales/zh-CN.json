@@ -275,6 +275,8 @@
     "themeDark": "暗色模式",
     "highlightCellState": "高亮显示已改动/已保存单元格",
     "highlightCellStateDescription": "在表格视图中用颜色标记未保存改动和刚保存的内容。",
+    "thumbnailSize": "缩略图大小",
+    "thumbnailSizeDescription": "用于生成新的缩略图缓存文件。若要让已有缩略图按新尺寸重新生成，请手动清理缩略图缓存。",
     "thumbnailCache": "缩略图缓存",
     "thumbnailCacheDescription": "显示当前缩略图缓存占用空间，可清空后释放本地磁盘空间。",
     "thumbnailCacheCleared": "缩略图缓存已清空",

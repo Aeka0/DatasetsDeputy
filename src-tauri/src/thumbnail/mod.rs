@@ -1,6 +1,6 @@
 use std::path::{Path, PathBuf};
 
-use image::{GenericImageView, ImageFormat, ImageReader};
+use image::{imageops::FilterType, GenericImageView, ImageFormat, ImageReader};
 
 use crate::errors::AppResult;
 
@@ -84,6 +84,7 @@ pub fn create_thumbnail(
     source: &Path,
     target_dir: &Path,
     hash: &str,
+    max_edge: u32,
 ) -> AppResult<ThumbnailResult> {
     std::fs::create_dir_all(target_dir)?;
     let target = target_dir.join(format!("{hash}.webp"));
@@ -100,7 +101,12 @@ pub fn create_thumbnail(
 
     let (image, format_warning) = open_with_fallback(source)?;
     let (width, height) = image.dimensions();
-    let thumbnail = image.thumbnail(256, 256);
+    let max_edge = max_edge.max(1);
+    let thumbnail = if width <= max_edge && height <= max_edge {
+        image
+    } else {
+        image.resize(max_edge, max_edge, FilterType::Lanczos3)
+    };
     thumbnail.save(&target)?;
 
     Ok(ThumbnailResult {

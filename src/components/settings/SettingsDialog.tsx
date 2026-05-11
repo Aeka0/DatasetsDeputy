@@ -144,6 +144,10 @@ interface ThumbnailCacheInfo {
   sizeBytes: number;
 }
 
+interface ThumbnailSettings {
+  thumbnailSize: number;
+}
+
 interface LogFilesInfo {
   sizeBytes: number;
 }
@@ -178,6 +182,16 @@ const defaultModelSettings: ModelSettings = {
     characterThreshold: 0.9
   }
 };
+
+const defaultThumbnailSettings: ThumbnailSettings = {
+  thumbnailSize: 256
+};
+
+const thumbnailSizeOptions = [
+  { value: "256", label: "256 px" },
+  { value: "384", label: "384 px" },
+  { value: "512", label: "512 px" }
+];
 
 const pythonEnvModeOptions: Array<{ value: PythonEnvMode; labelKey: string }> = [
   { value: "managedVenv", labelKey: "settings.pythonEnvModeManaged" },
@@ -341,6 +355,9 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
   const [modelSettingsMessage, setModelSettingsMessage] = useState("");
   const [isModelSettingsBusy, setIsModelSettingsBusy] = useState(false);
   const [hasLoadedModelSettings, setHasLoadedModelSettings] = useState(false);
+  const [thumbnailSettings, setThumbnailSettings] =
+    useState<ThumbnailSettings>(defaultThumbnailSettings);
+  const [hasLoadedThumbnailSettings, setHasLoadedThumbnailSettings] = useState(false);
   const {
     highlightCellState,
     autoSaveAfterAnnotation,
@@ -396,6 +413,16 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
       .catch((error) => setModelSettingsMessage(formatAppError(error)));
   }, []);
   useEffect(() => {
+    if (!hasTauriRuntime()) return;
+
+    void invokeCommand<ThumbnailSettings>("get_thumbnail_settings")
+      .then((settings) => {
+        setThumbnailSettings(settings);
+        setHasLoadedThumbnailSettings(true);
+      })
+      .catch((error) => setLocalFilesMessage(formatAppError(error)));
+  }, []);
+  useEffect(() => {
     if (!hasTauriRuntime() || !hasLoadedGeminiSettings) return;
 
     const saveTimer = window.setTimeout(() => {
@@ -444,6 +471,26 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
 
     return () => window.clearTimeout(saveTimer);
   }, [modelSettings, hasLoadedModelSettings]);
+  useEffect(() => {
+    if (!hasTauriRuntime() || !hasLoadedThumbnailSettings) return;
+
+    const saveTimer = window.setTimeout(() => {
+      void invokeCommand<ThumbnailSettings>("save_thumbnail_settings", {
+        settings: thumbnailSettings
+      })
+        .then((savedSettings) => {
+          if (savedSettings.thumbnailSize !== thumbnailSettings.thumbnailSize) {
+            setThumbnailSettings(savedSettings);
+          }
+        })
+        .catch((error) => {
+          const message = formatAppError(error);
+          setLocalFilesMessage(t("settings.tempFilesActionFailed", { message }));
+        });
+    }, 500);
+
+    return () => window.clearTimeout(saveTimer);
+  }, [thumbnailSettings, hasLoadedThumbnailSettings]);
   useEffect(
     () =>
       watchUiOpacity(() => {
@@ -1202,6 +1249,24 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
 
                 {activeLocalFilesSection === "tempFiles" ? (
               <div className="rounded-lg border border-neutral-200 bg-white">
+                <div className="flex min-h-12 items-center justify-between gap-4 border-b border-neutral-100 px-4 py-3 last:border-b-0">
+                  <div className="min-w-0">
+                    <div className="text-[13px] font-medium text-neutral-900">
+                      {t("settings.thumbnailSize")}
+                    </div>
+                    <div className="mt-0.5 text-[12px] text-neutral-500">
+                      {t("settings.thumbnailSizeDescription")}
+                    </div>
+                  </div>
+                  <SettingsSelect
+                    className="w-[128px] shrink-0"
+                    value={String(thumbnailSettings.thumbnailSize)}
+                    options={thumbnailSizeOptions}
+                    onChange={(nextValue) =>
+                      setThumbnailSettings({ thumbnailSize: Number(nextValue) })
+                    }
+                  />
+                </div>
                 <div className="flex min-h-12 items-center justify-between gap-4 border-b border-neutral-100 px-4 py-3 last:border-b-0">
                   <div className="min-w-0">
                     <div className="text-[13px] font-medium text-neutral-900">

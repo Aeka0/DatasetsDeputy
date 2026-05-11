@@ -9,6 +9,7 @@ mod gemini;
 mod model_settings;
 mod python_env;
 mod thumbnail;
+mod thumbnail_settings;
 mod wd14_tagger;
 #[cfg(target_os = "windows")]
 mod window_region;
@@ -153,6 +154,8 @@ pub fn run() {
             commands::save_python_env_settings,
             commands::get_model_settings,
             commands::save_model_settings,
+            commands::get_thumbnail_settings,
+            commands::save_thumbnail_settings,
             commands::get_window_rendering_settings,
             commands::save_window_rendering_settings,
             commands::pick_wd14_model_path,

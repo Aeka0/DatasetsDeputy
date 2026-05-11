@@ -20,7 +20,9 @@ use crate::{
     gemini::{self, GeminiSettings},
     model_settings::{self, ModelSettings},
     python_env::{self, PythonEnvInstallResult, PythonEnvProbeReport, PythonEnvSettings},
-    thumbnail, wd14_tagger,
+    thumbnail,
+    thumbnail_settings::{self, ThumbnailSettings},
+    wd14_tagger,
     window_rendering::{self, WindowRenderingSettings},
     AppState, ID_NAMESPACE_SIZE,
 };
@@ -681,12 +683,99 @@ fn import_relative_dataset_path(root: &Path, image_path: &Path) -> PathBuf {
         .unwrap_or_else(|| PathBuf::from("image"))
 }
 
+fn repair_database_image_thumbnail(
+    db: &mut Database,
+    image: &mut DatasetImage,
+    source_kind: &str,
+    thumbnail_dir: &Path,
+    thumbnail_size: u32,
+    verify_source_hash: bool,
+) -> AppResult<bool> {
+    let source_path = if source_kind == "asset" {
+        image.storage_path.as_deref().unwrap_or(&image.path)
+    } else {
+        &image.path
+    };
+    let source_path = PathBuf::from(source_path);
+    if !source_path.is_file() {
+        return Ok(false);
+    }
+
+    let has_cached_thumbnail = image
+        .thumbnail_path
+        .as_deref()
+        .map(Path::new)
+        .is_some_and(Path::is_file);
+    let source_hash = if verify_source_hash || !has_cached_thumbnail {
+        Some(files::hash_file(&source_path)?)
+    } else {
+        None
+    };
+    let source_changed = source_hash
+        .as_deref()
+        .is_some_and(|hash| image.file_hash.as_deref() != Some(hash));
+
+    if has_cached_thumbnail && !source_changed {
+        return Ok(false);
+    }
+
+    let hash = source_hash
+        .or_else(|| image.file_hash.clone())
+        .unwrap_or_else(String::new);
+    let hash = if hash.is_empty() {
+        files::hash_file(&source_path)?
+    } else {
+        hash
+    };
+    let metadata = fs::metadata(&source_path)?;
+    let thumbnail =
+        thumbnail::create_thumbnail(&source_path, thumbnail_dir, &hash, thumbnail_size)?;
+    db.update_image_source_metadata(
+        image.id,
+        &ImageSourceMetadata {
+            file_size: metadata.len() as i64,
+            file_hash: hash.clone(),
+            thumbnail_path: Some(thumbnail.path.clone()),
+            width: Some(thumbnail.width),
+            height: Some(thumbnail.height),
+        },
+    )?;
+
+    image.file_size = Some(metadata.len() as i64);
+    image.file_hash = Some(hash);
+    image.thumbnail_path = Some(thumbnail.path.to_string_lossy().to_string());
+    image.width = Some(thumbnail.width);
+    image.height = Some(thumbnail.height);
+    Ok(true)
+}
+
 fn list_images_for_dirs(dirs: &app_dirs::AppDirs) -> AppResult<Vec<DatasetImage>> {
     let mut images = Vec::new();
+    let thumbnail_dir = files::default_thumbnail_dir(&dirs.root);
+    let thumbnail_settings = thumbnail_settings::load_settings(dirs)?;
     for db_ref in dataset_database_refs(dirs)? {
-        let db = open_database(&db_ref.path)?;
+        let mut db = open_database(&db_ref.path)?;
         let source_kind = db.dataset_source_kind()?;
-        for image in db.list_images()? {
+        let mut database_images = db.list_images()?;
+        if source_kind == "database" || source_kind == "asset" {
+            for image in &mut database_images {
+                if let Err(error) = repair_database_image_thumbnail(
+                    &mut db,
+                    image,
+                    &source_kind,
+                    &thumbnail_dir,
+                    thumbnail_settings.thumbnail_size,
+                    false,
+                ) {
+                    tracing::warn!(
+                        "Failed to refresh thumbnail cache for {:?}: {}",
+                        image.path,
+                        error
+                    );
+                }
+            }
+        }
+        for image in database_images {
             images.push(namespace_image(image, db_ref.prefix, &source_kind));
         }
     }
@@ -724,6 +813,7 @@ fn check_database_problem_items(
     }
 
     let thumbnail_dir = files::default_thumbnail_dir(&dirs.root);
+    let thumbnail_settings = thumbnail_settings::load_settings(dirs)?;
     let mut summary = ProblemItemCheckSummary {
         checked: 0,
         updated: 0,
@@ -731,7 +821,7 @@ fn check_database_problem_items(
         failed: 0,
     };
 
-    for image in db.list_images()? {
+    for mut image in db.list_images()? {
         if local_image_ids
             .as_ref()
             .is_some_and(|ids| !ids.contains(&image.id))
@@ -749,29 +839,15 @@ fn check_database_problem_items(
             summary.missing += 1;
             continue;
         }
-        if source_kind != "database" {
-            continue;
-        }
-
         let result = (|| -> AppResult<bool> {
-            let hash = files::hash_file(&source_path)?;
-            if image.file_hash.as_deref() == Some(hash.as_str()) {
-                return Ok(false);
-            }
-
-            let metadata = fs::metadata(&source_path)?;
-            let thumbnail = thumbnail::create_thumbnail(&source_path, &thumbnail_dir, &hash)?;
-            db.update_image_source_metadata(
-                image.id,
-                &ImageSourceMetadata {
-                    file_size: metadata.len() as i64,
-                    file_hash: hash,
-                    thumbnail_path: Some(thumbnail.path),
-                    width: Some(thumbnail.width),
-                    height: Some(thumbnail.height),
-                },
-            )?;
-            Ok(true)
+            repair_database_image_thumbnail(
+                &mut db,
+                &mut image,
+                &source_kind,
+                &thumbnail_dir,
+                thumbnail_settings.thumbnail_size,
+                true,
+            )
         })();
 
         match result {
@@ -1014,6 +1090,19 @@ pub fn save_model_settings(
 }
 
 #[tauri::command]
+pub fn get_thumbnail_settings(state: State<'_, AppState>) -> AppResult<ThumbnailSettings> {
+    thumbnail_settings::load_settings(&state.dirs)
+}
+
+#[tauri::command]
+pub fn save_thumbnail_settings(
+    state: State<'_, AppState>,
+    settings: ThumbnailSettings,
+) -> AppResult<ThumbnailSettings> {
+    thumbnail_settings::save_settings(&state.dirs, settings)
+}
+
+#[tauri::command]
 pub fn get_window_rendering_settings(
     state: State<'_, AppState>,
 ) -> AppResult<WindowRenderingSettings> {
@@ -1253,6 +1342,7 @@ pub async fn import_images_to_folder(
             fs::create_dir_all(target)?;
         }
         let thumbnail_dir = files::default_thumbnail_dir(&dirs.root);
+        let thumbnail_size = thumbnail_settings::load_settings(&dirs)?.thumbnail_size;
         let asset_dir = dirs.datasets.join("assets");
         for source in image_paths {
             let source_path = PathBuf::from(&source);
@@ -1279,6 +1369,7 @@ pub async fn import_images_to_folder(
                     &thumbnail_dir,
                     import_asset_dir,
                     None,
+                    thumbnail_size,
                 ) {
                     Ok(result) => {
                         if let (Some(profile_id), true) =
@@ -1426,6 +1517,7 @@ pub fn start_import_folder(
 
     let dirs = app_dirs::ensure_release_dirs(&app)?;
     let thumbnail_dir = files::default_thumbnail_dir(&dirs.root);
+    let thumbnail_size = thumbnail_settings::load_settings(&dirs)?.thumbnail_size;
     let source_kind = normalize_database_source_kind(import_mode)?;
     let asset_dir = dirs.datasets.join("assets");
     let database_path = app_dirs::dataset_database_path_for_kind(&dirs, &folder, &source_kind);
@@ -1548,6 +1640,7 @@ pub fn start_import_folder(
                 &thumbnail_dir,
                 import_asset_dir,
                 import_profile_id,
+                thumbnail_size,
             ) {
                 Ok(result) => {
                     if let Some(warning_message) = result.format_warning {

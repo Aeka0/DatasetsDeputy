@@ -277,6 +277,8 @@
     "highlightCellStateDescription": "Use color in table view to mark unsaved changes and recently saved content.",
     "autoSaveAfterAnnotation": "Auto-save after annotation",
     "autoSaveAfterAnnotationDescription": "Save generated annotations automatically after an annotation run completes.",
+    "thumbnailSize": "Thumbnail size",
+    "thumbnailSizeDescription": "Used when generating new thumbnail cache files. Clear the thumbnail cache manually to regenerate existing thumbnails.",
     "thumbnailCache": "Thumbnail cache",
     "thumbnailCacheDescription": "Shows current thumbnail cache usage and can clear it to free local disk space.",
     "thumbnailCacheCleared": "Thumbnail cache cleared",

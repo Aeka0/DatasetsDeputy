@@ -88,6 +88,7 @@ pub fn import_image(
     thumbnail_dir: &Path,
     asset_dir: Option<&Path>,
     import_profile_id: Option<i64>,
+    thumbnail_size: u32,
 ) -> AppResult<ImportImageResult> {
     let hash = hash_file(path)?;
     let metadata = std::fs::metadata(path)?;
@@ -96,7 +97,8 @@ pub fn import_image(
         None => None,
     };
     let image_source_path = storage_path.as_deref().unwrap_or(path);
-    let thumbnail = thumbnail::create_thumbnail(image_source_path, thumbnail_dir, &hash)?;
+    let thumbnail =
+        thumbnail::create_thumbnail(image_source_path, thumbnail_dir, &hash, thumbnail_size)?;
 
     let image_id = db.insert_image(&NewImage {
         path: path.to_path_buf(),
