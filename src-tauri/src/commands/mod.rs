@@ -591,6 +591,30 @@ fn directory_size(path: &Path) -> AppResult<u64> {
     Ok(size)
 }
 
+fn training_cache_item_size(path: &Path) -> AppResult<u64> {
+    if path.is_dir() {
+        return directory_size(path);
+    }
+
+    Ok(fs::metadata(path)
+        .map(|metadata| metadata.len())
+        .unwrap_or(0))
+}
+
+fn is_training_cache_file(path: &Path) -> bool {
+    if path
+        .file_name()
+        .and_then(|value| value.to_str())
+        .is_some_and(|value| value == ".aitk_size.json")
+    {
+        return true;
+    }
+
+    path.extension()
+        .and_then(|value| value.to_str())
+        .is_some_and(|value| value.eq_ignore_ascii_case("npz"))
+}
+
 fn remove_files_in_directory(path: &Path) -> AppResult<()> {
     if !path.exists() {
         return Ok(());
@@ -2397,6 +2421,188 @@ fn prepare_export(
         "Unsupported dataset id: {}",
         request.dataset_id
     )))
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TrainingCacheItem {
+    pub path: String,
+    pub item_type: String,
+    pub size_bytes: u64,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TrainingCacheScanResult {
+    pub folder_path: String,
+    pub scanned_entries: usize,
+    pub items: Vec<TrainingCacheItem>,
+    pub total_size_bytes: u64,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TrainingCacheRemoveResult {
+    pub deleted: usize,
+    pub failed: usize,
+    pub released_size_bytes: u64,
+}
+
+fn collect_training_cache_items(
+    folder: &Path,
+    items: &mut Vec<TrainingCacheItem>,
+    scanned_entries: &mut usize,
+) -> AppResult<()> {
+    let mut entries = fs::read_dir(folder)?.collect::<Result<Vec<_>, _>>()?;
+    entries.sort_by_key(|entry| entry.path().to_string_lossy().to_ascii_lowercase());
+
+    for entry in entries {
+        *scanned_entries += 1;
+        let path = entry.path();
+        let file_type = entry.file_type()?;
+        let file_name = entry.file_name();
+        let file_name = file_name.to_string_lossy();
+
+        if file_type.is_dir() {
+            if file_name == "_latent_cache" {
+                items.push(TrainingCacheItem {
+                    path: path.to_string_lossy().to_string(),
+                    item_type: "directory".to_owned(),
+                    size_bytes: directory_size(&path)?,
+                });
+                continue;
+            }
+
+            collect_training_cache_items(&path, items, scanned_entries)?;
+            continue;
+        }
+
+        if file_type.is_file() && is_training_cache_file(&path) {
+            items.push(TrainingCacheItem {
+                path: path.to_string_lossy().to_string(),
+                item_type: "file".to_owned(),
+                size_bytes: training_cache_item_size(&path)?,
+            });
+        }
+    }
+
+    Ok(())
+}
+
+fn is_valid_training_cache_item(path: &Path) -> bool {
+    if path.is_dir() {
+        return path
+            .file_name()
+            .and_then(|value| value.to_str())
+            .is_some_and(|value| value == "_latent_cache");
+    }
+
+    path.is_file() && is_training_cache_file(path)
+}
+
+#[tauri::command]
+pub async fn scan_training_cache(folder: String) -> AppResult<TrainingCacheScanResult> {
+    let folder_path = PathBuf::from(&folder);
+    if !folder_path.is_dir() {
+        return Err(AppError::InvalidInput(format!(
+            "Path is not a valid folder: {folder}"
+        )));
+    }
+
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut items = Vec::new();
+        let mut scanned_entries = 0;
+        collect_training_cache_items(&folder_path, &mut items, &mut scanned_entries)?;
+        let total_size_bytes = items.iter().map(|item| item.size_bytes).sum();
+
+        Ok(TrainingCacheScanResult {
+            folder_path: folder_path.to_string_lossy().to_string(),
+            scanned_entries,
+            items,
+            total_size_bytes,
+        })
+    })
+    .await
+    .map_err(|error| AppError::InvalidInput(format!("Training cache scan task failed: {error}")))?
+}
+
+#[tauri::command]
+pub async fn remove_training_cache(
+    folder: String,
+    items: Vec<TrainingCacheItem>,
+) -> AppResult<TrainingCacheRemoveResult> {
+    let folder_path = PathBuf::from(&folder);
+    let canonical_folder = dunce::canonicalize(&folder_path)
+        .map_err(|_| AppError::InvalidInput(format!("Could not resolve folder path: {folder}")))?;
+
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut deleted = 0;
+        let mut failed = 0;
+        let mut released_size_bytes = 0;
+
+        for item in items {
+            let path = PathBuf::from(&item.path);
+            if !path.exists() {
+                continue;
+            }
+
+            let canonical_path = match dunce::canonicalize(&path) {
+                Ok(path) => path,
+                Err(error) => {
+                    tracing::warn!(
+                        "Training cache removal skipped unresolved path {:?}: {}",
+                        path,
+                        error
+                    );
+                    failed += 1;
+                    continue;
+                }
+            };
+
+            if !canonical_path.starts_with(&canonical_folder)
+                || !is_valid_training_cache_item(&canonical_path)
+            {
+                tracing::warn!(
+                    "Training cache removal skipped invalid path {:?}",
+                    canonical_path
+                );
+                failed += 1;
+                continue;
+            }
+
+            let size_bytes = training_cache_item_size(&canonical_path)?;
+            let remove_result = if canonical_path.is_dir() {
+                fs::remove_dir_all(&canonical_path)
+            } else {
+                fs::remove_file(&canonical_path)
+            };
+
+            match remove_result {
+                Ok(()) => {
+                    deleted += 1;
+                    released_size_bytes += size_bytes;
+                }
+                Err(error) => {
+                    tracing::warn!(
+                        "Training cache removal failed for {:?}: {}",
+                        canonical_path,
+                        error
+                    );
+                    failed += 1;
+                }
+            }
+        }
+
+        Ok(TrainingCacheRemoveResult {
+            deleted,
+            failed,
+            released_size_bytes,
+        })
+    })
+    .await
+    .map_err(|error| {
+        AppError::InvalidInput(format!("Training cache removal task failed: {error}"))
+    })?
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

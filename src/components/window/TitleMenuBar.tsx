@@ -25,6 +25,7 @@ import { PromptManagementDialog } from "../annotation/PromptManagementDialog";
 import { Wd14TaggerSettingsDialog } from "../annotation/Wd14TaggerSettingsDialog";
 import { SettingsDialog } from "../settings/SettingsDialog";
 import { FormatValidatorDialog } from "../tools/FormatValidatorDialog";
+import { TrainingCacheCleanerDialog } from "../tools/TrainingCacheCleanerDialog";
 
 type MenuKey = "file" | "edit" | "annotation" | "view" | "tools" | "settings" | "about";
 type DialogKey =
@@ -33,6 +34,7 @@ type DialogKey =
   | "wd14Settings"
   | "settings"
   | "formatValidator"
+  | "trainingCacheCleaner"
   | "about";
 
 interface MenuPosition {
@@ -432,6 +434,11 @@ export function TitleMenuBar({
       }
     ],
     tools: [
+      {
+        label: t("menu.trainingCacheCleaner"),
+        onSelect: () => setDialog("trainingCacheCleaner")
+      },
+      { type: "separator" },
       {
         type: "submenu",
         label: t("menu.datasetDebug"),
@@ -905,6 +912,9 @@ export function TitleMenuBar({
       ) : null}
       {dialog === "formatValidator" ? (
         <FormatValidatorDialog onClose={() => setDialog(undefined)} />
+      ) : null}
+      {dialog === "trainingCacheCleaner" ? (
+        <TrainingCacheCleanerDialog onClose={() => setDialog(undefined)} />
       ) : null}
 
       {dialog === "about"

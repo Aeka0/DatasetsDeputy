@@ -191,6 +191,8 @@ pub fn run() {
             commands::delete_workspace_subfolder,
             commands::prepare_export_dataset,
             commands::start_export_dataset,
+            commands::scan_training_cache,
+            commands::remove_training_cache,
             commands::start_format_mismatch_scan,
             commands::fix_format_mismatches
         ])

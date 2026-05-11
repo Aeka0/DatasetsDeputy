@@ -55,6 +55,7 @@
     "tools": "工具",
     "datasetDebug": "训练集除错",
     "formatValidator": "格式校验",
+    "trainingCacheCleaner": "移除训练器缓存",
     "aboutBody": "数据集图片预览、标注维度管理与导出工具。",
     "alpha3Notice": "Alpha 3 版提示：本版本仍处于测试阶段，功能和数据结构可能继续调整，请在重要操作前备份数据。",
     "version": "Alpha 3 测试版",
@@ -78,6 +79,26 @@
       "scan": "执行检测",
       "fixAll": "一键修复",
       "fixComplete": "修复完成，已重命名 {{count}} 个文件的扩展名。"
+    },
+    "trainingCacheCleaner": {
+      "title": "移除训练器缓存",
+      "selectFolder": "选择文件夹",
+      "noFolderSelected": "请选择一个数据集或训练输出文件夹",
+      "hint": "选择文件夹后会自动扫描 .npz 文件、_latent_cache 文件夹和 .aitk_size.json 文件。",
+      "scanning": "正在扫描训练器缓存…",
+      "noItems": "该文件夹下未发现训练器缓存文件。",
+      "foundItems": "发现 {{count}} 个缓存项，共 {{size}}",
+      "scannedEntries": "已扫描 {{count}} 个条目",
+      "summary": "共 {{count}} 项，可释放 {{size}}",
+      "colType": "类型",
+      "colPath": "路径",
+      "colSize": "大小",
+      "typeFile": "文件",
+      "typeDirectory": "文件夹",
+      "rescan": "重新扫描",
+      "confirmRemove": "确认删除",
+      "removeComplete": "已删除 {{count}} 项，失败 {{failed}} 项；释放 {{size}}。",
+      "actionFailed": "操作失败：{{message}}"
     }
   },
   "toolbar": {

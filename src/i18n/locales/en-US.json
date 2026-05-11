@@ -55,6 +55,7 @@
     "tools": "Tools",
     "datasetDebug": "Dataset debugging",
     "formatValidator": "Format validator",
+    "trainingCacheCleaner": "Remove trainer cache",
     "aboutBody": "Dataset image preview, annotation dimension management, and export tools.",
     "alpha3Notice": "Alpha 3 notice: this build is still in testing. Features and data structures may change, so back up important data before major operations.",
     "version": "Alpha 3 preview",
@@ -78,6 +79,26 @@
       "scan": "Run scan",
       "fixAll": "Fix all",
       "fixComplete": "Done. Renamed {{count}} file(s) to correct extensions."
+    },
+    "trainingCacheCleaner": {
+      "title": "Remove trainer cache",
+      "selectFolder": "Select folder",
+      "noFolderSelected": "Please select a dataset or training output folder",
+      "hint": "Select a folder to scan for .npz files, _latent_cache folders, and .aitk_size.json files.",
+      "scanning": "Scanning trainer cache...",
+      "noItems": "No trainer cache files were found in this folder.",
+      "foundItems": "Found {{count}} cache item(s), {{size}} total",
+      "scannedEntries": "{{count}} entries scanned",
+      "summary": "{{count}} item(s), {{size}} can be released",
+      "colType": "Type",
+      "colPath": "Path",
+      "colSize": "Size",
+      "typeFile": "File",
+      "typeDirectory": "Folder",
+      "rescan": "Rescan",
+      "confirmRemove": "Confirm delete",
+      "removeComplete": "Deleted {{count}} item(s), failed {{failed}}; released {{size}}.",
+      "actionFailed": "Action failed: {{message}}"
     }
   },
   "toolbar": {
