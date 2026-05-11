@@ -92,6 +92,7 @@
     "assetDatabases": "Asset databases",
     "dynamicDatabases": "Dynamic-link databases",
     "workspaceFolders": "Workspace folders",
+    "looseFiles": "Loose files...",
     "hint": "Select a dataset folder to show its image grid on the right.",
     "renameDataset": "Rename dataset",
     "renameFolder": "Rename folder",

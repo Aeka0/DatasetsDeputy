@@ -190,14 +190,28 @@ function renamePathPrefix(path: string, oldPrefix: string, newPrefix: string) {
   return path;
 }
 
-function renameProjectIdPrefix(id: string | undefined, oldPrefix: string, newPrefix: string) {
+function renameProjectIdPrefix(
+  id: string | undefined,
+  oldPrefix: string,
+  newPrefix: string
+): string | undefined {
   if (!id) {
     return id;
+  }
+
+  if (id.startsWith("loose-files:")) {
+    const renamedId = renameProjectIdPrefix(id.slice("loose-files:".length), oldPrefix, newPrefix);
+    return renamedId ? `loose-files:${renamedId}` : id;
   }
 
   if (id.startsWith("folder:")) {
     const renamedPath = renamePathPrefix(id.slice("folder:".length), oldPrefix, newPrefix);
     return `folder:${renamedPath}`;
+  }
+
+  if (id.startsWith("folder-folder:")) {
+    const renamedPath = renamePathPrefix(id.slice("folder-folder:".length), oldPrefix, newPrefix);
+    return `folder-folder:${renamedPath}`;
   }
 
   const databaseFolderMatch = id.match(/^(database|asset)-folder:([^:]+):(.+)$/);
@@ -263,6 +277,7 @@ function createProjectTree(
 
   return Array.from(groups.entries()).map(([groupKey, groupImages]) => {
     const sourceKind = groupImages[0]?.sourceKind ?? "database";
+    const directImageIdsByPath = new Map<string, number[]>();
     const imageRoot = groupImages.find((image) => image.rootPath)?.rootPath;
     const groupRootPath = sourceKind === "folder" ? imageRoot : undefined;
     const groupRootName = sourceKind === "folder"
@@ -319,6 +334,15 @@ function createProjectTree(
       return child;
     };
 
+    const addDirectImage = (path: string, imageId: number) => {
+      const ids = directImageIdsByPath.get(path);
+      if (ids) {
+        ids.push(imageId);
+      } else {
+        directImageIdsByPath.set(path, [imageId]);
+      }
+    };
+
     for (const image of groupImages) {
       const directory = sourceKind === "folder"
         ? getDirectory(image.path)
@@ -329,7 +353,10 @@ function createProjectTree(
           : ""
         : directory;
 
-      if (!relative) continue;
+      if (!relative) {
+        addDirectImage(root.path, image.id);
+        continue;
+      }
 
       let current = root;
       let currentPath = normalizedRoot;
@@ -341,16 +368,35 @@ function createProjectTree(
           current.imageIds.push(image.id);
         }
       }
+
+      addDirectImage(current.path, image.id);
     }
 
-    const pruneEmptyChildren = (project: DatasetProject): DatasetProject => ({
-      ...project,
-      children: project.children?.length
-        ? project.children.map(pruneEmptyChildren)
-        : undefined
-    });
+    const addLooseFileNodes = (project: DatasetProject): DatasetProject => {
+      const childFolders = project.children?.map(addLooseFileNodes) ?? [];
+      const directImageIds = directImageIdsByPath.get(project.path) ?? [];
+      const children = directImageIds.length > 0 && childFolders.length > 0
+        ? [
+            {
+              id: `loose-files:${project.id}`,
+              name: "loose-files",
+              path: project.path,
+              imageIds: directImageIds,
+              sourceKind,
+              datasetId: groupKey,
+              treeNodeKind: "loose-files" as const
+            },
+            ...childFolders
+          ]
+        : childFolders;
 
-    return pruneEmptyChildren(root);
+      return {
+        ...project,
+        children: children.length ? children : undefined
+      };
+    };
+
+    return addLooseFileNodes(root);
   });
 }
 

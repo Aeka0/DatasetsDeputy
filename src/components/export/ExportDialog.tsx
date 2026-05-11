@@ -7,7 +7,7 @@ import { useShallow } from "zustand/react/shallow";
 
 import { formatAppError } from "../../lib/errors";
 import { formatBytes } from "../../lib/format";
-import { findProject, findProjectTrail } from "../../lib/projects";
+import { findProject, findProjectTrail, getProjectDisplayName } from "../../lib/projects";
 import { useDatasetStore } from "../../stores/datasetStore";
 import type { DatasetProject, ExportDatasetRequest } from "../../types";
 
@@ -33,11 +33,12 @@ function firstExportableProject(projects: DatasetProject[]): DatasetProject | un
 function getDatasetScopeLabel(
   project: DatasetProject | undefined,
   trail: DatasetProject[],
-  fallback: string
+  fallback: string,
+  getDisplayName: (project: DatasetProject) => string
 ) {
   if (!project) return fallback;
   if (project.sourceKind === "folder") return project.path;
-  return trail.length > 1 ? trail.map((item) => item.name).join("/") : project.name;
+  return trail.length > 1 ? trail.map(getDisplayName).join("/") : getDisplayName(project);
 }
 
 export function ExportDialog() {
@@ -100,6 +101,8 @@ export function ExportDialog() {
     exportProgress && exportProgress.total > 0
       ? Math.round((exportProgress.processed / exportProgress.total) * 100)
       : 0;
+  const getDisplayName = (project: DatasetProject) =>
+    getProjectDisplayName(project, () => t("tree.looseFiles"));
 
   useEffect(() => {
     if (!showExportDialog) return;
@@ -180,7 +183,12 @@ export function ExportDialog() {
               {t("export.title")}
             </h2>
             <div className="min-w-0 flex-1 truncate rounded-md border border-neutral-200 bg-neutral-50 px-2.5 py-1.5 font-mono text-[12px] leading-4 text-neutral-600">
-              {getDatasetScopeLabel(selectedProject, selectedProjectTrail, t("export.noDataset"))}
+              {getDatasetScopeLabel(
+                selectedProject,
+                selectedProjectTrail,
+                t("export.noDataset"),
+                getDisplayName
+              )}
             </div>
           </div>
           <button

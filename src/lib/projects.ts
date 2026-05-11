@@ -1,5 +1,16 @@
 import type { DatasetProject } from "../types";
 
+export function getProjectDisplayName(
+  project: DatasetProject,
+  getLooseFilesLabel?: () => string
+) {
+  if (project.treeNodeKind === "loose-files") {
+    return getLooseFilesLabel?.() ?? "Loose files...";
+  }
+
+  return project.name || project.path;
+}
+
 export function findProject(
   projects: DatasetProject[],
   id?: string
@@ -37,9 +48,13 @@ export function flattenProjects(projects: DatasetProject[]): DatasetProject[] {
   return projects.flatMap((project) => [project, ...flattenProjects(project.children ?? [])]);
 }
 
-export function formatProjectPath(projects: DatasetProject[], id?: string) {
+export function formatProjectPath(
+  projects: DatasetProject[],
+  id?: string,
+  getDisplayName?: (project: DatasetProject) => string
+) {
   return findProjectTrail(projects, id)
-    ?.map((project) => project.name)
+    ?.map((project) => getDisplayName?.(project) ?? getProjectDisplayName(project))
     .filter(Boolean)
     .join(" / ");
 }

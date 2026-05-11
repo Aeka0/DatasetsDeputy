@@ -11,7 +11,7 @@ import {
   type AnnotationPromptSettings
 } from "../../lib/annotationPrompt";
 import { formatAppError } from "../../lib/errors";
-import { findProject, formatProjectPath } from "../../lib/projects";
+import { findProject, formatProjectPath, getProjectDisplayName } from "../../lib/projects";
 import { hasTauriRuntime, invokeCommand } from "../../lib/tauri";
 import { useDatasetStore, type ViewFilterMode } from "../../stores/datasetStore";
 import type { AnnotationChange, DatasetImage, DatasetProject } from "../../types";
@@ -261,8 +261,11 @@ export function TitleMenuBar({
   const dropdownRef = useRef<HTMLDivElement>(null);
   const annotationCancelRef = useRef(false);
   const selectedProject = findProject(projects, selectedProjectId);
+  const getSelectedProjectDisplayName = (project: DatasetProject) =>
+    getProjectDisplayName(project, () => t("tree.looseFiles"));
   const selectedProjectPathLabel =
-    formatProjectPath(projects, selectedProjectId) ?? selectedProject?.name ?? "";
+    formatProjectPath(projects, selectedProjectId, getSelectedProjectDisplayName) ??
+    (selectedProject ? getSelectedProjectDisplayName(selectedProject) : "");
   const canRunAnnotation = isAnnotatableProject(selectedProject) && !isAnnotationRunning;
   const selectedProjectImageIds = new Set(selectedProject?.imageIds ?? []);
   const selectedTargetImageIds = selectedImageIds.filter((imageId) =>
@@ -577,7 +580,9 @@ export function TitleMenuBar({
     addAppLog(t("appLog.annotationRequested"));
     addAppLog(
       t("appLog.annotationDataset", {
-        name: selectedProject?.name ?? t("appLog.unknownDataset")
+        name: selectedProject
+          ? getSelectedProjectDisplayName(selectedProject)
+          : t("appLog.unknownDataset")
       })
     );
     addAppLog(t("appLog.annotationScope", { scope: scopeLabel }));

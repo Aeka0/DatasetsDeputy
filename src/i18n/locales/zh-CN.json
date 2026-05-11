@@ -92,6 +92,7 @@
     "assetDatabases": "资产数据库",
     "dynamicDatabases": "动态链接数据库",
     "workspaceFolders": "工作文件夹",
+    "looseFiles": "零散文件...",
     "hint": "选择一个数据集文件夹后，右侧会切换为图片网格列表。",
     "renameDataset": "重命名数据集",
     "renameFolder": "重命名文件夹",

@@ -54,6 +54,7 @@ export interface DatasetProject {
   children?: DatasetProject[];
   sourceKind?: DatasetSourceKind;
   datasetId?: string;
+  treeNodeKind?: "folder" | "loose-files";
 }
 
 export interface ImportSummary {

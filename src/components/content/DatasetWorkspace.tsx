@@ -27,7 +27,7 @@ import { useShallow } from "zustand/react/shallow";
 import { cn } from "../../lib/cn";
 import { formatAppError } from "../../lib/errors";
 import { formatBytes } from "../../lib/format";
-import { findProjectTrail, flattenProjects } from "../../lib/projects";
+import { findProjectTrail, flattenProjects, getProjectDisplayName } from "../../lib/projects";
 import { hasTauriRuntime, invokeCommand } from "../../lib/tauri";
 import { useDatasetStore, type ViewFilterMode } from "../../stores/datasetStore";
 import type {
@@ -63,6 +63,8 @@ function ProjectPathBreadcrumb({
   ancestorClassName?: string;
 }) {
   const { t } = useTranslation();
+  const getDisplayName = (project: DatasetProject) =>
+    getProjectDisplayName(project, () => t("tree.looseFiles"));
 
   if (!trail.length) {
     return fallbackPath ? (
@@ -79,7 +81,7 @@ function ProjectPathBreadcrumb({
     >
       {trail.map((project, index) => {
         const isCurrent = index === trail.length - 1;
-        const label = project.name || project.path;
+        const label = getDisplayName(project);
 
         return (
           <span key={project.id} className="inline-flex min-w-0 items-center gap-1">
@@ -673,6 +675,9 @@ function DatasetOverview({
     };
   }, [profileMenuId]);
 
+  const selectedProjectName = selectedProject
+    ? getProjectDisplayName(selectedProject, () => t("tree.looseFiles"))
+    : undefined;
   const totalSize = images.reduce((sum, image) => sum + (image.fileSize ?? 0), 0);
   const problemItems = images.filter((image) => image.sourceMissing).length;
   const canCheckProblemItems =
@@ -825,7 +830,7 @@ function DatasetOverview({
       <div className="max-w-[720px] py-2 px-1">
         <div className="mb-8">
           <h3 className="m-0 text-[24px] font-semibold leading-8 tracking-tight text-neutral-950">
-            {selectedProject?.name ?? "-"}
+            {selectedProjectName ?? "-"}
           </h3>
           
           <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-2 text-[12px] text-neutral-500">

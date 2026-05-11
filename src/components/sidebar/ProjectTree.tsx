@@ -6,6 +6,7 @@ import {
   Folder,
   FolderOpen,
   Folders,
+  Images,
   Loader2,
   Plus
 } from "lucide-react";
@@ -54,6 +55,7 @@ function ProjectNode({
   const hasChildren = Boolean(project.children?.length);
   const isExpanded = expandedIds.has(project.id);
   const imageCount = project.imageIds.length;
+  const isLooseFilesNode = project.treeNodeKind === "loose-files";
   const isImportingNode = project.id.startsWith("importing-");
   const isAssetDatabaseNode = project.id === "asset-database-group" || project.id.startsWith("asset-root:");
   const isDynamicDatabaseNode = project.id === "database-group" || project.id.startsWith("dataset-root:");
@@ -67,7 +69,7 @@ function ProjectNode({
     ? 0
     : project.imageIds.filter((imageId) => problemImageIds.has(imageId)).length;
   const displayCount = isGroupNode ? datasetCount : imageCount;
-  const canOpenContextMenu = !isImportingNode;
+  const canOpenContextMenu = !isImportingNode && !isLooseFilesNode;
   const indentation = isGroupNode ? 4 : 8 + depth * 10;
 
   const handleRowActivate = () => {
@@ -152,12 +154,16 @@ function ProjectNode({
             <Database size={16} className="shrink-0 text-black" />
           ) : isWorkspaceFolderGroup ? (
             <Folders size={16} className="shrink-0 text-black" />
+          ) : isLooseFilesNode ? (
+            <Images size={16} className="shrink-0 text-black" />
           ) : isSelected ? (
             <FolderOpen size={16} className="shrink-0 text-black" />
           ) : (
             <Folder size={16} className="shrink-0 text-black" />
           )}
-          <span className={cn("min-w-0 flex-1 truncate", sidebarLabelClass)}>{project.name}</span>
+          <span className={cn("min-w-0 flex-1 truncate", sidebarLabelClass)}>
+            {isLooseFilesNode ? t("tree.looseFiles") : project.name}
+          </span>
           {isImportingNode ? (
             <Loader2 size={13} className="shrink-0 animate-spin text-black/40" />
           ) : (
