@@ -186,6 +186,8 @@ pub fn run() {
             commands::remove_folder_dataset,
             commands::rename_dataset_folder,
             commands::create_dataset_subfolder,
+            commands::consolidate_loose_files,
+            commands::delete_loose_files,
             commands::delete_workspace_subfolder,
             commands::prepare_export_dataset,
             commands::start_export_dataset,

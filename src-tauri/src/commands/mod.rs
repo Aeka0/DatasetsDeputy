@@ -2049,6 +2049,125 @@ pub fn create_dataset_subfolder(
 }
 
 #[tauri::command]
+pub fn consolidate_loose_files(
+    state: State<'_, AppState>,
+    folder_path: String,
+    folder_name: String,
+    image_ids: Vec<i64>,
+    image_paths: Vec<String>,
+    source_kind: Option<String>,
+    dataset_id: Option<String>,
+) -> AppResult<usize> {
+    if source_kind.as_deref() == Some("folder")
+        || dataset_id
+            .as_deref()
+            .is_some_and(|id| id.starts_with("folder:"))
+    {
+        return folders::consolidate_folder_loose_files(
+            &state.dirs,
+            &folder_path,
+            &folder_name,
+            &image_paths,
+        );
+    }
+
+    let source_kind = normalize_database_source_kind(source_kind)?;
+    let dataset_id = dataset_id.ok_or_else(|| {
+        AppError::InvalidInput("Loose file consolidation requires a dataset id".to_owned())
+    })?;
+    let prefix = dataset_id
+        .split_once(':')
+        .and_then(|(_, value)| value.parse::<i64>().ok())
+        .ok_or_else(|| AppError::InvalidInput(format!("Invalid dataset id: {dataset_id}")))?;
+    let local_ids = image_ids
+        .into_iter()
+        .map(|id| {
+            let (image_prefix, local_id) = split_public_id(id)?;
+            if image_prefix != prefix {
+                return Err(AppError::InvalidInput(format!(
+                    "Image id does not belong to dataset {dataset_id}: {id}"
+                )));
+            }
+            Ok(local_id)
+        })
+        .collect::<AppResult<Vec<_>>>()?;
+
+    let (mut db, _) = open_database_by_prefix(&state.dirs, prefix)?;
+    if db.dataset_source_kind()? != source_kind {
+        return Err(AppError::InvalidInput(format!(
+            "Dataset type mismatch: expected {source_kind}"
+        )));
+    }
+
+    db.move_images_to_child_folder(&local_ids, &folder_path, &folder_name)
+}
+
+#[tauri::command]
+pub fn delete_loose_files(
+    state: State<'_, AppState>,
+    image_ids: Vec<i64>,
+    image_paths: Vec<String>,
+    source_kind: Option<String>,
+    dataset_id: Option<String>,
+) -> AppResult<usize> {
+    if source_kind.as_deref() == Some("folder")
+        || dataset_id
+            .as_deref()
+            .is_some_and(|id| id.starts_with("folder:"))
+    {
+        return folders::delete_folder_images(&image_paths);
+    }
+
+    let source_kind = normalize_database_source_kind(source_kind)?;
+    let dataset_id = dataset_id.ok_or_else(|| {
+        AppError::InvalidInput("Loose file deletion requires a dataset id".to_owned())
+    })?;
+    let prefix = dataset_id
+        .split_once(':')
+        .and_then(|(_, value)| value.parse::<i64>().ok())
+        .ok_or_else(|| AppError::InvalidInput(format!("Invalid dataset id: {dataset_id}")))?;
+    let local_ids = image_ids
+        .into_iter()
+        .map(|id| {
+            let (image_prefix, local_id) = split_public_id(id)?;
+            if image_prefix != prefix {
+                return Err(AppError::InvalidInput(format!(
+                    "Image id does not belong to dataset {dataset_id}: {id}"
+                )));
+            }
+            Ok(local_id)
+        })
+        .collect::<AppResult<Vec<_>>>()?;
+
+    let (mut db, _) = open_database_by_prefix(&state.dirs, prefix)?;
+    if db.dataset_source_kind()? != source_kind {
+        return Err(AppError::InvalidInput(format!(
+            "Dataset type mismatch: expected {source_kind}"
+        )));
+    }
+
+    let mut asset_storage_paths = Vec::new();
+    if source_kind == "asset" {
+        for local_id in &local_ids {
+            if let Some(storage_path) = db.get_image_storage_path(*local_id)? {
+                asset_storage_paths.push(storage_path);
+            }
+        }
+    }
+    let mut deleted = 0;
+    for local_id in local_ids {
+        deleted += db.delete_image(local_id)?;
+    }
+    drop(db);
+
+    if !asset_storage_paths.is_empty() {
+        cleanup_unreferenced_asset_files(&state.dirs, &asset_storage_paths, None);
+    }
+
+    Ok(deleted)
+}
+
+#[tauri::command]
 pub fn delete_workspace_subfolder(
     state: State<'_, AppState>,
     folder_path: String,

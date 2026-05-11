@@ -69,7 +69,7 @@ function ProjectNode({
     ? 0
     : project.imageIds.filter((imageId) => problemImageIds.has(imageId)).length;
   const displayCount = isGroupNode ? datasetCount : imageCount;
-  const canOpenContextMenu = !isImportingNode && !isLooseFilesNode;
+  const canOpenContextMenu = !isImportingNode;
   const indentation = isGroupNode ? 4 : 8 + depth * 10;
 
   const handleRowActivate = () => {
@@ -214,6 +214,8 @@ export function ProjectTree() {
     removeDataset,
     renameDatasetFolder,
     createDatasetSubfolder,
+    consolidateLooseFiles,
+    deleteLooseFiles,
     addAppLog
   } = useDatasetStore(
     useShallow((state) => ({
@@ -227,6 +229,8 @@ export function ProjectTree() {
       removeDataset: state.removeDataset,
       renameDatasetFolder: state.renameDatasetFolder,
       createDatasetSubfolder: state.createDatasetSubfolder,
+      consolidateLooseFiles: state.consolidateLooseFiles,
+      deleteLooseFiles: state.deleteLooseFiles,
       addAppLog: state.addAppLog
     }))
   );
@@ -239,10 +243,14 @@ export function ProjectTree() {
   const [pendingRemoval, setPendingRemoval] = useState<DatasetProject>();
   const [pendingRename, setPendingRename] = useState<DatasetProject>();
   const [pendingNewChild, setPendingNewChild] = useState<DatasetProject>();
+  const [pendingConsolidation, setPendingConsolidation] = useState<DatasetProject>();
+  const [pendingLooseDeletion, setPendingLooseDeletion] = useState<DatasetProject>();
   const [renameValue, setRenameValue] = useState("");
   const [renameError, setRenameError] = useState("");
   const [newChildName, setNewChildName] = useState("");
   const [newChildError, setNewChildError] = useState("");
+  const [consolidationName, setConsolidationName] = useState("");
+  const [consolidationError, setConsolidationError] = useState("");
 
   useEffect(() => {
     if (!contextMenu) return;
@@ -333,6 +341,18 @@ export function ProjectTree() {
     }
   };
 
+  const submitConsolidation = async () => {
+    if (!pendingConsolidation) return;
+    setConsolidationError("");
+    try {
+      await consolidateLooseFiles(pendingConsolidation, consolidationName);
+      setPendingConsolidation(undefined);
+      setConsolidationName("");
+    } catch (error) {
+      setConsolidationError(formatAppError(error));
+    }
+  };
+
   const setProjectExpanded = (project: DatasetProject, expanded: boolean) => {
     setExpandedIds((current) => {
       const next = new Set(current);
@@ -353,11 +373,17 @@ export function ProjectTree() {
     project.id.startsWith("asset-root:") ||
     project.id.startsWith("dataset-root:") ||
     project.id.startsWith("folder-root:");
+  const isLooseFilesProject = (project: DatasetProject | undefined) =>
+    project?.treeNodeKind === "loose-files";
   const isWorkspaceFolderChild = (project: DatasetProject) =>
-    project.sourceKind === "folder" && !isVirtualRoot(project) && !project.id.startsWith("folder-root:");
+    project.sourceKind === "folder" &&
+    !isLooseFilesProject(project) &&
+    !isVirtualRoot(project) &&
+    !project.id.startsWith("folder-root:");
   const isDatabaseLikeTrainingSet = (project: DatasetProject) =>
     !isVirtualRoot(project) &&
     !isDatasetRoot(project) &&
+    !isLooseFilesProject(project) &&
     (project.sourceKind === "database" || project.sourceKind === "asset");
   const canCreateChildFolder = (project: DatasetProject) =>
     isDatasetRoot(project) && (project.sourceKind !== "folder" || Boolean(project.path));
@@ -526,82 +552,109 @@ export function ProjectTree() {
               onContextMenu={(event) => event.preventDefault()}
             >
               <div className="app-dropdown-backdrop" />
-              <button
-                className="app-dropdown-item flex h-9 w-full items-center px-3.5 text-left text-[12px] font-medium text-neutral-700 transition hover:bg-neutral-100 disabled:cursor-not-allowed disabled:opacity-50"
-                disabled={!contextMenu.project.children?.length}
-                onClick={() => {
-                  const project = contextMenu.project;
-                  setContextMenu(undefined);
-                  setProjectExpanded(project, !expandedIds.has(project.id));
-                }}
-              >
-                {expandedIds.has(contextMenu.project.id) ? t("tree.collapse") : t("tree.expand")}
-              </button>
-              <button
-                className="app-dropdown-item flex h-9 w-full items-center px-3.5 text-left text-[12px] font-medium text-neutral-700 transition hover:bg-neutral-100"
-                onClick={() => {
-                  setContextMenu(undefined);
-                  void refreshImages();
-                }}
-              >
-                {t("tree.refresh")}
-              </button>
-              <button
-                className="app-dropdown-item flex h-9 w-full items-center px-3.5 text-left text-[12px] font-medium text-neutral-700 transition hover:bg-neutral-100"
-                onClick={() => void runProjectCheck(contextMenu.project)}
-              >
-                {t("tree.checkProblems")}
-              </button>
-              {canCreateChildFolder(contextMenu.project) ? (
-                <button
-                  className="app-dropdown-item flex h-9 w-full items-center px-3.5 text-left text-[12px] font-medium text-neutral-700 transition hover:bg-neutral-100"
-                  onClick={() => {
-                    setPendingNewChild(contextMenu.project);
-                    setNewChildName("");
-                    setContextMenu(undefined);
-                  }}
-                >
-                  {t("tree.newChildFolder")}
-                </button>
-              ) : null}
-              {!isVirtualRoot(contextMenu.project) && !isDatasetRoot(contextMenu.project) ? (
+              {isLooseFilesProject(contextMenu.project) ? (
                 <>
-                  <div className="app-dropdown-separator my-1.5 h-px bg-neutral-200" />
                   <button
                     className="app-dropdown-item flex h-9 w-full items-center px-3.5 text-left text-[12px] font-medium text-neutral-700 transition hover:bg-neutral-100"
-                    onClick={() => startRename(contextMenu.project)}
+                    onClick={() => {
+                      setPendingConsolidation(contextMenu.project);
+                      setConsolidationName("");
+                      setConsolidationError("");
+                      setContextMenu(undefined);
+                    }}
                   >
-                    {t("tree.renameFolder")}
+                    {t("tree.consolidateLooseFiles")}
+                  </button>
+                  <button
+                    className="app-dropdown-item flex h-9 w-full items-center px-3.5 text-left text-[12px] font-medium text-neutral-700 transition hover:bg-neutral-100"
+                    onClick={() => {
+                      setPendingLooseDeletion(contextMenu.project);
+                      setContextMenu(undefined);
+                    }}
+                  >
+                    {t("tree.delete")}
                   </button>
                 </>
-              ) : null}
-              {!isVirtualRoot(contextMenu.project) && !isDatasetRoot(contextMenu.project) ? (
-                <button
-                  className="app-dropdown-item flex h-9 w-full items-center px-3.5 text-left text-[12px] font-medium text-neutral-700 transition hover:bg-neutral-100"
-                  onClick={() => {
-                    const project = contextMenu.project;
-                    setContextMenu(undefined);
-                    setPendingRemoval(project);
-                  }}
-                >
-                  {isDatabaseLikeTrainingSet(contextMenu.project)
-                    ? t("tree.removeSubfolder")
-                    : t("tree.delete")}
-                </button>
-              ) : null}
-              <button
-                className="app-dropdown-item flex h-9 w-full items-center px-3.5 text-left text-[12px] font-medium text-neutral-700 transition hover:bg-neutral-100"
-                hidden={isVirtualRoot(contextMenu.project) || !isDatasetRoot(contextMenu.project)}
-                onClick={() => {
-                  const project = contextMenu.project;
-                  setContextMenu(undefined);
-                  setPendingRemoval(project);
-                }}
-              >
-                {contextMenu.project.sourceKind === "folder"
-                  ? t("tree.removeWorkspaceFolderPath")
-                  : t("tree.removeTrainingSet")}
-              </button>
+              ) : (
+                <>
+                  <button
+                    className="app-dropdown-item flex h-9 w-full items-center px-3.5 text-left text-[12px] font-medium text-neutral-700 transition hover:bg-neutral-100 disabled:cursor-not-allowed disabled:opacity-50"
+                    disabled={!contextMenu.project.children?.length}
+                    onClick={() => {
+                      const project = contextMenu.project;
+                      setContextMenu(undefined);
+                      setProjectExpanded(project, !expandedIds.has(project.id));
+                    }}
+                  >
+                    {expandedIds.has(contextMenu.project.id) ? t("tree.collapse") : t("tree.expand")}
+                  </button>
+                  <button
+                    className="app-dropdown-item flex h-9 w-full items-center px-3.5 text-left text-[12px] font-medium text-neutral-700 transition hover:bg-neutral-100"
+                    onClick={() => {
+                      setContextMenu(undefined);
+                      void refreshImages();
+                    }}
+                  >
+                    {t("tree.refresh")}
+                  </button>
+                  <button
+                    className="app-dropdown-item flex h-9 w-full items-center px-3.5 text-left text-[12px] font-medium text-neutral-700 transition hover:bg-neutral-100"
+                    onClick={() => void runProjectCheck(contextMenu.project)}
+                  >
+                    {t("tree.checkProblems")}
+                  </button>
+                  {canCreateChildFolder(contextMenu.project) ? (
+                    <button
+                      className="app-dropdown-item flex h-9 w-full items-center px-3.5 text-left text-[12px] font-medium text-neutral-700 transition hover:bg-neutral-100"
+                      onClick={() => {
+                        setPendingNewChild(contextMenu.project);
+                        setNewChildName("");
+                        setContextMenu(undefined);
+                      }}
+                    >
+                      {t("tree.newChildFolder")}
+                    </button>
+                  ) : null}
+                  {!isVirtualRoot(contextMenu.project) && !isDatasetRoot(contextMenu.project) ? (
+                    <>
+                      <div className="app-dropdown-separator my-1.5 h-px bg-neutral-200" />
+                      <button
+                        className="app-dropdown-item flex h-9 w-full items-center px-3.5 text-left text-[12px] font-medium text-neutral-700 transition hover:bg-neutral-100"
+                        onClick={() => startRename(contextMenu.project)}
+                      >
+                        {t("tree.renameFolder")}
+                      </button>
+                    </>
+                  ) : null}
+                  {!isVirtualRoot(contextMenu.project) && !isDatasetRoot(contextMenu.project) ? (
+                    <button
+                      className="app-dropdown-item flex h-9 w-full items-center px-3.5 text-left text-[12px] font-medium text-neutral-700 transition hover:bg-neutral-100"
+                      onClick={() => {
+                        const project = contextMenu.project;
+                        setContextMenu(undefined);
+                        setPendingRemoval(project);
+                      }}
+                    >
+                      {isDatabaseLikeTrainingSet(contextMenu.project)
+                        ? t("tree.removeSubfolder")
+                        : t("tree.delete")}
+                    </button>
+                  ) : null}
+                  <button
+                    className="app-dropdown-item flex h-9 w-full items-center px-3.5 text-left text-[12px] font-medium text-neutral-700 transition hover:bg-neutral-100"
+                    hidden={isVirtualRoot(contextMenu.project) || !isDatasetRoot(contextMenu.project)}
+                    onClick={() => {
+                      const project = contextMenu.project;
+                      setContextMenu(undefined);
+                      setPendingRemoval(project);
+                    }}
+                  >
+                    {contextMenu.project.sourceKind === "folder"
+                      ? t("tree.removeWorkspaceFolderPath")
+                      : t("tree.removeTrainingSet")}
+                  </button>
+                </>
+              )}
             </div>,
             document.body
           )
@@ -704,6 +757,104 @@ export function ProjectTree() {
               </button>
             </div>
           </form>
+        </div>
+      ) : null}
+      {pendingConsolidation ? (
+        <div
+          className="no-drag fixed inset-0 z-[60] flex items-center justify-center bg-neutral-950/24 px-4"
+          onClick={() => setPendingConsolidation(undefined)}
+        >
+          <form
+            className="w-full max-w-[360px] rounded-lg border border-neutral-200 bg-white p-5 shadow-xl"
+            onClick={(event) => event.stopPropagation()}
+            onSubmit={(event) => {
+              event.preventDefault();
+              void submitConsolidation();
+            }}
+          >
+            <h2 className="m-0 text-[15px] font-semibold leading-6 text-neutral-950">
+              {t("tree.consolidateLooseFilesTitle")}
+            </h2>
+            <div className="mt-2 text-[12px] leading-5 text-neutral-500">
+              {t("tree.consolidateLooseFilesDescription", {
+                count: pendingConsolidation.imageIds.length
+              })}
+            </div>
+            <label className="mt-4 block text-[12px] font-medium text-neutral-600">
+              {t("tree.consolidateFolderNameLabel")}
+            </label>
+            <input
+              autoFocus
+              value={consolidationName}
+              onChange={(event) => {
+                setConsolidationName(event.target.value);
+                setConsolidationError("");
+              }}
+              className="glass-input mt-1 h-9 w-full px-3 text-[13px]"
+            />
+            {consolidationError ? (
+              <div className="mt-2 text-[12px] leading-4 text-rose-600">{consolidationError}</div>
+            ) : null}
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                type="button"
+                className="h-8 rounded-md border border-neutral-200 bg-white px-3 text-[13px] text-neutral-700 transition hover:bg-neutral-50"
+                onClick={() => setPendingConsolidation(undefined)}
+              >
+                {t("actions.cancel")}
+              </button>
+              <button
+                type="submit"
+                className="h-8 rounded-md bg-neutral-950 px-3 text-[13px] font-medium text-white transition hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-50"
+                disabled={!consolidationName.trim()}
+              >
+                {t("tree.consolidateLooseFiles")}
+              </button>
+            </div>
+          </form>
+        </div>
+      ) : null}
+      {pendingLooseDeletion ? (
+        <div
+          className="no-drag fixed inset-0 z-[60] flex items-center justify-center bg-neutral-950/24 px-4"
+          onClick={() => setPendingLooseDeletion(undefined)}
+        >
+          <div
+            className="w-full max-w-[380px] rounded-lg border border-neutral-200 bg-white p-5 shadow-xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <h2 className="m-0 text-[15px] font-semibold leading-6 text-neutral-950">
+              {t("tree.confirmDeleteLooseFilesTitle")}
+            </h2>
+            <div className="mt-3 text-[13px] leading-5 text-neutral-600">
+              {t("tree.confirmDeleteLooseFilesDescription", {
+                count: pendingLooseDeletion.imageIds.length
+              })}
+            </div>
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                className="h-8 rounded-md border border-neutral-200 bg-white px-3 text-[13px] text-neutral-700 transition hover:bg-neutral-50"
+                onClick={() => setPendingLooseDeletion(undefined)}
+              >
+                {t("actions.cancel")}
+              </button>
+              <button
+                className="h-8 rounded-md bg-neutral-950 px-3 text-[13px] font-medium text-white transition hover:bg-neutral-800"
+                onClick={() => {
+                  const project = pendingLooseDeletion;
+                  setPendingLooseDeletion(undefined);
+                  deleteLooseFiles(project).catch((error) => {
+                    addAppLog(
+                      t("appLog.deleteLooseFilesFailed", { message: formatAppError(error) }),
+                      "error"
+                    );
+                  });
+                }}
+              >
+                {t("tree.confirmDelete")}
+              </button>
+            </div>
+          </div>
         </div>
       ) : null}
       {pendingRemoval ? (

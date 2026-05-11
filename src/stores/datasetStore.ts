@@ -167,6 +167,20 @@ function replacePathFileName(path: string, fileName: string) {
   return directory ? `${directory}/${fileName}` : fileName;
 }
 
+function joinPath(parent: string, child: string) {
+  const normalizedParent = normalizePath(parent);
+  return normalizedParent ? `${normalizedParent}/${child}` : child;
+}
+
+function getChildProjectId(project: DatasetProject, childName: string) {
+  const childPath = joinPath(project.path, childName);
+  const sourceKind = getProjectSourceKind(project);
+  if (sourceKind === "folder") {
+    return `folder-folder:${childPath}`;
+  }
+  return `${sourceKind}-folder:${encodeURIComponent(project.datasetId ?? "")}:${childPath}`;
+}
+
 function getRenamedImageFileName(image: DatasetImage, name: string) {
   const trimmedName = name.trim();
   if (/\.[^./\\]+$/.test(trimmedName)) {
@@ -472,6 +486,8 @@ interface DatasetState {
   removeDataset: (project: DatasetProject) => Promise<void>;
   renameDatasetFolder: (project: DatasetProject, name: string) => Promise<void>;
   createDatasetSubfolder: (project: DatasetProject, name: string) => Promise<void>;
+  consolidateLooseFiles: (project: DatasetProject, name: string) => Promise<void>;
+  deleteLooseFiles: (project: DatasetProject) => Promise<void>;
   renameDatasetImage: (image: DatasetImage, name: string) => Promise<void>;
   deleteDatasetImage: (image: DatasetImage) => Promise<void>;
   openExportDialog: () => void;
@@ -1336,6 +1352,93 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
       await get().refreshImages();
       return;
     }
+  },
+  consolidateLooseFiles: async (project, name) => {
+    const trimmedName = name.trim();
+    if (!trimmedName) {
+      return;
+    }
+    if (/[\\/]/.test(trimmedName)) {
+      throw new Error("Folder name cannot contain path separators.");
+    }
+
+    const state = get();
+    const looseImageIdSet = new Set(project.imageIds);
+    const looseImages = state.images.filter((image) => looseImageIdSet.has(image.id));
+    const targetProjectId = getChildProjectId(project, trimmedName);
+
+    if (hasTauriRuntime()) {
+      await invokeCommand<number>("consolidate_loose_files", {
+        folderPath: project.path,
+        folderName: trimmedName,
+        imageIds: project.imageIds,
+        imagePaths: looseImages.map((image) => image.path),
+        sourceKind: getProjectSourceKind(project),
+        datasetId: project.datasetId
+      });
+      await get().refreshImages();
+      set({ selectedProjectId: targetProjectId });
+      get().addAppLog(i18next.t("appLog.looseFilesConsolidated", { name: trimmedName }));
+      return;
+    }
+
+    set((current) => {
+      const ids = new Set(project.imageIds);
+      const targetFolderPath = joinPath(project.path, trimmedName);
+      const images = current.images.map((image) => {
+        if (!ids.has(image.id)) return image;
+
+        if (getProjectSourceKind(project) === "folder") {
+          return {
+            ...image,
+            path: joinPath(targetFolderPath, image.fileName),
+            updatedAt: new Date().toISOString()
+          };
+        }
+
+        return {
+          ...image,
+          datasetPath: joinPath(targetFolderPath, image.fileName),
+          updatedAt: new Date().toISOString()
+        };
+      });
+      return {
+        images,
+        projects: createProjectTree(images),
+        selectedProjectId: targetProjectId
+      };
+    });
+  },
+  deleteLooseFiles: async (project) => {
+    const state = get();
+    const looseImageIdSet = new Set(project.imageIds);
+    const looseImages = state.images.filter((image) => looseImageIdSet.has(image.id));
+
+    if (hasTauriRuntime()) {
+      await invokeCommand<number>("delete_loose_files", {
+        imageIds: project.imageIds,
+        imagePaths: looseImages.map((image) => image.path),
+        sourceKind: getProjectSourceKind(project),
+        datasetId: project.datasetId
+      });
+      await get().refreshImages();
+      set((current) => ({
+        selectedProjectId:
+          current.selectedProjectId === project.id ? undefined : current.selectedProjectId
+      }));
+      get().addAppLog(i18next.t("appLog.looseFilesDeleted", { count: project.imageIds.length }));
+      return;
+    }
+
+    const ids = new Set(project.imageIds);
+    set((current) => {
+      const images = current.images.filter((image) => !ids.has(image.id));
+      return {
+        images,
+        projects: createProjectTree(images),
+        selectedProjectId: current.selectedProjectId === project.id ? undefined : current.selectedProjectId
+      };
+    });
   },
   renameDatasetImage: async (image, name) => {
     const trimmedName = name.trim();

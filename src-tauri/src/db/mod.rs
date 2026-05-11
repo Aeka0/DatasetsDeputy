@@ -589,6 +589,90 @@ impl Database {
         Ok(new_path.to_string_lossy().to_string())
     }
 
+    pub fn move_images_to_child_folder(
+        &mut self,
+        image_ids: &[i64],
+        folder_path: &str,
+        child_folder_name: &str,
+    ) -> AppResult<usize> {
+        let child_folder_name = child_folder_name.trim();
+        if child_folder_name.is_empty()
+            || child_folder_name.contains('/')
+            || child_folder_name.contains('\\')
+        {
+            return Err(crate::errors::AppError::InvalidInput(
+                "Folder name cannot be empty or contain path separators".to_owned(),
+            ));
+        }
+
+        if image_ids.is_empty() {
+            return Ok(0);
+        }
+
+        let image_id_set = image_ids
+            .iter()
+            .copied()
+            .collect::<std::collections::HashSet<_>>();
+        let folder_path = normalize_dataset_path(folder_path);
+        let target_folder_path = normalize_dataset_path(
+            &PathBuf::from(&folder_path)
+                .join(child_folder_name)
+                .to_string_lossy(),
+        );
+        let target_prefix = format!("{target_folder_path}/");
+        if self.list_images()?.into_iter().any(|image| {
+            image
+                .dataset_path
+                .as_deref()
+                .map(normalize_dataset_path)
+                .is_some_and(|path| path == target_folder_path || path.starts_with(&target_prefix))
+        }) {
+            return Err(crate::errors::AppError::InvalidInput(format!(
+                "Target folder already exists: {target_folder_path}"
+            )));
+        }
+
+        let now = Utc::now().to_rfc3339();
+        let images = self
+            .list_images()?
+            .into_iter()
+            .filter(|image| image_id_set.contains(&image.id))
+            .map(|image| {
+                let dataset_path = image.dataset_path.ok_or_else(|| {
+                    crate::errors::AppError::InvalidInput(format!(
+                        "Image does not have a dataset path: {}",
+                        image.id
+                    ))
+                })?;
+                let normalized_path = normalize_dataset_path(&dataset_path);
+                let parent = Path::new(&normalized_path)
+                    .parent()
+                    .map(|path| normalize_dataset_path(&path.to_string_lossy()))
+                    .unwrap_or_default();
+                if parent != folder_path {
+                    return Err(crate::errors::AppError::InvalidInput(format!(
+                        "Image is not a direct loose file under {folder_path}: {normalized_path}"
+                    )));
+                }
+                Ok((
+                    image.id,
+                    format!("{target_folder_path}/{}", image.file_name),
+                ))
+            })
+            .collect::<AppResult<Vec<_>>>()?;
+
+        let tx = self.conn.transaction()?;
+        for (image_id, path) in &images {
+            tx.execute(
+                "UPDATE images SET dataset_path = ?1, updated_at = ?2 WHERE id = ?3",
+                params![path, now, image_id],
+            )?;
+        }
+        tx.commit()?;
+
+        Ok(images.len())
+    }
+
     pub fn get_image_storage_path(&self, image_id: i64) -> AppResult<Option<String>> {
         Ok(self
             .conn

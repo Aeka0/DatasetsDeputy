@@ -490,3 +490,108 @@ pub fn delete_folder_image(image_path: &str) -> AppResult<usize> {
 
     Ok(deleted)
 }
+
+fn validate_child_folder_name(name: &str) -> AppResult<&str> {
+    let name = name.trim();
+    if name.is_empty() || name.contains('/') || name.contains('\\') {
+        return Err(AppError::InvalidInput(
+            "Folder name cannot be empty or contain path separators".to_owned(),
+        ));
+    }
+    Ok(name)
+}
+
+pub fn consolidate_folder_loose_files(
+    dirs: &AppDirs,
+    folder_path: &str,
+    folder_name: &str,
+    image_paths: &[String],
+) -> AppResult<usize> {
+    let folder_name = validate_child_folder_name(folder_name)?;
+    let parent = PathBuf::from(folder_path);
+    if !parent.is_dir() {
+        return Err(AppError::InvalidInput(format!(
+            "Parent folder does not exist: {folder_path}"
+        )));
+    }
+    require_path_within_registered_folder(dirs, &parent)?;
+
+    let target_folder = parent.join(folder_name);
+    if target_folder.exists() {
+        return Err(AppError::InvalidInput(format!(
+            "Target folder already exists: {}",
+            target_folder.to_string_lossy()
+        )));
+    }
+
+    let normalized_parent = normalize_path(&parent);
+    let mut moves = Vec::new();
+    for image_path in image_paths {
+        let source = PathBuf::from(image_path);
+        if source.parent().map(normalize_path).unwrap_or_default() != normalized_parent {
+            return Err(AppError::InvalidInput(format!(
+                "Image is not a direct loose file under {folder_path}: {image_path}"
+            )));
+        }
+
+        let Some(file_name) = source.file_name() else {
+            continue;
+        };
+        let target = target_folder.join(file_name);
+        let annotation_source = annotation_path(&source);
+        let instruction_source = instruction_path(&source);
+        let annotation_target = annotation_path(&target);
+        let instruction_target = instruction_path(&target);
+
+        for target_path in [&target, &annotation_target, &instruction_target] {
+            if target_path.exists() {
+                return Err(AppError::InvalidInput(format!(
+                    "Target file already exists: {}",
+                    target_path.to_string_lossy()
+                )));
+            }
+        }
+
+        moves.push((
+            source,
+            target,
+            annotation_source,
+            annotation_target,
+            instruction_source,
+            instruction_target,
+        ));
+    }
+
+    fs::create_dir_all(&target_folder)?;
+    let mut moved = 0;
+    for (
+        source,
+        target,
+        annotation_source,
+        annotation_target,
+        instruction_source,
+        instruction_target,
+    ) in moves
+    {
+        if source.is_file() {
+            fs::rename(&source, &target)?;
+            moved += 1;
+        }
+        if annotation_source.is_file() {
+            fs::rename(annotation_source, annotation_target)?;
+        }
+        if instruction_source.is_file() {
+            fs::rename(instruction_source, instruction_target)?;
+        }
+    }
+
+    Ok(moved)
+}
+
+pub fn delete_folder_images(image_paths: &[String]) -> AppResult<usize> {
+    let mut deleted = 0;
+    for image_path in image_paths {
+        deleted += delete_folder_image(image_path)?;
+    }
+    Ok(deleted)
+}
