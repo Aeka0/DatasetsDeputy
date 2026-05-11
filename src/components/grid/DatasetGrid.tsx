@@ -1,7 +1,7 @@
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { CircleAlert, Files, ImageIcon } from "lucide-react";
 import type { MouseEvent as ReactMouseEvent } from "react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useShallow } from "zustand/react/shallow";
 
@@ -18,10 +18,12 @@ const cardTextHeight = 52;
 export function DatasetGrid({
   images,
   search,
+  scrollResetKey,
   onImageContextMenu
 }: {
   images: DatasetImage[];
   search?: string;
+  scrollResetKey?: string;
   onImageContextMenu?: (image: DatasetImage, event: ReactMouseEvent<HTMLElement>) => void;
 }) {
   const { t } = useTranslation();
@@ -106,6 +108,14 @@ export function DatasetGrid({
   useEffect(() => {
     virtualizer.measure();
   }, [columnCount, rowHeight]);
+
+  useLayoutEffect(() => {
+    const element = parentRef.current;
+    if (!element) return;
+
+    element.scrollTop = 0;
+    virtualizer.scrollToOffset(0);
+  }, [scrollResetKey]);
 
   return (
     <div

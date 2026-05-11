@@ -1536,12 +1536,18 @@ export function DatasetWorkspace() {
           </p>
         </div>
       ) : activeTab === "grid" ? (
-        <DatasetGrid images={visibleImages} search={search} onImageContextMenu={openImageContextMenu} />
+        <DatasetGrid
+          images={visibleImages}
+          search={search}
+          scrollResetKey={selectedProjectId}
+          onImageContextMenu={openImageContextMenu}
+        />
       ) : (
         <DatasetTable
           images={visibleImages}
           profiles={tableProfiles}
           search={search}
+          scrollResetKey={selectedProjectId}
           onImageContextMenu={openImageContextMenu}
         />
       )}

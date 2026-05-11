@@ -5,7 +5,7 @@ import type {
   MouseEvent as ReactMouseEvent,
   PointerEvent as ReactPointerEvent
 } from "react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import { RichTextarea } from "rich-textarea";
@@ -80,11 +80,13 @@ export function DatasetTable({
   images,
   profiles,
   search,
+  scrollResetKey,
   onImageContextMenu
 }: {
   images: DatasetImage[];
   profiles: AnnotationProfile[];
   search?: string;
+  scrollResetKey?: string;
   onImageContextMenu?: (image: DatasetImage, event: ReactMouseEvent<HTMLElement>) => void;
 }) {
   const { t } = useTranslation();
@@ -323,6 +325,14 @@ export function DatasetTable({
     estimateSize: () => rowHeight,
     overscan: 8
   });
+
+  useLayoutEffect(() => {
+    const element = parentRef.current;
+    if (!element) return;
+
+    element.scrollTop = 0;
+    virtualizer.scrollToOffset(0);
+  }, [scrollResetKey]);
 
   const dirtyCells = useMemo(
     () => {
