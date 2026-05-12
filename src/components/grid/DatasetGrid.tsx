@@ -81,7 +81,7 @@ export function DatasetGrid({
   }, [containerWidth]);
   const cardWidth =
     containerWidth > 0
-      ? (containerWidth - gridGap * (columnCount - 1)) / columnCount
+      ? Math.floor((containerWidth - gridGap * (columnCount - 1)) / columnCount)
       : minCardWidth;
   const rowHeight = cardWidth + cardTextHeight + gridGap;
   const issueIconSize = Math.max(28, Math.min(56, Math.round(cardWidth * 0.24)));
@@ -136,9 +136,9 @@ export function DatasetGrid({
               className="absolute left-0 grid w-full"
               style={{
                 gap: `${gridGap}px`,
-                gridTemplateColumns: `repeat(${columnCount}, minmax(0, 1fr))`,
+                gridTemplateColumns: `repeat(${columnCount}, ${cardWidth}px)`,
                 height: `${cardWidth + cardTextHeight}px`,
-                transform: `translateY(${virtualRow.start}px)`
+                transform: `translateY(${Math.round(virtualRow.start)}px)`
               }}
             >
               {rowImages.map((image) => (

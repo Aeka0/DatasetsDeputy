@@ -188,6 +188,8 @@ const defaultThumbnailSettings: ThumbnailSettings = {
 };
 
 const thumbnailSizeOptions = [
+  { value: "128", label: "128 px" },
+  { value: "192", label: "192 px" },
   { value: "256", label: "256 px" },
   { value: "384", label: "384 px" },
   { value: "512", label: "512 px" }

@@ -6,7 +6,7 @@ use crate::{app_dirs::AppDirs, errors::AppResult};
 
 const SETTINGS_FILE: &str = "thumbnail-settings.json";
 const DEFAULT_THUMBNAIL_SIZE: u32 = 256;
-const ALLOWED_THUMBNAIL_SIZES: [u32; 3] = [256, 384, 512];
+const ALLOWED_THUMBNAIL_SIZES: [u32; 5] = [128, 192, 256, 384, 512];
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
