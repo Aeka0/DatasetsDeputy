@@ -182,19 +182,30 @@ function ProjectNode({
         </button>
       </div>
 
-      {hasChildren && isExpanded ? (
-        <div className="mt-1.5 space-y-1">
-          {project.children?.map((child) => (
-            <ProjectNode
-              key={child.id}
-              project={child}
-              depth={depth + 1}
-              expandedIds={expandedIds}
-              toggleExpanded={toggleExpanded}
-              openContextMenu={openContextMenu}
-              problemImageIds={problemImageIds}
-            />
-          ))}
+      {hasChildren ? (
+        <div
+          className={cn(
+            "project-tree-children",
+            isExpanded && "project-tree-children-open"
+          )}
+          aria-hidden={!isExpanded}
+          inert={!isExpanded}
+        >
+          <div className="min-h-0 overflow-hidden">
+            <div className="space-y-1 pt-1.5">
+              {project.children?.map((child) => (
+                <ProjectNode
+                  key={child.id}
+                  project={child}
+                  depth={depth + 1}
+                  expandedIds={expandedIds}
+                  toggleExpanded={toggleExpanded}
+                  openContextMenu={openContextMenu}
+                  problemImageIds={problemImageIds}
+                />
+              ))}
+            </div>
+          </div>
         </div>
       ) : null}
     </div>

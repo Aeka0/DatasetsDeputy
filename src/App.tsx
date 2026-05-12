@@ -17,6 +17,7 @@ import { ProjectTree } from "./components/sidebar/ProjectTree";
 import { TitleMenuBar } from "./components/window/TitleMenuBar";
 import { WindowControls } from "./components/window/WindowControls";
 import { useDatasetStore } from "./stores/datasetStore";
+import { cn } from "./lib/cn";
 import { hasTauriRuntime, invokeCommand } from "./lib/tauri";
 import { setWindowRenderMode, type WindowRenderingSettings } from "./lib/theme";
 import { formatAppError } from "./lib/errors";
@@ -233,6 +234,22 @@ export default function App() {
     void getCurrentWindow().startDragging();
   };
 
+  const appViewTransitionKey = importProgress && !importProgress.done
+    ? "import-progress"
+    : importReport
+    ? "import-report"
+    : importPreview
+    ? "import-preview"
+    : showImportWizard
+    ? "import-wizard"
+    : appView === "logs"
+    ? "logs"
+    : appView === "initial"
+    ? "initial"
+    : selectedProjectId
+    ? `workspace:${selectedProjectId}`
+    : "welcome";
+
   return (
     <main className="fluent-shell relative flex h-screen w-screen flex-col overflow-hidden text-neutral-950">
       <div
@@ -254,7 +271,15 @@ export default function App() {
       </div>
 
       <div className="fluent-chrome relative flex min-h-0 flex-1">
-        {isProjectTreeCollapsed ? null : <ProjectTree />}
+        <div
+          className={cn(
+            "project-tree-shell h-full shrink-0",
+            isProjectTreeCollapsed && "project-tree-shell-collapsed"
+          )}
+          aria-hidden={isProjectTreeCollapsed}
+        >
+          <ProjectTree />
+        </div>
 
         <section className="min-w-0 flex-1 p-3">
           <div className="app-surface relative h-full min-h-0 rounded-lg border border-neutral-200 bg-white p-4">
@@ -271,30 +296,35 @@ export default function App() {
                 <ChevronsLeft size={11} />
               )}
             </button>
-            {importProgress && !importProgress.done ? (
-              <ImportProgressView />
-            ) : importReport ? (
-              <ImportReportView />
-            ) : importPreview ? (
-              <ImportPreviewView />
-            ) : showImportWizard ? (
-              <ImportWizardView />
-            ) : appView === "logs" ? (
-              <AnnotationLogView />
-            ) : appView === "initial" ? (
-              <WelcomeView />
-            ) : selectedProjectId ? (
-              <>
-                <DatasetWorkspace />
-                {previewImageId ? (
-                  <div className="absolute inset-0 z-10 rounded-lg bg-white p-4">
-                    <ImagePreviewView />
-                  </div>
-                ) : null}
-              </>
-            ) : (
-              <WelcomeView />
-            )}
+            <div
+              key={appViewTransitionKey}
+              className="app-view-transition h-full min-h-0"
+            >
+              {importProgress && !importProgress.done ? (
+                <ImportProgressView />
+              ) : importReport ? (
+                <ImportReportView />
+              ) : importPreview ? (
+                <ImportPreviewView />
+              ) : showImportWizard ? (
+                <ImportWizardView />
+              ) : appView === "logs" ? (
+                <AnnotationLogView />
+              ) : appView === "initial" ? (
+                <WelcomeView />
+              ) : selectedProjectId ? (
+                <>
+                  <DatasetWorkspace />
+                  {previewImageId ? (
+                    <div className="absolute inset-0 z-10 rounded-lg bg-white p-4">
+                      <ImagePreviewView />
+                    </div>
+                  ) : null}
+                </>
+              ) : (
+                <WelcomeView />
+              )}
+            </div>
           </div>
         </section>
       </div>

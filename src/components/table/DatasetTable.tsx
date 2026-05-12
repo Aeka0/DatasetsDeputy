@@ -157,6 +157,7 @@ export function DatasetTable({
   const [createProfileError, setCreateProfileError] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [columnWidths, setColumnWidths] = useState(loadColumnWidths);
+  const [loadedPreviewKeys, setLoadedPreviewKeys] = useState<Set<string>>(new Set());
   const searchQuery = search?.trim() ?? "";
 
   const searchHighlightRenderer = useCallback(
@@ -318,6 +319,21 @@ export function DatasetTable({
   const gridTemplateColumns = `${columnWidths.filename}px ${columnWidths.preview}px ${columnWidths.annotation}px ${columnWidths.instruction}px`;
   const tableWidth =
     columnWidths.filename + columnWidths.preview + columnWidths.annotation + columnWidths.instruction;
+  const getPreviewLoadKey = (image: DatasetImage) =>
+    `${image.id}:${image.thumbnailPath ?? ""}`;
+  const markPreviewLoaded = (image: DatasetImage) => {
+    const key = getPreviewLoadKey(image);
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => {
+        setLoadedPreviewKeys((current) => {
+          if (current.has(key)) return current;
+          const next = new Set(current);
+          next.add(key);
+          return next;
+        });
+      });
+    });
+  };
 
   const virtualizer = useVirtualizer({
     count: images.length,
@@ -737,15 +753,21 @@ export function DatasetTable({
                   className="no-drag flex items-center justify-center px-2"
                   onClick={() => openImagePreview(image.id)}
                 >
-                  <div className="flex h-[100px] w-[116px] items-center justify-center overflow-hidden bg-neutral-100">
+                  <div className="dataset-preview-frame flex h-[100px] w-[116px] items-center justify-center overflow-hidden bg-neutral-100">
                     {image.sourceMissing ? (
                       <CircleAlert size={34} className="text-red-600" />
                     ) : image.thumbnailPath ? (
                       <img
                         src={resolveAssetSrc(image.thumbnailPath)}
                         alt=""
-                        className="h-full w-full object-contain"
+                        className={cn(
+                          "dataset-preview-image h-full w-full object-contain",
+                          loadedPreviewKeys.has(getPreviewLoadKey(image)) &&
+                            "dataset-preview-image-loaded"
+                        )}
                         loading="lazy"
+                        decoding="async"
+                        onLoad={() => markPreviewLoaded(image)}
                       />
                     ) : (
                       <div className="flex h-full w-full flex-col items-center justify-center gap-1 text-[13px] text-neutral-400">

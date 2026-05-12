@@ -23,12 +23,16 @@ import {
   getBottomUiOpacity,
   getThemePreference,
   getTopUiOpacity,
+  getUiAnimationPreference,
   setThemePreference,
   setBottomUiOpacity,
   setTopUiOpacity,
+  setUiAnimationPreference,
   watchUiOpacity,
+  watchUiAnimationPreference,
   watchThemePreference,
-  type ThemePreference
+  type ThemePreference,
+  type UiAnimationPreference
 } from "../../lib/theme";
 import { useDatasetStore } from "../../stores/datasetStore";
 import { Button } from "../ui/Button";
@@ -65,6 +69,12 @@ const themeOptions: Array<{ value: ThemePreference; labelKey: string }> = [
   { value: "system", labelKey: "settings.themeSystem" },
   { value: "light", labelKey: "settings.themeLight" },
   { value: "dark", labelKey: "settings.themeDark" }
+];
+
+const uiAnimationOptions: Array<{ value: UiAnimationPreference; labelKey: string }> = [
+  { value: "system", labelKey: "settings.uiAnimationSystem" },
+  { value: "on", labelKey: "settings.uiAnimationOn" },
+  { value: "off", labelKey: "settings.uiAnimationOff" }
 ];
 
 interface GeminiSettings {
@@ -339,6 +349,8 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
     useState<LocalFilesSectionKey>("environment");
   const [themePreference, setThemePreferenceState] =
     useState<ThemePreference>(getThemePreference);
+  const [uiAnimationPreference, setUiAnimationPreferenceState] =
+    useState<UiAnimationPreference>(getUiAnimationPreference);
   const [bottomUiOpacity, setBottomUiOpacityState] = useState(getBottomUiOpacity);
   const [topUiOpacity, setTopUiOpacityState] = useState(getTopUiOpacity);
   const [geminiSettings, setGeminiSettings] =
@@ -384,6 +396,7 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
   const currentLanguage = i18n.language.startsWith("zh") ? "zh-CN" : "en-US";
 
   useEffect(() => watchThemePreference(setThemePreferenceState), []);
+  useEffect(() => watchUiAnimationPreference(setUiAnimationPreferenceState), []);
   useEffect(() => {
     if (!hasTauriRuntime()) return;
 
@@ -505,6 +518,11 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
   const updateThemePreference = (preference: ThemePreference) => {
     setThemePreferenceState(preference);
     setThemePreference(preference);
+  };
+
+  const updateUiAnimationPreference = (preference: UiAnimationPreference) => {
+    setUiAnimationPreferenceState(preference);
+    setUiAnimationPreference(preference);
   };
 
   const updateBottomUiOpacity = (value: number) => {
@@ -1351,6 +1369,27 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
                     }))}
                     onChange={(nextValue) =>
                       updateThemePreference(nextValue as ThemePreference)
+                    }
+                  />
+                </div>
+                <div className="flex min-h-12 items-center justify-between gap-4 border-b border-neutral-100 px-4 py-3 last:border-b-0">
+                  <div className="min-w-0">
+                    <div className="text-[13px] font-medium text-neutral-900">
+                      {t("settings.uiAnimation")}
+                    </div>
+                    <div className="mt-0.5 text-[12px] text-neutral-500">
+                      {t("settings.uiAnimationDescription")}
+                    </div>
+                  </div>
+                  <SettingsSelect
+                    className="min-w-[150px]"
+                    value={uiAnimationPreference}
+                    options={uiAnimationOptions.map((option) => ({
+                      value: option.value,
+                      label: t(option.labelKey)
+                    }))}
+                    onChange={(nextValue) =>
+                      updateUiAnimationPreference(nextValue as UiAnimationPreference)
                     }
                   />
                 </div>

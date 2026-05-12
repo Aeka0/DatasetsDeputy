@@ -1321,6 +1321,9 @@ export function DatasetWorkspace() {
   }, [images, profiles, selectedProject]);
   const canImportImagesToFolder =
     isImportableDatasetChild(selectedProject) && Boolean(selectedProject?.datasetId);
+  const workspaceViewTransitionKey = `${selectedProjectId ?? "none"}:${activeTab}:${
+    shouldShowFilterEmptyState ? "filter-empty" : "content"
+  }`;
 
   useEffect(() => {
     if (viewFilterMode === "all" || viewFilterProjectId === selectedProjectId) return;
@@ -1498,7 +1501,10 @@ export function DatasetWorkspace() {
     <div className="flex h-full min-h-0 flex-col">
       <div className="mb-3 flex min-h-11 items-center gap-3 border-b border-neutral-100 px-1.5 pb-3 pt-0.5">
         <div className="min-w-0 flex-1">
-          <h2 className="m-0 flex min-w-0 items-center gap-2 text-[14px] text-neutral-900">
+          <h2
+            key={selectedProjectId ?? "none"}
+            className="workspace-heading-transition m-0 flex min-w-0 items-center gap-2 text-[14px] text-neutral-900"
+          >
             <FolderOpen size={16} className="shrink-0 text-neutral-500" />
             <ProjectPathBreadcrumb
               trail={selectedProjectTrail}
@@ -1585,45 +1591,50 @@ export function DatasetWorkspace() {
         })}
       </div>
 
-      {activeTab === "overview" ? (
-        <DatasetOverview
-          images={overviewImages}
-          selectedProject={selectedProject}
-          profiles={profiles}
-          isCheckingProblemItems={isCheckingProblemItems}
-          checkProblemItems={checkProblemItems}
-          createAnnotationProfile={createAnnotationProfile}
-          renameAnnotationProfile={renameAnnotationProfile}
-          duplicateAnnotationProfile={duplicateAnnotationProfile}
-          deleteAnnotationProfile={deleteAnnotationProfile}
-          addAppLog={addAppLog}
-        />
-      ) : shouldShowFilterEmptyState ? (
-        <div className="flex flex-1 flex-col items-center justify-center rounded-lg border border-neutral-200 bg-neutral-50 p-12 text-center">
-          <ImageIcon size={44} className="mb-4 text-neutral-300" />
-          <h2 className="m-0 text-xl font-semibold text-neutral-900">
-            {t("workspace.noFilterMatches")}
-          </h2>
-          <p className="mt-2 max-w-md text-sm text-neutral-500">
-            {t("workspace.filterHiddenHint")}
-          </p>
-        </div>
-      ) : activeTab === "grid" ? (
-        <DatasetGrid
-          images={visibleImages}
-          search={search}
-          scrollResetKey={selectedProjectId}
-          onImageContextMenu={openImageContextMenu}
-        />
-      ) : (
-        <DatasetTable
-          images={visibleImages}
-          profiles={tableProfiles}
-          search={search}
-          scrollResetKey={selectedProjectId}
-          onImageContextMenu={openImageContextMenu}
-        />
-      )}
+      <div
+        key={workspaceViewTransitionKey}
+        className="workspace-view-transition flex min-h-0 flex-1 flex-col"
+      >
+        {activeTab === "overview" ? (
+          <DatasetOverview
+            images={overviewImages}
+            selectedProject={selectedProject}
+            profiles={profiles}
+            isCheckingProblemItems={isCheckingProblemItems}
+            checkProblemItems={checkProblemItems}
+            createAnnotationProfile={createAnnotationProfile}
+            renameAnnotationProfile={renameAnnotationProfile}
+            duplicateAnnotationProfile={duplicateAnnotationProfile}
+            deleteAnnotationProfile={deleteAnnotationProfile}
+            addAppLog={addAppLog}
+          />
+        ) : shouldShowFilterEmptyState ? (
+          <div className="flex flex-1 flex-col items-center justify-center rounded-lg border border-neutral-200 bg-neutral-50 p-12 text-center">
+            <ImageIcon size={44} className="mb-4 text-neutral-300" />
+            <h2 className="m-0 text-xl font-semibold text-neutral-900">
+              {t("workspace.noFilterMatches")}
+            </h2>
+            <p className="mt-2 max-w-md text-sm text-neutral-500">
+              {t("workspace.filterHiddenHint")}
+            </p>
+          </div>
+        ) : activeTab === "grid" ? (
+          <DatasetGrid
+            images={visibleImages}
+            search={search}
+            scrollResetKey={selectedProjectId}
+            onImageContextMenu={openImageContextMenu}
+          />
+        ) : (
+          <DatasetTable
+            images={visibleImages}
+            profiles={tableProfiles}
+            search={search}
+            scrollResetKey={selectedProjectId}
+            onImageContextMenu={openImageContextMenu}
+          />
+        )}
+      </div>
 
       {imageContextMenu
         ? createPortal(

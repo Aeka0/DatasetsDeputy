@@ -28,6 +28,10 @@
   --app-chrome-border: rgba(255, 255, 255, 0.6);
   --app-scrollbar-thumb: rgba(28, 28, 28, 0.18);
   --app-scrollbar-thumb-hover: rgba(28, 28, 28, 0.3);
+  --app-sidebar-width: 248px;
+  --app-motion-duration-fast: 150ms;
+  --app-motion-duration: 220ms;
+  --app-motion-ease: cubic-bezier(0.2, 0.8, 0.2, 1);
   font-family:
     "Segoe UI", Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
     sans-serif;
@@ -223,6 +227,27 @@ textarea {
   border-color: #ef4444;
 }
 
+.dataset-preview-frame {
+  position: relative;
+  isolation: isolate;
+}
+
+.dataset-preview-image {
+  position: relative;
+  z-index: 1;
+  opacity: 0;
+  transform: scale(1.01);
+  transition:
+    opacity 320ms ease,
+    transform 360ms var(--app-motion-ease);
+  will-change: opacity, transform;
+}
+
+.dataset-preview-image-loaded {
+  opacity: 1;
+  transform: scale(1);
+}
+
 .fluent-shell {
   border: 1px solid rgba(28, 28, 28, 0.16);
   background: transparent;
@@ -242,6 +267,54 @@ html[data-window-maximized="true"] .fluent-shell {
   background: var(--app-surface-bg);
 }
 
+.app-view-transition {
+  animation: app-view-enter var(--app-motion-duration) var(--app-motion-ease);
+}
+
+.workspace-view-transition {
+  animation: workspace-view-enter var(--app-motion-duration) var(--app-motion-ease);
+}
+
+.workspace-heading-transition {
+  animation: workspace-heading-enter var(--app-motion-duration-fast) ease;
+}
+
+@keyframes app-view-enter {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes workspace-view-enter {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes workspace-heading-enter {
+  from {
+    opacity: 0;
+    transform: translateX(4px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
 html[data-window-render-mode="acrylic"] .fluent-chrome,
 html[data-window-render-mode="acrylic"] .fluent-titlebar {
   backdrop-filter: none;
@@ -251,6 +324,36 @@ html[data-window-render-mode="acrylic"] .fluent-titlebar {
 
 .fluent-sidebar {
   background: transparent;
+}
+
+.project-tree-shell {
+  width: var(--app-sidebar-width);
+  overflow: hidden;
+  opacity: 1;
+  transition:
+    width var(--app-motion-duration) var(--app-motion-ease),
+    opacity var(--app-motion-duration-fast) ease;
+  will-change: width, opacity;
+}
+
+.project-tree-shell-collapsed {
+  width: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.project-tree-children {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  transition:
+    grid-template-rows var(--app-motion-duration) var(--app-motion-ease),
+    opacity var(--app-motion-duration-fast) ease;
+}
+
+.project-tree-children-open {
+  grid-template-rows: 1fr;
+  opacity: 1;
 }
 
 .sidebar-nav-button {
@@ -372,6 +475,20 @@ mark.search-highlight {
 .sidebar-collapse-toggle:active {
   color: rgba(28, 28, 28, 0.68);
   background: radial-gradient(ellipse at center, rgba(28, 28, 28, 0.1) 0%, transparent 70%);
+}
+
+html[data-ui-animation="off"] *,
+html[data-ui-animation="off"] *::before,
+html[data-ui-animation="off"] *::after {
+  scroll-behavior: auto !important;
+  transition-duration: 0.01ms !important;
+  transition-delay: 0ms !important;
+}
+
+html[data-ui-animation="off"] .app-view-transition,
+html[data-ui-animation="off"] .workspace-view-transition,
+html[data-ui-animation="off"] .workspace-heading-transition {
+  animation: none !important;
 }
 
 /* ── Dark theme ───────────────────────────────────────────── */

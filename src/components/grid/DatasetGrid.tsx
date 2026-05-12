@@ -48,6 +48,7 @@ export function DatasetGrid({
   );
   const parentRef = useRef<HTMLDivElement>(null);
   const [containerWidth, setContainerWidth] = useState(0);
+  const [loadedPreviewKeys, setLoadedPreviewKeys] = useState<Set<string>>(new Set());
   const profiles = useDatasetStore((state) => state.profiles);
   const datasetAnnotationTypeCount = useMemo(() => {
     const datasetIds = new Set(images.map((image) => image.datasetId).filter(Boolean));
@@ -86,6 +87,21 @@ export function DatasetGrid({
   const rowHeight = cardWidth + cardTextHeight + gridGap;
   const issueIconSize = Math.max(28, Math.min(56, Math.round(cardWidth * 0.24)));
   const rowCount = Math.ceil(images.length / columnCount);
+  const getPreviewLoadKey = (image: DatasetImage) =>
+    `${image.id}:${image.thumbnailPath ?? ""}`;
+  const markPreviewLoaded = (image: DatasetImage) => {
+    const key = getPreviewLoadKey(image);
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => {
+        setLoadedPreviewKeys((current) => {
+          if (current.has(key)) return current;
+          const next = new Set(current);
+          next.add(key);
+          return next;
+        });
+      });
+    });
+  };
   const virtualizer = useVirtualizer({
     count: rowCount,
     getScrollElement: () => parentRef.current,
@@ -151,16 +167,21 @@ export function DatasetGrid({
                   onClick={() => openImagePreview(image.id)}
                   onContextMenu={(event) => onImageContextMenu?.(image, event)}
                 >
-                  <div className="flex aspect-square items-center justify-center overflow-hidden rounded-md bg-neutral-100">
+                  <div className="dataset-preview-frame flex aspect-square items-center justify-center overflow-hidden rounded-md bg-neutral-100">
                     {image.sourceMissing ? (
                       <CircleAlert size={issueIconSize} className="text-red-600" />
                     ) : image.thumbnailPath ? (
                       <img
                         src={resolveAssetSrc(image.thumbnailPath)}
                         alt=""
-                        className="h-full w-full object-cover"
+                        className={cn(
+                          "dataset-preview-image h-full w-full object-cover",
+                          loadedPreviewKeys.has(getPreviewLoadKey(image)) &&
+                            "dataset-preview-image-loaded"
+                        )}
                         loading="lazy"
                         decoding="async"
+                        onLoad={() => markPreviewLoaded(image)}
                       />
                     ) : (
                       <ImageIcon size={30} className="text-neutral-300" />
