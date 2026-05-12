@@ -1,6 +1,5 @@
 import { X } from "lucide-react";
 import { useEffect, useState } from "react";
-import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 
 import {
@@ -11,6 +10,7 @@ import {
 } from "../../lib/annotationPrompt";
 import { formatAppError } from "../../lib/errors";
 import { hasTauriRuntime, invokeCommand } from "../../lib/tauri";
+import { AnimatedPortal, useAnimatedPortalClose } from "../ui/AnimatedPortal";
 import { Button } from "../ui/Button";
 
 interface GeminiSettings extends AnnotationPromptSettings {
@@ -60,6 +60,7 @@ interface PromptManagementDialogProps {
 
 export function PromptManagementDialog({ onClose }: PromptManagementDialogProps) {
   const { t } = useTranslation();
+  const { open, close } = useAnimatedPortalClose(onClose);
   const [settings, setSettings] = useState<GeminiSettings>(fallbackSettings);
   const [hasLoaded, setHasLoaded] = useState(false);
   const [message, setMessage] = useState("");
@@ -98,7 +99,8 @@ export function PromptManagementDialog({ onClose }: PromptManagementDialogProps)
     setSettings((current) => ({ ...current, ...patch }));
   };
 
-  return createPortal(
+  return (
+    <AnimatedPortal open={open}>
     <div
       className="no-drag fixed inset-0 z-50 flex items-center justify-center bg-neutral-950/18 px-5"
     >
@@ -123,7 +125,7 @@ export function PromptManagementDialog({ onClose }: PromptManagementDialogProps)
             className="shrink-0"
             aria-label={t("menu.close")}
             title={t("menu.close")}
-            onClick={onClose}
+            onClick={close}
           >
             <X className="h-4 w-4 shrink-0" strokeWidth={2} aria-hidden="true" />
           </Button>
@@ -221,7 +223,7 @@ export function PromptManagementDialog({ onClose }: PromptManagementDialogProps)
           </div>
         </div>
       </section>
-    </div>,
-    document.body
+    </div>
+    </AnimatedPortal>
   );
 }

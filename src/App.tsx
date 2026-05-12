@@ -16,6 +16,7 @@ import { ExportDialog } from "./components/export/ExportDialog";
 import { ProjectTree } from "./components/sidebar/ProjectTree";
 import { TitleMenuBar } from "./components/window/TitleMenuBar";
 import { WindowControls } from "./components/window/WindowControls";
+import { AnimatedPortal } from "./components/ui/AnimatedPortal";
 import { useDatasetStore } from "./stores/datasetStore";
 import { cn } from "./lib/cn";
 import { hasTauriRuntime, invokeCommand } from "./lib/tauri";
@@ -329,7 +330,7 @@ export default function App() {
         </section>
       </div>
       <ExportDialog />
-      {showUnsavedExitDialog ? (
+      <AnimatedPortal open={showUnsavedExitDialog}>
         <div className="no-drag fixed inset-0 z-[90] flex items-center justify-center bg-neutral-950/24 px-5">
           <section
             className="flex max-h-[78vh] w-full max-w-[560px] flex-col overflow-hidden rounded-lg border border-neutral-200 bg-white shadow-[0_24px_72px_rgba(23,23,23,0.24)]"
@@ -410,7 +411,7 @@ export default function App() {
             </footer>
           </section>
         </div>
-      ) : null}
+      </AnimatedPortal>
     </main>
   );
 }

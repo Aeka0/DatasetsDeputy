@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 
+import { AnimatedPortal, useAnimatedPortalClose } from "../ui/AnimatedPortal";
 import { Button } from "../ui/Button";
 
 export type AnnotationExecutionScope = "selected" | "all" | "empty";
@@ -36,6 +37,7 @@ export function AnnotationExecutionDialog({
   onConfirm
 }: AnnotationExecutionDialogProps) {
   const { t } = useTranslation();
+  const { open, close } = useAnimatedPortalClose(onClose);
   const [scope, setScope] = useState<AnnotationExecutionScope>(
     hasSelectedImage ? "selected" : "empty"
   );
@@ -82,7 +84,8 @@ export function AnnotationExecutionDialog({
     };
   }, [modeMenuOpen]);
 
-  return createPortal(
+  return (
+    <AnimatedPortal open={open}>
     <div
       className="no-drag fixed inset-0 z-50 flex items-center justify-center bg-neutral-950/18 px-5"
     >
@@ -110,7 +113,7 @@ export function AnnotationExecutionDialog({
             className="shrink-0"
             aria-label={t("menu.close")}
             title={t("menu.close")}
-            onClick={onClose}
+            onClick={close}
           >
             <X className="h-4 w-4 shrink-0" strokeWidth={2} aria-hidden="true" />
           </Button>
@@ -261,7 +264,7 @@ export function AnnotationExecutionDialog({
           document.body
         )
         : null}
-    </div>,
-    document.body
+    </div>
+    </AnimatedPortal>
   );
 }

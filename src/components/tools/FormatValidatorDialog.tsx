@@ -11,10 +11,10 @@ import {
   X
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 
 import { invokeCommand } from "../../lib/tauri";
+import { AnimatedPortal, useAnimatedPortalClose } from "../ui/AnimatedPortal";
 
 interface FormatMismatch {
   filePath: string;
@@ -38,6 +38,7 @@ interface FormatValidatorDialogProps {
 
 export function FormatValidatorDialog({ onClose }: FormatValidatorDialogProps) {
   const { t } = useTranslation();
+  const { open: portalOpen, close } = useAnimatedPortalClose(onClose);
   const [folderPath, setFolderPath] = useState("");
   const [mismatches, setMismatches] = useState<FormatMismatch[]>([]);
   const [isScanning, setIsScanning] = useState(false);
@@ -139,7 +140,8 @@ export function FormatValidatorDialog({ onClose }: FormatValidatorDialogProps) {
     }
   };
 
-  return createPortal(
+  return (
+    <AnimatedPortal open={portalOpen}>
     <div className="no-drag fixed inset-0 z-50 flex items-center justify-center bg-neutral-950/18 px-5">
       <section
         className="flex h-[580px] w-full max-w-[720px] flex-col overflow-hidden rounded-lg border border-neutral-200 bg-white shadow-[0_24px_72px_rgba(23,23,23,0.22)]"
@@ -156,7 +158,7 @@ export function FormatValidatorDialog({ onClose }: FormatValidatorDialogProps) {
           <button
             type="button"
             className="flex h-7 w-7 items-center justify-center rounded-md text-neutral-500 transition hover:bg-neutral-100 hover:text-neutral-700"
-            onClick={onClose}
+            onClick={close}
           >
             <X size={16} />
           </button>
@@ -292,7 +294,7 @@ export function FormatValidatorDialog({ onClose }: FormatValidatorDialogProps) {
           </div>
         </div>
       </section>
-    </div>,
-    document.body
+    </div>
+    </AnimatedPortal>
   );
 }

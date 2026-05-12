@@ -9,12 +9,12 @@ import {
   X
 } from "lucide-react";
 import { useState } from "react";
-import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 
 import { formatAppError } from "../../lib/errors";
 import { formatBytes } from "../../lib/format";
 import { invokeCommand } from "../../lib/tauri";
+import { AnimatedPortal, useAnimatedPortalClose } from "../ui/AnimatedPortal";
 
 interface TrainingCacheItem {
   path: string;
@@ -45,6 +45,7 @@ function formatByteValue(bytes: number) {
 
 export function TrainingCacheCleanerDialog({ onClose }: TrainingCacheCleanerDialogProps) {
   const { t } = useTranslation();
+  const { open: portalOpen, close } = useAnimatedPortalClose(onClose);
   const [folderPath, setFolderPath] = useState("");
   const [items, setItems] = useState<TrainingCacheItem[]>([]);
   const [scannedEntries, setScannedEntries] = useState(0);
@@ -117,7 +118,8 @@ export function TrainingCacheCleanerDialog({ onClose }: TrainingCacheCleanerDial
     }
   };
 
-  return createPortal(
+  return (
+    <AnimatedPortal open={portalOpen}>
     <div className="no-drag fixed inset-0 z-50 flex items-center justify-center bg-neutral-950/18 px-5">
       <section
         className="flex h-[580px] w-full max-w-[760px] flex-col overflow-hidden rounded-lg border border-neutral-200 bg-white shadow-[0_24px_72px_rgba(23,23,23,0.22)]"
@@ -134,7 +136,7 @@ export function TrainingCacheCleanerDialog({ onClose }: TrainingCacheCleanerDial
           <button
             type="button"
             className="flex h-7 w-7 items-center justify-center rounded-md text-neutral-500 transition hover:bg-neutral-100 hover:text-neutral-700"
-            onClick={onClose}
+            onClick={close}
           >
             <X size={16} />
           </button>
@@ -283,7 +285,7 @@ export function TrainingCacheCleanerDialog({ onClose }: TrainingCacheCleanerDial
           </div>
         </div>
       </section>
-    </div>,
-    document.body
+    </div>
+    </AnimatedPortal>
   );
 }

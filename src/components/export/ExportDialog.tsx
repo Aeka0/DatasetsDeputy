@@ -1,7 +1,6 @@
 import { open } from "@tauri-apps/plugin-dialog";
 import { Check, ChevronDown, FolderOpen, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import { useShallow } from "zustand/react/shallow";
 
@@ -10,6 +9,7 @@ import { formatBytes } from "../../lib/format";
 import { findProject, findProjectTrail, getProjectDisplayName } from "../../lib/projects";
 import { useDatasetStore } from "../../stores/datasetStore";
 import type { DatasetProject, ExportDatasetRequest } from "../../types";
+import { AnimatedPortal } from "../ui/AnimatedPortal";
 
 function firstExportableProject(projects: DatasetProject[]): DatasetProject | undefined {
   for (const project of projects) {
@@ -142,8 +142,6 @@ export function ExportDialog() {
     };
   }, [isExporting, prepareExportDataset, request]);
 
-  if (!showExportDialog) return null;
-
   const chooseOutputDir = async () => {
     try {
       const selected = await open({
@@ -170,7 +168,8 @@ export function ExportDialog() {
     }
   };
 
-  return createPortal(
+  return (
+    <AnimatedPortal open={showExportDialog}>
     <div className="no-drag fixed inset-0 z-50 flex items-center justify-center bg-neutral-950/18 px-5">
       <section
         className="flex w-full max-w-[520px] flex-col overflow-hidden rounded-lg border border-neutral-200 bg-white shadow-[0_24px_72px_rgba(23,23,23,0.22)]"
@@ -343,7 +342,7 @@ export function ExportDialog() {
           </div>
         </div>
       </section>
-    </div>,
-    document.body
+    </div>
+    </AnimatedPortal>
   );
 }

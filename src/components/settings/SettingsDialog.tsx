@@ -10,7 +10,6 @@ import {
   X
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import { useShallow } from "zustand/react/shallow";
 
@@ -35,6 +34,7 @@ import {
   type UiAnimationPreference
 } from "../../lib/theme";
 import { useDatasetStore } from "../../stores/datasetStore";
+import { AnimatedPortal, useAnimatedPortalClose } from "../ui/AnimatedPortal";
 import { Button } from "../ui/Button";
 
 type SettingsSectionKey =
@@ -342,6 +342,7 @@ function SettingsSelect({ value, options, onChange, className = "" }: SettingsSe
 
 export function SettingsDialog({ onClose }: SettingsDialogProps) {
   const { i18n, t } = useTranslation();
+  const { open, close } = useAnimatedPortalClose(onClose);
   const [activeSection, setActiveSection] = useState<SettingsSectionKey>("general");
   const [activeNetworkSection, setActiveNetworkSection] =
     useState<NetworkSectionKey>("gemini");
@@ -830,7 +831,8 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
     ? pythonEnvProbe.onnxRuntimeProviders.join(", ")
     : "-";
 
-  return createPortal(
+  return (
+    <AnimatedPortal open={open}>
     <div
       className="no-drag fixed inset-0 z-50 flex items-center justify-center bg-neutral-950/18 px-5"
     >
@@ -885,7 +887,7 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
               className="shrink-0"
               aria-label={t("settings.close")}
               title={t("menu.close")}
-              onClick={onClose}
+              onClick={close}
             >
               <X className="h-4 w-4 shrink-0" strokeWidth={2} aria-hidden="true" />
             </Button>
@@ -1650,7 +1652,7 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
           </div>
         </div>
       </section>
-    </div>,
-    document.body
+    </div>
+    </AnimatedPortal>
   );
 }

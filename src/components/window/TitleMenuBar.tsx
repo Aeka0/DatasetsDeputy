@@ -26,6 +26,7 @@ import { Wd14TaggerSettingsDialog } from "../annotation/Wd14TaggerSettingsDialog
 import { SettingsDialog } from "../settings/SettingsDialog";
 import { FormatValidatorDialog } from "../tools/FormatValidatorDialog";
 import { TrainingCacheCleanerDialog } from "../tools/TrainingCacheCleanerDialog";
+import { AnimatedPortal } from "../ui/AnimatedPortal";
 
 type MenuKey = "file" | "edit" | "annotation" | "view" | "tools" | "settings" | "about";
 type DialogKey =
@@ -917,8 +918,8 @@ export function TitleMenuBar({
         <TrainingCacheCleanerDialog onClose={() => setDialog(undefined)} />
       ) : null}
 
-      {dialog === "about"
-        ? createPortal(
+      <AnimatedPortal open={dialog === "about"}>
+        {dialog === "about" ? (
         <div className="no-drag fixed inset-0 z-50 flex items-center justify-center bg-neutral-950/16">
           <div className="w-[360px] rounded-md border border-neutral-200 bg-white p-5">
             <h2 className="m-0 text-base font-semibold text-neutral-900">
@@ -941,10 +942,9 @@ export function TitleMenuBar({
               </button>
             </div>
           </div>
-        </div>,
-          document.body
-        )
-        : null}
+        </div>
+        ) : null}
+      </AnimatedPortal>
     </>
   );
 }

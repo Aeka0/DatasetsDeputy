@@ -20,6 +20,7 @@ import { cn } from "../../lib/cn";
 import { formatAppError } from "../../lib/errors";
 import { useDatasetStore } from "../../stores/datasetStore";
 import type { DatasetProject } from "../../types";
+import { AnimatedPortal } from "../ui/AnimatedPortal";
 
 const sidebarLabelClass = "text-[12px] leading-4";
 
@@ -670,8 +671,9 @@ export function ProjectTree() {
             document.body
           )
         : null}
-      {pendingRename ? (
-        <div
+      <AnimatedPortal open={Boolean(pendingRename)}>
+        {pendingRename ? (
+          <div
           className="no-drag fixed inset-0 z-[60] flex items-center justify-center bg-neutral-950/24 px-4"
           onClick={() => setPendingRename(undefined)}
         >
@@ -719,9 +721,11 @@ export function ProjectTree() {
             </div>
           </form>
         </div>
-      ) : null}
-      {pendingNewChild ? (
-        <div
+        ) : null}
+      </AnimatedPortal>
+      <AnimatedPortal open={Boolean(pendingNewChild)}>
+        {pendingNewChild ? (
+          <div
           className="no-drag fixed inset-0 z-[60] flex items-center justify-center bg-neutral-950/24 px-4"
           onClick={() => setPendingNewChild(undefined)}
         >
@@ -769,9 +773,11 @@ export function ProjectTree() {
             </div>
           </form>
         </div>
-      ) : null}
-      {pendingConsolidation ? (
-        <div
+        ) : null}
+      </AnimatedPortal>
+      <AnimatedPortal open={Boolean(pendingConsolidation)}>
+        {pendingConsolidation ? (
+          <div
           className="no-drag fixed inset-0 z-[60] flex items-center justify-center bg-neutral-950/24 px-4"
           onClick={() => setPendingConsolidation(undefined)}
         >
@@ -824,9 +830,11 @@ export function ProjectTree() {
             </div>
           </form>
         </div>
-      ) : null}
-      {pendingLooseDeletion ? (
-        <div
+        ) : null}
+      </AnimatedPortal>
+      <AnimatedPortal open={Boolean(pendingLooseDeletion)}>
+        {pendingLooseDeletion ? (
+          <div
           className="no-drag fixed inset-0 z-[60] flex items-center justify-center bg-neutral-950/24 px-4"
           onClick={() => setPendingLooseDeletion(undefined)}
         >
@@ -867,9 +875,11 @@ export function ProjectTree() {
             </div>
           </div>
         </div>
-      ) : null}
-      {pendingRemoval ? (
-        <div
+        ) : null}
+      </AnimatedPortal>
+      <AnimatedPortal open={Boolean(pendingRemoval)}>
+        {pendingRemoval ? (
+          <div
           className="no-drag fixed inset-0 z-[60] flex items-center justify-center bg-neutral-950/24 px-4"
           onClick={() => setPendingRemoval(undefined)}
         >
@@ -932,7 +942,8 @@ export function ProjectTree() {
             </div>
           </div>
         </div>
-      ) : null}
+        ) : null}
+      </AnimatedPortal>
     </aside>
   );
 }

@@ -416,6 +416,23 @@ html[data-window-render-mode="acrylic"] .fluent-titlebar {
   color: rgba(115, 115, 115, 0.72);
 }
 
+.dialog-transition-root {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  opacity: 0;
+  transition: opacity var(--app-motion-duration-fast) ease;
+}
+
+.dialog-transition-root[data-state="open"] {
+  opacity: 1;
+}
+
+.dialog-transition-root[data-state="closed"] {
+  opacity: 0;
+  pointer-events: none;
+}
+
 .table-column-resizer::after {
   position: absolute;
   right: 3px;

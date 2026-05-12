@@ -39,6 +39,7 @@ import type {
 } from "../../types";
 import { DatasetGrid } from "../grid/DatasetGrid";
 import { DatasetTable } from "../table/DatasetTable";
+import { AnimatedPortal, useAnimatedPortalClose } from "../ui/AnimatedPortal";
 
 type WorkspaceTab = "overview" | "grid" | "table";
 type ImageContextMenuState = {
@@ -317,6 +318,7 @@ function FolderImageImportDialog({
   onConfirm: () => void;
 }) {
   const { t } = useTranslation();
+  const { open, close } = useAnimatedPortalClose(onClose);
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const needsProfile = preview.annotationCount > 0 || preview.instructionCount > 0;
   const canImport = preview.imageCount > 0 && (!needsProfile || selectedProfileId !== undefined);
@@ -340,7 +342,8 @@ function FolderImageImportDialog({
       ? t("folderImport.assetNote")
       : "";
 
-  return createPortal(
+  return (
+    <AnimatedPortal open={open}>
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-neutral-950/25 px-4">
       <div
         className="no-drag w-full max-w-lg rounded-lg border border-neutral-200 bg-white shadow-xl"
@@ -355,7 +358,7 @@ function FolderImageImportDialog({
           <button
             type="button"
             className="inline-flex h-8 w-8 items-center justify-center rounded-md text-neutral-500 transition hover:bg-neutral-100 hover:text-neutral-900"
-            onClick={onClose}
+            onClick={close}
             disabled={isImporting}
           >
             <X size={16} />
@@ -449,7 +452,7 @@ function FolderImageImportDialog({
           <button
             type="button"
             className="inline-flex h-9 items-center rounded-md border border-neutral-200 bg-white px-3 text-[13px] text-neutral-600 transition hover:bg-neutral-50 disabled:opacity-50"
-            onClick={onClose}
+            onClick={close}
             disabled={isImporting}
           >
             {t("folderImport.cancel")}
@@ -465,8 +468,8 @@ function FolderImageImportDialog({
           </button>
         </div>
       </div>
-    </div>,
-    document.body
+    </div>
+    </AnimatedPortal>
   );
 }
 
@@ -488,8 +491,10 @@ function ImageRenameDialog({
   onConfirm: () => void;
 }) {
   const { t } = useTranslation();
+  const { open, close } = useAnimatedPortalClose(onClose);
 
-  return createPortal(
+  return (
+    <AnimatedPortal open={open}>
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-neutral-950/25 px-4">
       <div className="no-drag w-full max-w-sm rounded-lg border border-neutral-200 bg-white shadow-xl">
         <div className="flex h-12 items-center justify-between border-b border-neutral-100 px-4">
@@ -500,7 +505,7 @@ function ImageRenameDialog({
           <button
             type="button"
             className="inline-flex h-8 w-8 items-center justify-center rounded-md text-neutral-500 transition hover:bg-neutral-100 hover:text-neutral-900"
-            onClick={onClose}
+            onClick={close}
             disabled={isSaving}
           >
             <X size={16} />
@@ -531,7 +536,7 @@ function ImageRenameDialog({
           <button
             type="button"
             className="inline-flex h-9 items-center rounded-md border border-neutral-200 bg-white px-3 text-[13px] text-neutral-600 transition hover:bg-neutral-50 disabled:opacity-50"
-            onClick={onClose}
+            onClick={close}
             disabled={isSaving}
           >
             {t("actions.cancel")}
@@ -546,8 +551,8 @@ function ImageRenameDialog({
           </button>
         </div>
       </div>
-    </div>,
-    document.body
+    </div>
+    </AnimatedPortal>
   );
 }
 
@@ -565,6 +570,7 @@ function ImageDeleteDialog({
   onConfirm: () => void;
 }) {
   const { t } = useTranslation();
+  const { open, close } = useAnimatedPortalClose(onClose);
   const editedAnnotationTypeCount = new Set(
     image.annotations
       .filter((annotation) => annotation.content.trim() || annotation.instruction.trim())
@@ -583,7 +589,8 @@ function ImageDeleteDialog({
     ? t("itemMenu.keptAssetImage")
     : t("itemMenu.keptDatabaseImage");
 
-  return createPortal(
+  return (
+    <AnimatedPortal open={open}>
     <div className="no-drag fixed inset-0 z-[60] flex items-center justify-center bg-neutral-950/24 px-4">
       <div className="w-full max-w-[420px] rounded-lg border border-neutral-200 bg-white p-5 shadow-xl">
         <h2 className="m-0 text-[15px] font-semibold leading-6 text-neutral-950">
@@ -610,7 +617,7 @@ function ImageDeleteDialog({
           <button
             type="button"
             className="h-8 rounded-md border border-neutral-200 bg-white px-3 text-[13px] text-neutral-700 transition hover:bg-neutral-50 disabled:opacity-50"
-            onClick={onClose}
+            onClick={close}
             disabled={isDeleting}
           >
             {t("actions.cancel")}
@@ -625,8 +632,8 @@ function ImageDeleteDialog({
           </button>
         </div>
       </div>
-    </div>,
-    document.body
+    </div>
+    </AnimatedPortal>
   );
 }
 
@@ -1133,8 +1140,8 @@ function DatasetOverview({
         </div>
       </div>
 
-      {deletingProfile
-        ? createPortal(
+      <AnimatedPortal open={Boolean(deletingProfile)}>
+        {deletingProfile ? (
             <div className="no-drag fixed inset-0 z-[60] flex items-center justify-center bg-neutral-950/24 px-4">
               <div className="w-full max-w-[400px] rounded-lg border border-neutral-200 bg-white p-5 shadow-xl">
                 <h2 className="m-0 text-[15px] font-semibold leading-6 text-neutral-950">
@@ -1170,10 +1177,9 @@ function DatasetOverview({
                   </button>
                 </div>
               </div>
-            </div>,
-            document.body
-          )
-        : null}
+            </div>
+          ) : null}
+      </AnimatedPortal>
     </div>
   );
 }
