@@ -52,6 +52,8 @@ if (-not $WebOnly) {
 
 $NodeCmd = Resolve-CommandPath @("node.exe", "node")
 $NpmCmd = Resolve-CommandPath @("npm.cmd", "npm.exe", "npm")
+$TauriCli = Join-Path $ProjectRoot "node_modules\@tauri-apps\cli\tauri.js"
+$ViteCli = Join-Path $ProjectRoot "node_modules\vite\bin\vite.js"
 
 Write-Host "Node: $(& $NodeCmd -v)"
 Write-Host "npm:  $(& $NpmCmd -v)"
@@ -68,11 +70,19 @@ if ($Install -or -not (Test-Path (Join-Path $ProjectRoot "node_modules"))) {
     & $NpmCmd install
 }
 
+if (-not (Test-Path $ViteCli)) {
+    throw "Vite CLI not found. Run .\dev.ps1 -Install first."
+}
+
 if ($WebOnly) {
     Write-Step "Starting Vite dev server"
-    & $NpmCmd run dev
+    & $NodeCmd $ViteCli
 }
 else {
+    if (-not (Test-Path $TauriCli)) {
+        throw "Tauri CLI not found. Run .\dev.ps1 -Install first."
+    }
+
     Write-Step "Starting Tauri dev app"
-    & $NpmCmd run tauri:dev
+    & $NodeCmd $TauriCli dev
 }
