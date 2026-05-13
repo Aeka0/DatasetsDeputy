@@ -20,10 +20,16 @@ export function hasTauriRuntime() {
   return isTauriRuntime;
 }
 
-export function resolveAssetSrc(path?: string) {
+export function resolveAssetSrc(path?: string, cacheKey?: string | number) {
   if (!path) {
     return undefined;
   }
 
-  return isTauriRuntime ? convertFileSrc(path) : path;
+  const src = isTauriRuntime ? convertFileSrc(path) : path;
+  if (cacheKey === undefined || cacheKey === "") {
+    return src;
+  }
+
+  const separator = src.includes("?") ? "&" : "?";
+  return `${src}${separator}v=${encodeURIComponent(String(cacheKey))}`;
 }

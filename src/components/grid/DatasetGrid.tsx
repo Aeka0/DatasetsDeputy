@@ -34,7 +34,9 @@ export function DatasetGrid({
     tableSavedCellKeys,
     tableFailedCellKeys,
     highlightCellState,
-    openImagePreview
+    thumbnailCacheKey,
+    openImagePreview,
+    ensureThumbnails
   } = useDatasetStore(
     useShallow((state) => ({
       activeProfileId: state.activeProfileId,
@@ -43,12 +45,15 @@ export function DatasetGrid({
       tableSavedCellKeys: state.tableSavedCellKeys,
       tableFailedCellKeys: state.tableFailedCellKeys,
       highlightCellState: state.highlightCellState,
-      openImagePreview: state.openImagePreview
+      thumbnailCacheKey: state.thumbnailCacheKey,
+      openImagePreview: state.openImagePreview,
+      ensureThumbnails: state.ensureThumbnails
     }))
   );
   const parentRef = useRef<HTMLDivElement>(null);
   const [containerWidth, setContainerWidth] = useState(0);
   const [loadedPreviewKeys, setLoadedPreviewKeys] = useState<Set<string>>(new Set());
+  const [failedPreviewKeys, setFailedPreviewKeys] = useState<Set<string>>(new Set());
   const profiles = useDatasetStore((state) => state.profiles);
   const datasetAnnotationTypeCount = useMemo(() => {
     const datasetIds = new Set(images.map((image) => image.datasetId).filter(Boolean));
@@ -88,7 +93,7 @@ export function DatasetGrid({
   const issueIconSize = Math.max(28, Math.min(56, Math.round(cardWidth * 0.24)));
   const rowCount = Math.ceil(images.length / columnCount);
   const getPreviewLoadKey = (image: DatasetImage) =>
-    `${image.id}:${image.thumbnailPath ?? ""}`;
+    `${image.id}:${image.thumbnailPath ?? ""}:${thumbnailCacheKey}`;
   const markPreviewLoaded = (image: DatasetImage) => {
     const key = getPreviewLoadKey(image);
     window.requestAnimationFrame(() => {
@@ -99,7 +104,22 @@ export function DatasetGrid({
           next.add(key);
           return next;
         });
+        setFailedPreviewKeys((current) => {
+          if (!current.has(key)) return current;
+          const next = new Set(current);
+          next.delete(key);
+          return next;
+        });
       });
+    });
+  };
+  const markPreviewFailed = (image: DatasetImage) => {
+    const key = getPreviewLoadKey(image);
+    setFailedPreviewKeys((current) => {
+      if (current.has(key)) return current;
+      const next = new Set(current);
+      next.add(key);
+      return next;
     });
   };
   const virtualizer = useVirtualizer({
@@ -108,6 +128,19 @@ export function DatasetGrid({
     estimateSize: () => rowHeight,
     overscan: 4
   });
+  const virtualRows = virtualizer.getVirtualItems();
+  const visibleImages = virtualRows.flatMap((virtualRow) => {
+    const rowStart = virtualRow.index * columnCount;
+    return images.slice(rowStart, rowStart + columnCount);
+  });
+  const missingVisibleIds = visibleImages
+    .filter(
+      (image) =>
+        !image.sourceMissing &&
+        (!image.thumbnailPath || failedPreviewKeys.has(getPreviewLoadKey(image)))
+    )
+    .map((image) => image.id);
+  const missingVisibleIdsKey = missingVisibleIds.join(",");
 
   useEffect(() => {
     const element = parentRef.current;
@@ -133,6 +166,15 @@ export function DatasetGrid({
     virtualizer.scrollToOffset(0);
   }, [scrollResetKey]);
 
+  useEffect(() => {
+    if (missingVisibleIds.length === 0) return;
+
+    const timer = window.setTimeout(() => {
+      void ensureThumbnails(missingVisibleIds);
+    }, 180);
+    return () => window.clearTimeout(timer);
+  }, [missingVisibleIdsKey, ensureThumbnails]);
+
   return (
     <div
       ref={parentRef}
@@ -142,7 +184,7 @@ export function DatasetGrid({
         className="relative w-full"
         style={{ height: `${virtualizer.getTotalSize()}px` }}
       >
-        {virtualizer.getVirtualItems().map((virtualRow) => {
+        {virtualRows.map((virtualRow) => {
           const rowStart = virtualRow.index * columnCount;
           const rowImages = images.slice(rowStart, rowStart + columnCount);
 
@@ -167,12 +209,15 @@ export function DatasetGrid({
                   onClick={() => openImagePreview(image.id)}
                   onContextMenu={(event) => onImageContextMenu?.(image, event)}
                 >
-                  <div className="dataset-preview-frame flex aspect-square items-center justify-center overflow-hidden rounded-md bg-neutral-100">
+                  <div className="dataset-preview-frame flex aspect-square items-center justify-center overflow-hidden rounded-md">
                     {image.sourceMissing ? (
                       <CircleAlert size={issueIconSize} className="text-red-600" />
-                    ) : image.thumbnailPath ? (
+                    ) : image.thumbnailPath && !failedPreviewKeys.has(getPreviewLoadKey(image)) ? (
                       <img
-                        src={resolveAssetSrc(image.thumbnailPath)}
+                        src={resolveAssetSrc(
+                          image.thumbnailPath,
+                          `${image.updatedAt}:${thumbnailCacheKey}`
+                        )}
                         alt=""
                         className={cn(
                           "dataset-preview-image h-full w-full object-cover",
@@ -182,9 +227,15 @@ export function DatasetGrid({
                         loading="lazy"
                         decoding="async"
                         onLoad={() => markPreviewLoaded(image)}
+                        onError={() => markPreviewFailed(image)}
                       />
                     ) : (
-                      <ImageIcon size={30} className="text-neutral-300" />
+                      <div className="flex h-full w-full items-center justify-center">
+                        <ImageIcon
+                          size={30}
+                          className="dataset-preview-placeholder-icon text-neutral-300"
+                        />
+                      </div>
                     )}
                   </div>
                   <div className="px-1.5 pb-1.5 pt-2">

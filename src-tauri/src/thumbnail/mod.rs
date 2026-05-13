@@ -80,6 +80,10 @@ fn is_format_error(err: &image::ImageError) -> bool {
     )
 }
 
+pub fn is_valid_thumbnail(path: &Path) -> bool {
+    path.is_file() && image::image_dimensions(path).is_ok()
+}
+
 pub fn create_thumbnail(
     source: &Path,
     target_dir: &Path,
@@ -90,13 +94,17 @@ pub fn create_thumbnail(
     let target = target_dir.join(format!("{hash}.webp"));
 
     if target.is_file() {
-        let ((width, height), format_warning) = dimensions_with_fallback(source)?;
-        return Ok(ThumbnailResult {
-            path: target,
-            width,
-            height,
-            format_warning,
-        });
+        if !is_valid_thumbnail(&target) {
+            let _ = std::fs::remove_file(&target);
+        } else {
+            let ((width, height), format_warning) = dimensions_with_fallback(source)?;
+            return Ok(ThumbnailResult {
+                path: target,
+                width,
+                height,
+                format_warning,
+            });
+        }
     }
 
     let (image, format_warning) = open_with_fallback(source)?;

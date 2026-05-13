@@ -378,14 +378,16 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
     autoSaveAfterAnnotation,
     setHighlightCellState,
     setAutoSaveAfterAnnotation,
-    refreshImages
+    refreshImages,
+    bumpThumbnailCacheKey
   } = useDatasetStore(
     useShallow((state) => ({
       highlightCellState: state.highlightCellState,
       autoSaveAfterAnnotation: state.autoSaveAfterAnnotation,
       setHighlightCellState: state.setHighlightCellState,
       setAutoSaveAfterAnnotation: state.setAutoSaveAfterAnnotation,
-      refreshImages: state.refreshImages
+      refreshImages: state.refreshImages,
+      bumpThumbnailCacheKey: state.bumpThumbnailCacheKey
     }))
   );
   const [thumbnailCacheInfo, setThumbnailCacheInfo] =
@@ -781,6 +783,9 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
       const info = await invokeCommand<ThumbnailCacheInfo>("clear_thumbnail_cache");
       setThumbnailCacheInfo(info);
       await refreshImages();
+      bumpThumbnailCacheKey();
+      const refreshedInfo = await invokeCommand<ThumbnailCacheInfo>("get_thumbnail_cache_info");
+      setThumbnailCacheInfo(refreshedInfo);
       setLocalFilesMessage(t("settings.thumbnailCacheCleared"));
     } catch (error) {
       const message = formatAppError(error);

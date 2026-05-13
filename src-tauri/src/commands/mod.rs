@@ -705,7 +705,7 @@ fn repair_database_image_thumbnail(
         .thumbnail_path
         .as_deref()
         .map(Path::new)
-        .is_some_and(Path::is_file);
+        .is_some_and(thumbnail::is_valid_thumbnail);
     let source_hash = if verify_source_hash || !has_cached_thumbnail {
         Some(files::hash_file(&source_path)?)
     } else {
@@ -749,38 +749,77 @@ fn repair_database_image_thumbnail(
     Ok(true)
 }
 
+fn has_valid_thumbnail_path(image: &DatasetImage) -> bool {
+    image
+        .thumbnail_path
+        .as_deref()
+        .map(Path::new)
+        .is_some_and(thumbnail::is_valid_thumbnail)
+}
+
 fn list_images_for_dirs(dirs: &app_dirs::AppDirs) -> AppResult<Vec<DatasetImage>> {
     let mut images = Vec::new();
+    for db_ref in dataset_database_refs(dirs)? {
+        let db = open_database(&db_ref.path)?;
+        let source_kind = db.dataset_source_kind()?;
+        for mut image in db.list_images()? {
+            if image.thumbnail_path.is_some() && !has_valid_thumbnail_path(&image) {
+                image.thumbnail_path = None;
+            }
+            images.push(namespace_image(image, db_ref.prefix, &source_kind));
+        }
+    }
+    images.extend(folders::list_folder_images(dirs)?);
+    Ok(images)
+}
+
+fn ensure_thumbnails_for_dirs(dirs: &app_dirs::AppDirs, image_ids: &[i64]) -> AppResult<usize> {
     let thumbnail_dir = files::default_thumbnail_dir(&dirs.root);
     let thumbnail_settings = thumbnail_settings::load_settings(dirs)?;
-    for db_ref in dataset_database_refs(dirs)? {
-        let mut db = open_database(&db_ref.path)?;
+    let mut updated = 0;
+    let mut ids_by_prefix = std::collections::HashMap::<i64, HashSet<i64>>::new();
+    let mut folder_ids = HashSet::new();
+
+    for public_id in image_ids {
+        if *public_id < 0 {
+            folder_ids.insert(*public_id);
+            continue;
+        }
+        if let Ok((prefix, local_id)) = split_public_id(*public_id) {
+            ids_by_prefix.entry(prefix).or_default().insert(local_id);
+        }
+    }
+
+    for (prefix, local_ids) in ids_by_prefix {
+        let (mut db, _) = open_database_by_prefix(dirs, prefix)?;
         let source_kind = db.dataset_source_kind()?;
-        let mut database_images = db.list_images()?;
-        if source_kind == "database" || source_kind == "asset" {
-            for image in &mut database_images {
-                if let Err(error) = repair_database_image_thumbnail(
-                    &mut db,
-                    image,
-                    &source_kind,
-                    &thumbnail_dir,
-                    thumbnail_settings.thumbnail_size,
-                    false,
-                ) {
+        for mut image in db.list_images()? {
+            if !local_ids.contains(&image.id) {
+                continue;
+            }
+            match repair_database_image_thumbnail(
+                &mut db,
+                &mut image,
+                &source_kind,
+                &thumbnail_dir,
+                thumbnail_settings.thumbnail_size,
+                false,
+            ) {
+                Ok(true) => updated += 1,
+                Ok(false) => {}
+                Err(error) => {
                     tracing::warn!(
-                        "Failed to refresh thumbnail cache for {:?}: {}",
+                        "Visible thumbnail generation failed for {:?}: {}",
                         image.path,
                         error
                     );
                 }
             }
         }
-        for image in database_images {
-            images.push(namespace_image(image, db_ref.prefix, &source_kind));
-        }
     }
-    images.extend(folders::list_folder_images(dirs)?);
-    Ok(images)
+
+    updated += folders::ensure_folder_thumbnails(dirs, &folder_ids)?;
+    Ok(updated)
 }
 
 fn list_annotation_profiles_for_dirs(
@@ -895,6 +934,17 @@ pub async fn list_images(state: State<'_, AppState>) -> AppResult<Vec<DatasetIma
     tauri::async_runtime::spawn_blocking(move || list_images_for_dirs(&dirs))
         .await
         .map_err(|error| AppError::InvalidInput(format!("Image listing task failed: {error}")))?
+}
+
+#[tauri::command]
+pub async fn ensure_thumbnails(
+    state: State<'_, AppState>,
+    image_ids: Vec<i64>,
+) -> AppResult<usize> {
+    let dirs = state.dirs.clone();
+    tauri::async_runtime::spawn_blocking(move || ensure_thumbnails_for_dirs(&dirs, &image_ids))
+        .await
+        .map_err(|error| AppError::InvalidInput(format!("Thumbnail task failed: {error}")))?
 }
 
 #[tauri::command]

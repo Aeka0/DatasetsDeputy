@@ -146,6 +146,7 @@ const sampleProjects: DatasetProject[] = [
 
 let unlistenImportProgress: UnlistenFn | undefined;
 let unlistenExportProgress: UnlistenFn | undefined;
+const thumbnailRequestsInFlight = new Set<number>();
 
 function normalizePath(path: string) {
   return path.replaceAll("\\", "/").replace(/\/+$/, "");
@@ -453,6 +454,7 @@ interface DatasetState {
   tableSavedCellKeys: string[];
   tableFailedCellKeys: string[];
   annotatingImageIds: number[];
+  thumbnailCacheKey: number;
   highlightCellState: boolean;
   autoSaveAfterAnnotation: boolean;
   activeProfileId?: number;
@@ -473,6 +475,7 @@ interface DatasetState {
   initExportEvents: () => Promise<void>;
   load: () => Promise<void>;
   refreshImages: () => Promise<void>;
+  ensureThumbnails: (imageIds: number[]) => Promise<void>;
   checkProblemItems: (project?: DatasetProject) => Promise<ProblemItemCheckSummary | undefined>;
   openImportWizard: () => void;
   closeImportWizard: () => void;
@@ -504,6 +507,7 @@ interface DatasetState {
   toggleImageSelection: (id: number) => void;
   openImagePreview: (id: number) => void;
   closeImagePreview: () => void;
+  bumpThumbnailCacheKey: () => void;
   setSearch: (search: string) => void;
   setViewFilter: (mode: ViewFilterMode, projectId?: string, imageIds?: number[]) => void;
   resetTableDrafts: (
@@ -706,6 +710,7 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
   tableSavedCellKeys: [],
   tableFailedCellKeys: [],
   annotatingImageIds: [],
+  thumbnailCacheKey: 0,
   highlightCellState: getStoredHighlightCellState(),
   autoSaveAfterAnnotation: getStoredAutoSaveAfterAnnotation(),
   activeProfileId: sampleProfiles[0]?.id,
@@ -876,6 +881,38 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
         i18next.t("appLog.refreshImagesFailed", { message: formatAppError(error) }),
         "error"
       );
+    }
+  },
+  ensureThumbnails: async (imageIds) => {
+    if (!hasTauriRuntime() || imageIds.length === 0) {
+      return;
+    }
+
+    const pendingImageIds = Array.from(new Set(imageIds)).filter((imageId) => {
+      if (thumbnailRequestsInFlight.has(imageId)) {
+        return false;
+      }
+      thumbnailRequestsInFlight.add(imageId);
+      return true;
+    });
+
+    for (const imageId of pendingImageIds) {
+      try {
+        const updated = await invokeCommand<number>("ensure_thumbnails", {
+          imageIds: [imageId]
+        });
+        if (updated > 0) {
+          await get().refreshImages();
+          get().bumpThumbnailCacheKey();
+        }
+      } catch (error) {
+        get().addAppLog(
+          i18next.t("appLog.refreshImagesFailed", { message: formatAppError(error) }),
+          "error"
+        );
+      } finally {
+        thumbnailRequestsInFlight.delete(imageId);
+      }
     }
   },
   checkProblemItems: async (project) => {
@@ -1671,6 +1708,8 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
   openImagePreview: (id) =>
     set({ appView: "workspace", previewImageId: id, ...createImageSelection([id], id, id) }),
   closeImagePreview: () => set({ previewImageId: undefined }),
+  bumpThumbnailCacheKey: () =>
+    set((state) => ({ thumbnailCacheKey: state.thumbnailCacheKey + 1 })),
   setSearch: (search) => set({ search }),
   setViewFilter: (mode, projectId, imageIds = []) =>
     set({

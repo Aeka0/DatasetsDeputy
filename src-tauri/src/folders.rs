@@ -13,7 +13,7 @@ use crate::{
     app_dirs::AppDirs,
     db::{Annotation, AnnotationProfile, DatasetImage},
     errors::{AppError, AppResult},
-    files, ID_NAMESPACE_SIZE,
+    files, thumbnail, thumbnail_settings, ID_NAMESPACE_SIZE,
 };
 
 const FOLDER_PROFILE_NAME: &str = "TXT";
@@ -108,7 +108,52 @@ fn cached_folder_thumbnail_path(
     let thumbnail_dir = files::default_thumbnail_dir(&dirs.root).join("folders");
     let thumbnail_path =
         thumbnail_dir.join(format!("{}.webp", folder_thumbnail_hash(path, metadata)));
-    thumbnail_path.is_file().then_some(thumbnail_path)
+    thumbnail::is_valid_thumbnail(&thumbnail_path).then_some(thumbnail_path)
+}
+
+fn folder_thumbnail_path(
+    dirs: &AppDirs,
+    path: &Path,
+    metadata: Option<&fs::Metadata>,
+) -> Option<PathBuf> {
+    cached_folder_thumbnail_path(dirs, path, metadata)
+}
+
+pub fn ensure_folder_thumbnails(dirs: &AppDirs, image_ids: &HashSet<i64>) -> AppResult<usize> {
+    if image_ids.is_empty() {
+        return Ok(0);
+    }
+
+    let registry = read_registry(dirs)?;
+    let thumbnail_dir = files::default_thumbnail_dir(&dirs.root).join("folders");
+    let thumbnail_size = thumbnail_settings::load_settings(dirs)
+        .map(|settings| settings.thumbnail_size)
+        .unwrap_or(256);
+    let mut updated = 0;
+
+    for root in registry
+        .folders
+        .iter()
+        .map(PathBuf::from)
+        .filter(|path| path.is_dir())
+    {
+        for path in files::collect_image_paths(&root) {
+            let id = folder_image_id(&root, &path);
+            if !image_ids.contains(&id) {
+                continue;
+            }
+            let metadata = fs::metadata(&path).ok();
+            if cached_folder_thumbnail_path(dirs, &path, metadata.as_ref()).is_some() {
+                continue;
+            }
+            let hash = folder_thumbnail_hash(&path, metadata.as_ref());
+            if thumbnail::create_thumbnail(&path, &thumbnail_dir, &hash, thumbnail_size).is_ok() {
+                updated += 1;
+            }
+        }
+    }
+
+    Ok(updated)
 }
 
 fn read_text_file(path: PathBuf) -> AppResult<String> {
@@ -274,10 +319,7 @@ pub fn list_folder_images(dirs: &AppDirs) -> AppResult<Vec<DatasetImage>> {
             let thumbnail_path = if *source_missing {
                 None
             } else {
-                Some(
-                    cached_folder_thumbnail_path(dirs, path, metadata.as_ref())
-                        .unwrap_or_else(|| path.to_path_buf()),
-                )
+                folder_thumbnail_path(dirs, path, metadata.as_ref())
             };
             let annotation = read_text_file(annotation_path(path))?;
             let instruction = read_text_file(instruction_path(path))?;

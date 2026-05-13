@@ -26,6 +26,7 @@ export function ImagePreviewView() {
     tableProfileAnnotationDrafts,
     tableProfileInstructionDrafts,
     annotatingImageIds,
+    thumbnailCacheKey,
     closeImagePreview,
     setActiveProfile,
     saveAnnotation,
@@ -46,6 +47,7 @@ export function ImagePreviewView() {
       tableProfileAnnotationDrafts: state.tableProfileAnnotationDrafts,
       tableProfileInstructionDrafts: state.tableProfileInstructionDrafts,
       annotatingImageIds: state.annotatingImageIds,
+      thumbnailCacheKey: state.thumbnailCacheKey,
       closeImagePreview: state.closeImagePreview,
       setActiveProfile: state.setActiveProfile,
       saveAnnotation: state.saveAnnotation,
@@ -177,7 +179,10 @@ export function ImagePreviewView() {
   const previewSrc = selectedImage.sourceMissing
     ? undefined
     : resolveAssetSrc(selectedImage.storagePath ?? selectedImage.path) ??
-      resolveAssetSrc(selectedImage.thumbnailPath);
+      resolveAssetSrc(
+        selectedImage.thumbnailPath,
+        `${selectedImage.updatedAt}:${thumbnailCacheKey}`
+      );
   const filledAnnotationCount = selectedImage.annotations.filter((annotation) =>
     annotation.content.trim()
   ).length;

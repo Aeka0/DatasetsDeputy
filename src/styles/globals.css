@@ -235,17 +235,15 @@ textarea {
 .dataset-preview-image {
   position: relative;
   z-index: 1;
-  opacity: 0;
-  transform: scale(1.01);
-  transition:
-    opacity 320ms ease,
-    transform 360ms var(--app-motion-ease);
-  will-change: opacity, transform;
+  opacity: 1;
 }
 
 .dataset-preview-image-loaded {
   opacity: 1;
-  transform: scale(1);
+}
+
+.dataset-preview-placeholder-icon {
+  animation: dataset-preview-placeholder-pulse 1.6s ease-in-out infinite;
 }
 
 .fluent-shell {
@@ -312,6 +310,17 @@ html[data-window-maximized="true"] .fluent-shell {
   to {
     opacity: 1;
     transform: translateX(0);
+  }
+}
+
+@keyframes dataset-preview-placeholder-pulse {
+  0%,
+  100% {
+    opacity: 0.36;
+  }
+
+  50% {
+    opacity: 0.78;
   }
 }
 

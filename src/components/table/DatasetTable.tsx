@@ -104,10 +104,12 @@ export function DatasetTable({
     tableFailedCellKeys,
     annotatingImageIds,
     highlightCellState,
+    thumbnailCacheKey,
     selectImage,
     setImageSelection,
     toggleImageSelection,
     openImagePreview,
+    ensureThumbnails,
     setActiveProfile,
     resetTableDrafts,
     mergeTableDrafts,
@@ -131,10 +133,12 @@ export function DatasetTable({
       tableFailedCellKeys: state.tableFailedCellKeys,
       annotatingImageIds: state.annotatingImageIds,
       highlightCellState: state.highlightCellState,
+      thumbnailCacheKey: state.thumbnailCacheKey,
       selectImage: state.selectImage,
       setImageSelection: state.setImageSelection,
       toggleImageSelection: state.toggleImageSelection,
       openImagePreview: state.openImagePreview,
+      ensureThumbnails: state.ensureThumbnails,
       setActiveProfile: state.setActiveProfile,
       resetTableDrafts: state.resetTableDrafts,
       mergeTableDrafts: state.mergeTableDrafts,
@@ -158,6 +162,7 @@ export function DatasetTable({
   const [isSaving, setIsSaving] = useState(false);
   const [columnWidths, setColumnWidths] = useState(loadColumnWidths);
   const [loadedPreviewKeys, setLoadedPreviewKeys] = useState<Set<string>>(new Set());
+  const [failedPreviewKeys, setFailedPreviewKeys] = useState<Set<string>>(new Set());
   const searchQuery = search?.trim() ?? "";
 
   const searchHighlightRenderer = useCallback(
@@ -320,7 +325,7 @@ export function DatasetTable({
   const tableWidth =
     columnWidths.filename + columnWidths.preview + columnWidths.annotation + columnWidths.instruction;
   const getPreviewLoadKey = (image: DatasetImage) =>
-    `${image.id}:${image.thumbnailPath ?? ""}`;
+    `${image.id}:${image.thumbnailPath ?? ""}:${thumbnailCacheKey}`;
   const markPreviewLoaded = (image: DatasetImage) => {
     const key = getPreviewLoadKey(image);
     window.requestAnimationFrame(() => {
@@ -331,16 +336,40 @@ export function DatasetTable({
           next.add(key);
           return next;
         });
+        setFailedPreviewKeys((current) => {
+          if (!current.has(key)) return current;
+          const next = new Set(current);
+          next.delete(key);
+          return next;
+        });
       });
     });
   };
-
+  const markPreviewFailed = (image: DatasetImage) => {
+    const key = getPreviewLoadKey(image);
+    setFailedPreviewKeys((current) => {
+      if (current.has(key)) return current;
+      const next = new Set(current);
+      next.add(key);
+      return next;
+    });
+  };
   const virtualizer = useVirtualizer({
     count: images.length,
     getScrollElement: () => parentRef.current,
     estimateSize: () => rowHeight,
     overscan: 8
   });
+  const virtualRows = virtualizer.getVirtualItems();
+  const visibleImages = virtualRows.map((virtualRow) => images[virtualRow.index]).filter(Boolean);
+  const missingVisibleIds = visibleImages
+    .filter(
+      (image) =>
+        !image.sourceMissing &&
+        (!image.thumbnailPath || failedPreviewKeys.has(getPreviewLoadKey(image)))
+    )
+    .map((image) => image.id);
+  const missingVisibleIdsKey = missingVisibleIds.join(",");
 
   useLayoutEffect(() => {
     const element = parentRef.current;
@@ -349,6 +378,15 @@ export function DatasetTable({
     element.scrollTop = 0;
     virtualizer.scrollToOffset(0);
   }, [scrollResetKey]);
+
+  useEffect(() => {
+    if (missingVisibleIds.length === 0) return;
+
+    const timer = window.setTimeout(() => {
+      void ensureThumbnails(missingVisibleIds);
+    }, 180);
+    return () => window.clearTimeout(timer);
+  }, [missingVisibleIdsKey, ensureThumbnails]);
 
   const dirtyCells = useMemo(
     () => {
@@ -721,7 +759,7 @@ export function DatasetTable({
           className="relative min-w-full"
           style={{ height: `${virtualizer.getTotalSize()}px`, width: `${tableWidth}px` }}
         >
-          {virtualizer.getVirtualItems().map((virtualRow) => {
+          {virtualRows.map((virtualRow) => {
             const image = images[virtualRow.index];
             const isSelected = selectedImageIdSet.has(image.id);
             const isAnnotating = annotatingImageIds.includes(image.id);
@@ -753,12 +791,15 @@ export function DatasetTable({
                   className="no-drag flex items-center justify-center px-2"
                   onClick={() => openImagePreview(image.id)}
                 >
-                  <div className="dataset-preview-frame flex h-[100px] w-[116px] items-center justify-center overflow-hidden bg-neutral-100">
+                  <div className="dataset-preview-frame flex h-[100px] w-[116px] items-center justify-center overflow-hidden">
                     {image.sourceMissing ? (
                       <CircleAlert size={34} className="text-red-600" />
-                    ) : image.thumbnailPath ? (
+                    ) : image.thumbnailPath && !failedPreviewKeys.has(getPreviewLoadKey(image)) ? (
                       <img
-                        src={resolveAssetSrc(image.thumbnailPath)}
+                        src={resolveAssetSrc(
+                          image.thumbnailPath,
+                          `${image.updatedAt}:${thumbnailCacheKey}`
+                        )}
                         alt=""
                         className={cn(
                           "dataset-preview-image h-full w-full object-contain",
@@ -768,11 +809,14 @@ export function DatasetTable({
                         loading="lazy"
                         decoding="async"
                         onLoad={() => markPreviewLoaded(image)}
+                        onError={() => markPreviewFailed(image)}
                       />
                     ) : (
                       <div className="flex h-full w-full flex-col items-center justify-center gap-1 text-[13px] text-neutral-400">
-                        <ImageIcon size={22} />
-                        <span>{t("table.noPreview")}</span>
+                        <ImageIcon
+                          size={22}
+                          className="dataset-preview-placeholder-icon text-neutral-300"
+                        />
                       </div>
                     )}
                   </div>

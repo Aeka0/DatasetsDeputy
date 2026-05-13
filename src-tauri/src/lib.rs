@@ -141,6 +141,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::finish_startup,
             commands::list_images,
+            commands::ensure_thumbnails,
             commands::list_annotation_profiles,
             commands::check_problem_items,
             commands::get_gemini_settings,
