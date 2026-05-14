@@ -1,5 +1,5 @@
 import { ArrowLeft, CircleAlert, FileText, LoaderCircle, Plus, Save, Trash2 } from "lucide-react";
-import type { KeyboardEvent as ReactKeyboardEvent } from "react";
+import type { KeyboardEvent as ReactKeyboardEvent, SyntheticEvent } from "react";
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useShallow } from "zustand/react/shallow";
@@ -12,6 +12,7 @@ import { useDatasetStore } from "../../stores/datasetStore";
 import type { AnnotationProfile } from "../../types";
 
 type DraftTab = "annotation" | "instruction";
+type ImageDimensions = { imageId: number; width: number; height: number };
 
 export function ImagePreviewView() {
   const { t } = useTranslation();
@@ -70,6 +71,7 @@ export function ImagePreviewView() {
   const [newProfileName, setNewProfileName] = useState("");
   const [createProfileError, setCreateProfileError] = useState("");
   const [pendingProfileId, setPendingProfileId] = useState<number>();
+  const [loadedDimensions, setLoadedDimensions] = useState<ImageDimensions>();
 
   const availableProfiles = useMemo(() => {
     if (!selectedImage?.datasetId) return [];
@@ -189,6 +191,23 @@ export function ImagePreviewView() {
   const annotationCountLabel = isFolderImage
     ? `${filledAnnotationCount} ${t("image.annotations")}`
     : `${availableProfiles.length} ${t("image.annotationTypes")}`;
+  const displayedDimensions =
+    selectedImage.width && selectedImage.height
+      ? { width: selectedImage.width, height: selectedImage.height }
+      : loadedDimensions?.imageId === selectedImage.id
+        ? loadedDimensions
+        : undefined;
+
+  const rememberLoadedDimensions = (event: SyntheticEvent<HTMLImageElement>) => {
+    const { naturalWidth, naturalHeight } = event.currentTarget;
+    if (!naturalWidth || !naturalHeight) return;
+
+    setLoadedDimensions({
+      imageId: selectedImage.id,
+      width: naturalWidth,
+      height: naturalHeight
+    });
+  };
 
   const selectProfile = (profileId: number) => {
     setSelectedProfileId(profileId);
@@ -288,6 +307,7 @@ export function ImagePreviewView() {
                 src={previewSrc}
                 alt=""
                 className="max-h-full max-w-full object-contain"
+                onLoad={rememberLoadedDimensions}
               />
             ) : (
               <div className="text-sm text-neutral-400">{selectedImage.fileName}</div>
@@ -299,8 +319,8 @@ export function ImagePreviewView() {
               <div>
                 <dt className="text-neutral-400">{t("image.dimensions")}</dt>
                 <dd className="m-0">
-                  {selectedImage.width && selectedImage.height
-                    ? `${selectedImage.width} x ${selectedImage.height}`
+                  {displayedDimensions
+                    ? `${displayedDimensions.width} x ${displayedDimensions.height}`
                     : "-"}
                 </dd>
               </div>
