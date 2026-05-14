@@ -24,6 +24,7 @@
     "refresh": "Refresh",
     "remove": "Remove",
     "save": "Save",
+    "apply": "Apply",
     "select": "Select"
   },
   "menu": {
@@ -41,6 +42,8 @@
     "exportTxt": "Export dataset",
     "refresh": "Refresh data",
     "exit": "Exit",
+    "batchAdd": "Batch add fields...",
+    "batchReplace": "Batch replace...",
     "backToGrid": "Back to dataset",
     "clearSearch": "Clear search",
     "expandFileTree": "Show sidebar",
@@ -60,6 +63,27 @@
     "alpha3Notice": "Alpha 3 notice: this build is still in testing. Features and data structures may change, so back up important data before major operations.",
     "version": "Alpha 3 preview",
     "close": "Close"
+  },
+  "batchEdit": {
+    "addTitle": "Batch add fields",
+    "replaceTitle": "Batch replace",
+    "text": "Text",
+    "find": "Find",
+    "replace": "Replace with",
+    "options": "Options",
+    "position": "Position",
+    "prefix": "Prefix",
+    "suffix": "Suffix",
+    "target": "Target",
+    "annotation": "Annotation",
+    "instruction": "Instruction",
+    "both": "Both",
+    "scope": "Scope",
+    "allRows": "All rows",
+    "selectedRows": "Selected rows",
+    "caseSensitive": "Case sensitive",
+    "wholeWord": "Whole word",
+    "spaceUnderscore": "Space/underscore interchange"
   },
   "tools": {
     "formatValidator": {
@@ -282,6 +306,8 @@
     "highlightCellStateDescription": "Use color in table view to mark unsaved changes and recently saved content.",
     "autoSaveAfterAnnotation": "Auto-save after annotation",
     "autoSaveAfterAnnotationDescription": "Save generated annotations automatically after an annotation run completes.",
+    "autoSaveAfterBatch": "Auto-save after batch processing",
+    "autoSaveAfterBatchDescription": "Save batch add and batch replace changes automatically after they are applied.",
     "thumbnailSize": "Thumbnail size",
     "thumbnailSizeDescription": "Used when generating new thumbnail cache files. Clear the thumbnail cache manually to regenerate existing thumbnails.",
     "thumbnailCache": "Thumbnail cache",
@@ -459,6 +485,9 @@
     "folderAnnotationSaveFailures": "{{count}} folder annotation save(s) failed. Check the logs.",
     "annotationStopped": "Annotation task stopped by user.",
     "savedMarksCleared": "Saved markers cleared.",
+    "batchAddComplete": "Batch add prepared {{count}} row(s) as unsaved drafts.",
+    "batchReplaceComplete": "Batch replace prepared {{count}} row(s) as unsaved drafts.",
+    "batchAutoSaveFailed": "Batch auto-save failed: {{message}}",
     "menuActionFailed": "Menu action failed: {{message}}",
     "annotationScopeSelected": "Selected images",
     "annotationScopeAll": "All images",

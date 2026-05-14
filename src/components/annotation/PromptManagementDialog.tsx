@@ -12,6 +12,7 @@ import { formatAppError } from "../../lib/errors";
 import { hasTauriRuntime, invokeCommand } from "../../lib/tauri";
 import { AnimatedPortal, useAnimatedPortalClose } from "../ui/AnimatedPortal";
 import { Button } from "../ui/Button";
+import { Switch } from "../ui/Switch";
 
 interface GeminiSettings extends AnnotationPromptSettings {
   apiKey: string;
@@ -168,22 +169,15 @@ export function PromptManagementDialog({ onClose }: PromptManagementDialogProps)
               </div>
               <div className="grid grid-cols-2 gap-x-3 gap-y-2 px-4 py-3">
                 {promptOptions.map((option) => (
-                  <label
+                  <Switch
                     key={option.key}
-                    className={`flex min-h-8 items-center gap-2 text-[13px] ${
-                      isEmptyMode ? "text-neutral-400" : "text-neutral-700"
-                    }`}
-                  >
-                    <input
-                      type="checkbox"
-                      disabled={isEmptyMode}
-                      checked={Boolean(settings[option.key])}
-                      onChange={(event) =>
-                        patchSettings({ [option.key]: event.target.checked } as Partial<GeminiSettings>)
-                      }
-                    />
-                    <span>{t(option.labelKey)}</span>
-                  </label>
+                    disabled={isEmptyMode}
+                    checked={Boolean(settings[option.key])}
+                    label={t(option.labelKey)}
+                    onCheckedChange={(checked) =>
+                      patchSettings({ [option.key]: checked } as Partial<GeminiSettings>)
+                    }
+                  />
                 ))}
               </div>
             </div>

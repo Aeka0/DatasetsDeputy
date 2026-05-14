@@ -36,6 +36,7 @@ import {
 import { useDatasetStore } from "../../stores/datasetStore";
 import { AnimatedPortal, useAnimatedPortalClose } from "../ui/AnimatedPortal";
 import { Button } from "../ui/Button";
+import { Switch } from "../ui/Switch";
 
 type SettingsSectionKey =
   | "general"
@@ -376,16 +377,20 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
   const {
     highlightCellState,
     autoSaveAfterAnnotation,
+    autoSaveAfterBatch,
     setHighlightCellState,
     setAutoSaveAfterAnnotation,
+    setAutoSaveAfterBatch,
     refreshImages,
     bumpThumbnailCacheKey
   } = useDatasetStore(
     useShallow((state) => ({
       highlightCellState: state.highlightCellState,
       autoSaveAfterAnnotation: state.autoSaveAfterAnnotation,
+      autoSaveAfterBatch: state.autoSaveAfterBatch,
       setHighlightCellState: state.setHighlightCellState,
       setAutoSaveAfterAnnotation: state.setAutoSaveAfterAnnotation,
+      setAutoSaveAfterBatch: state.setAutoSaveAfterBatch,
       refreshImages: state.refreshImages,
       bumpThumbnailCacheKey: state.bumpThumbnailCacheKey
     }))
@@ -903,7 +908,7 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
           >
             {activeSection === "general" ? (
               <div className="rounded-lg border border-neutral-200 bg-white">
-                <label className="flex min-h-12 items-center justify-between gap-4 px-4 py-3">
+                <div className="flex min-h-12 items-center justify-between gap-4 px-4 py-3">
                   <div className="min-w-0">
                     <div className="text-[13px] font-medium text-neutral-900">
                       {t("settings.highlightCellState")}
@@ -912,14 +917,13 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
                       {t("settings.highlightCellStateDescription")}
                     </div>
                   </div>
-                  <input
-                    type="checkbox"
-                    className="no-drag h-4 w-4 shrink-0"
+                  <Switch
+                    aria-label={t("settings.highlightCellState")}
                     checked={highlightCellState}
-                    onChange={(event) => setHighlightCellState(event.target.checked)}
-                    />
-                  </label>
-                  <label className="flex min-h-12 items-center justify-between gap-4 border-t border-neutral-100 px-4 py-3">
+                    onCheckedChange={setHighlightCellState}
+                  />
+                  </div>
+                  <div className="flex min-h-12 items-center justify-between gap-4 border-t border-neutral-100 px-4 py-3">
                     <div className="min-w-0">
                       <div className="text-[13px] font-medium text-neutral-900">
                         {t("settings.autoSaveAfterAnnotation")}
@@ -928,13 +932,27 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
                         {t("settings.autoSaveAfterAnnotationDescription")}
                       </div>
                     </div>
-                    <input
-                      type="checkbox"
-                      className="no-drag h-4 w-4 shrink-0"
+                    <Switch
+                      aria-label={t("settings.autoSaveAfterAnnotation")}
                       checked={autoSaveAfterAnnotation}
-                      onChange={(event) => setAutoSaveAfterAnnotation(event.target.checked)}
+                      onCheckedChange={setAutoSaveAfterAnnotation}
                     />
-                  </label>
+                  </div>
+                  <div className="flex min-h-12 items-center justify-between gap-4 border-t border-neutral-100 px-4 py-3">
+                    <div className="min-w-0">
+                      <div className="text-[13px] font-medium text-neutral-900">
+                        {t("settings.autoSaveAfterBatch")}
+                      </div>
+                      <div className="mt-0.5 text-[12px] text-neutral-500">
+                        {t("settings.autoSaveAfterBatchDescription")}
+                      </div>
+                    </div>
+                    <Switch
+                      aria-label={t("settings.autoSaveAfterBatch")}
+                      checked={autoSaveAfterBatch}
+                      onCheckedChange={setAutoSaveAfterBatch}
+                    />
+                  </div>
                 </div>
               ) : activeSection === "language" ? (
               <div className="rounded-lg border border-neutral-200 bg-white">
@@ -1576,16 +1594,12 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
                     </div>
                   </div>
                   <div className="grid grid-cols-[minmax(0,1fr)_160px] gap-4 px-4 py-3">
-                    <label className="flex items-center gap-2 text-[13px] text-neutral-700">
-                      <input
-                        type="checkbox"
-                        checked={geminiSettings.useProxy}
-                        onChange={(event) =>
-                          patchGeminiSettings({ useProxy: event.target.checked })
-                        }
-                      />
-                      {t("settings.geminiUseProxy")}
-                    </label>
+                    <Switch
+                      className="self-start pt-1"
+                      checked={geminiSettings.useProxy}
+                      label={t("settings.geminiUseProxy")}
+                      onCheckedChange={(checked) => patchGeminiSettings({ useProxy: checked })}
+                    />
                     <label className="block">
                       <span className="mb-1 block text-[12px] font-medium text-neutral-600">
                         {t("settings.geminiProxyPort")}

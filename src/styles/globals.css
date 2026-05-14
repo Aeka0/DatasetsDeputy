@@ -165,7 +165,7 @@ textarea {
   -webkit-app-region: drag;
 }
 
-.no-drag {
+.app-drag-region .no-drag {
   app-region: no-drag;
   -webkit-app-region: no-drag;
 }
@@ -213,6 +213,133 @@ textarea {
 .glass-input.dataset-cell-failed:focus {
   border-color: #dc2626;
   outline-color: rgba(239, 68, 68, 0.18);
+}
+
+.app-switch-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--app-text);
+  cursor: pointer;
+}
+
+.app-switch-field-disabled {
+  cursor: not-allowed;
+  opacity: 0.52;
+}
+
+.app-switch {
+  position: relative;
+  display: inline-flex;
+  width: 38px;
+  height: 22px;
+  flex: 0 0 auto;
+}
+
+.app-switch input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: inherit;
+}
+
+.app-switch-track {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: 1px solid var(--app-border-strong);
+  border-radius: 999px;
+  background: #e8e8e8;
+  transition:
+    border-color var(--app-motion-duration-fast) var(--app-motion-ease),
+    background-color var(--app-motion-duration-fast) var(--app-motion-ease),
+    box-shadow var(--app-motion-duration-fast) var(--app-motion-ease);
+}
+
+.app-switch-thumb {
+  position: absolute;
+  left: 3px;
+  top: 3px;
+  width: 16px;
+  height: 16px;
+  border-radius: 999px;
+  background: #ffffff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.22);
+  transition:
+    background-color var(--app-motion-duration-fast) var(--app-motion-ease),
+    transform var(--app-motion-duration-fast) var(--app-motion-ease),
+    box-shadow var(--app-motion-duration-fast) var(--app-motion-ease);
+}
+
+.app-switch input:checked + .app-switch-track {
+  border-color: #171717;
+  background: #171717;
+}
+
+.app-switch input:checked + .app-switch-track .app-switch-thumb {
+  transform: translateX(16px);
+}
+
+.app-switch input:focus-visible + .app-switch-track {
+  outline: 2px solid rgba(23, 23, 23, 0.16);
+  outline-offset: 2px;
+}
+
+.app-switch-field:not(.app-switch-field-disabled):hover .app-switch-track {
+  border-color: rgba(23, 23, 23, 0.32);
+}
+
+.app-switch-copy {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.app-switch-label {
+  color: var(--app-text);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 18px;
+}
+
+.app-switch-description {
+  color: var(--app-text-muted);
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.batch-edit-switch .app-switch-label {
+  color: var(--app-text);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 18px;
+}
+
+.batch-edit-switch .app-switch {
+  width: 32px;
+  height: 18px;
+}
+
+.batch-edit-switch .app-switch-thumb {
+  left: 2px;
+  top: 2px;
+  width: 14px;
+  height: 14px;
+}
+
+.batch-edit-switch .app-switch input:checked + .app-switch-track .app-switch-thumb {
+  transform: translateX(14px);
+}
+
+.batch-edit-textarea {
+  font-size: 14px;
+  font-weight: 400 !important;
+  font-variation-settings: "wght" 400;
+  line-height: 20px;
 }
 
 .dataset-grid-card-dirty {
@@ -737,6 +864,33 @@ html[data-theme="dark"] .glass-input.dataset-cell-failed {
 html[data-theme="dark"] .glass-input.dataset-cell-failed:focus {
   border-color: #ef4444;
   outline-color: rgba(239, 68, 68, 0.24);
+}
+
+html[data-theme="dark"] .app-switch-track {
+  border-color: rgba(255, 255, 255, 0.14);
+  background: #2a2a2a;
+}
+
+html[data-theme="dark"] .app-switch-thumb {
+  background: #d6d6d6;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.42);
+}
+
+html[data-theme="dark"] .app-switch input:checked + .app-switch-track {
+  border-color: #f2f2f2;
+  background: #f2f2f2;
+}
+
+html[data-theme="dark"] .app-switch input:checked + .app-switch-track .app-switch-thumb {
+  background: #171717;
+}
+
+html[data-theme="dark"] .app-switch input:focus-visible + .app-switch-track {
+  outline-color: rgba(255, 255, 255, 0.14);
+}
+
+html[data-theme="dark"] .app-switch-field:not(.app-switch-field-disabled):hover .app-switch-track {
+  border-color: rgba(255, 255, 255, 0.32);
 }
 
 html[data-theme="dark"] .dataset-grid-card-dirty {

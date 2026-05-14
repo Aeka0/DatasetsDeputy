@@ -421,6 +421,7 @@ type AppView = "workspace" | "initial" | "logs";
 export type ViewFilterMode = "all" | "unannotated" | "unsaved";
 const highlightCellStateStorageKey = "datasets-deputy.highlight-cell-state";
 const autoSaveAfterAnnotationStorageKey = "datasets-deputy.auto-save-after-annotation";
+const autoSaveAfterBatchStorageKey = "datasets-deputy.auto-save-after-batch";
 
 export interface AppLogEntry {
   id: number;
@@ -457,6 +458,7 @@ interface DatasetState {
   thumbnailCacheKey: number;
   highlightCellState: boolean;
   autoSaveAfterAnnotation: boolean;
+  autoSaveAfterBatch: boolean;
   activeProfileId?: number;
   isLoading: boolean;
   isCheckingProblemItems: boolean;
@@ -529,6 +531,10 @@ interface DatasetState {
     imageId: number,
     draft: { content?: string; instruction?: string }
   ) => void;
+  applyBatchTableDrafts: (
+    profileId: number,
+    drafts: Array<{ imageId: number; content?: string; instruction?: string }>
+  ) => void;
   updateTableAnnotationDraft: (imageId: number, value: string) => void;
   updateTableInstructionDraft: (imageId: number, value: string) => void;
   markTableCellSaved: (key: string) => void;
@@ -538,6 +544,7 @@ interface DatasetState {
   clearTableSavedCellMarks: () => void;
   setHighlightCellState: (enabled: boolean) => void;
   setAutoSaveAfterAnnotation: (enabled: boolean) => void;
+  setAutoSaveAfterBatch: (enabled: boolean) => void;
   markImageAnnotating: (imageId: number, annotating: boolean) => void;
   setActiveProfile: (id?: number) => void;
   saveAnnotation: (
@@ -590,6 +597,11 @@ function getStoredHighlightCellState() {
 function getStoredAutoSaveAfterAnnotation() {
   if (typeof localStorage === "undefined") return false;
   return localStorage.getItem(autoSaveAfterAnnotationStorageKey) === "true";
+}
+
+function getStoredAutoSaveAfterBatch() {
+  if (typeof localStorage === "undefined") return false;
+  return localStorage.getItem(autoSaveAfterBatchStorageKey) === "true";
 }
 
 function getAnnotationContentForProfile(image: DatasetImage, profileId: number) {
@@ -713,6 +725,7 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
   thumbnailCacheKey: 0,
   highlightCellState: getStoredHighlightCellState(),
   autoSaveAfterAnnotation: getStoredAutoSaveAfterAnnotation(),
+  autoSaveAfterBatch: getStoredAutoSaveAfterBatch(),
   activeProfileId: sampleProfiles[0]?.id,
   isLoading: false,
   isCheckingProblemItems: false,
@@ -1897,6 +1910,86 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
         })
       };
     }),
+  applyBatchTableDrafts: (profileId, drafts) =>
+    set((state) => {
+      const imageIds = new Set(state.images.map((image) => image.id));
+      const cachedAnnotationDrafts = filterTableDraftsForImageIds(
+        state.tableProfileAnnotationDrafts[profileId] ?? {},
+        imageIds
+      );
+      const cachedInstructionDrafts = filterTableDraftsForImageIds(
+        state.tableProfileInstructionDrafts[profileId] ?? {},
+        imageIds
+      );
+      const annotationDrafts =
+        state.tableDraftProfileId === profileId
+          ? state.tableAnnotationDrafts
+          : {
+              ...Object.fromEntries(
+                state.images.map((image) => [
+                  image.id,
+                  getAnnotationContentForProfile(image, profileId)
+                ])
+              ),
+              ...cachedAnnotationDrafts
+            };
+      const instructionDrafts =
+        state.tableDraftProfileId === profileId
+          ? state.tableInstructionDrafts
+          : {
+              ...Object.fromEntries(
+                state.images.map((image) => [
+                  image.id,
+                  getInstructionForProfile(image, profileId)
+                ])
+              ),
+              ...cachedInstructionDrafts
+            };
+      const nextAnnotationDrafts = { ...annotationDrafts };
+      const nextInstructionDrafts = { ...instructionDrafts };
+      const changedCellKeys = new Set<string>();
+
+      for (const draft of drafts) {
+        if (draft.content !== undefined) {
+          nextAnnotationDrafts[draft.imageId] = draft.content;
+          changedCellKeys.add(`${draft.imageId}:annotation`);
+        }
+        if (draft.instruction !== undefined) {
+          nextInstructionDrafts[draft.imageId] = draft.instruction;
+          changedCellKeys.add(`${draft.imageId}:instruction`);
+        }
+      }
+
+      const tableProfileAnnotationDrafts = {
+        ...state.tableProfileAnnotationDrafts,
+        [profileId]: nextAnnotationDrafts
+      };
+      const tableProfileInstructionDrafts = {
+        ...state.tableProfileInstructionDrafts,
+        [profileId]: nextInstructionDrafts
+      };
+
+      if (state.tableDraftProfileId !== undefined && state.tableDraftProfileId !== profileId) {
+        tableProfileAnnotationDrafts[state.tableDraftProfileId] = filterTableDraftsForImageIds(
+          state.tableAnnotationDrafts,
+          imageIds
+        );
+        tableProfileInstructionDrafts[state.tableDraftProfileId] = filterTableDraftsForImageIds(
+          state.tableInstructionDrafts,
+          imageIds
+        );
+      }
+
+      return {
+        tableDraftProfileId: profileId,
+        tableAnnotationDrafts: nextAnnotationDrafts,
+        tableInstructionDrafts: nextInstructionDrafts,
+        tableProfileAnnotationDrafts,
+        tableProfileInstructionDrafts,
+        tableSavedCellKeys: state.tableSavedCellKeys.filter((key) => !changedCellKeys.has(key)),
+        tableFailedCellKeys: state.tableFailedCellKeys.filter((key) => !changedCellKeys.has(key))
+      };
+    }),
   updateTableAnnotationDraft: (imageId, value) =>
     set((state) => ({
       tableAnnotationDrafts: {
@@ -1974,6 +2067,12 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
       localStorage.setItem(autoSaveAfterAnnotationStorageKey, String(enabled));
     }
     set({ autoSaveAfterAnnotation: enabled });
+  },
+  setAutoSaveAfterBatch: (enabled) => {
+    if (typeof localStorage !== "undefined") {
+      localStorage.setItem(autoSaveAfterBatchStorageKey, String(enabled));
+    }
+    set({ autoSaveAfterBatch: enabled });
   },
   markImageAnnotating: (imageId, annotating) =>
     set((state) => ({

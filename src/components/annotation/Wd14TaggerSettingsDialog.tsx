@@ -6,6 +6,7 @@ import { formatAppError } from "../../lib/errors";
 import { hasTauriRuntime, invokeCommand } from "../../lib/tauri";
 import { AnimatedPortal, useAnimatedPortalClose } from "../ui/AnimatedPortal";
 import { Button } from "../ui/Button";
+import { Switch } from "../ui/Switch";
 
 interface ModelSettings {
   wd14Tagger: Wd14TaggerSettings;
@@ -141,38 +142,29 @@ export function Wd14TaggerSettingsDialog({ onClose }: Wd14TaggerSettingsDialogPr
         <div className="bg-neutral-50/42 p-5">
           <div className="rounded-lg border border-neutral-200 bg-white">
             <div className="divide-y divide-black/[0.06]">
-              <label className="flex min-h-10 items-center gap-2 px-4 py-2 text-[13px] text-neutral-700">
-                <input
-                  type="checkbox"
+              <div className="flex min-h-10 items-center px-4 py-2">
+                <Switch
                   checked={settings.wd14Tagger.addCharacterTags}
-                  onChange={(event) =>
-                    patchWd14Settings({ addCharacterTags: event.target.checked })
-                  }
+                  label={t("wd14Settings.addCharacterTags")}
+                  onCheckedChange={(checked) => patchWd14Settings({ addCharacterTags: checked })}
                 />
-                {t("wd14Settings.addCharacterTags")}
-              </label>
-              <label className="flex min-h-10 items-center gap-2 px-4 py-2 text-[13px] text-neutral-700">
-                <input
-                  type="checkbox"
+              </div>
+              <div className="flex min-h-10 items-center px-4 py-2">
+                <Switch
                   checked={settings.wd14Tagger.addCopyrightTags}
-                  onChange={(event) =>
-                    patchWd14Settings({ addCopyrightTags: event.target.checked })
-                  }
+                  label={t("wd14Settings.addCopyrightTags")}
+                  onCheckedChange={(checked) => patchWd14Settings({ addCopyrightTags: checked })}
                 />
-                {t("wd14Settings.addCopyrightTags")}
-              </label>
-              <label className="flex min-h-10 items-center gap-2 px-4 py-2 text-[13px] text-neutral-700">
-                <input
-                  type="checkbox"
+              </div>
+              <div className="flex min-h-10 items-center px-4 py-2">
+                <Switch
                   checked={settings.wd14Tagger.replaceUnderscoresWithSpaces}
-                  onChange={(event) =>
-                    patchWd14Settings({
-                      replaceUnderscoresWithSpaces: event.target.checked
-                    })
+                  label={t("wd14Settings.replaceUnderscores")}
+                  onCheckedChange={(checked) =>
+                    patchWd14Settings({ replaceUnderscoresWithSpaces: checked })
                   }
                 />
-                {t("wd14Settings.replaceUnderscores")}
-              </label>
+              </div>
               {sliderRow(
                 t("wd14Settings.generalThreshold"),
                 settings.wd14Tagger.generalThreshold,

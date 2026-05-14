@@ -24,6 +24,7 @@
     "refresh": "刷新",
     "remove": "移除",
     "save": "保存",
+    "apply": "应用",
     "select": "选择"
   },
   "menu": {
@@ -41,6 +42,8 @@
     "exportTxt": "导出数据集",
     "refresh": "刷新数据",
     "exit": "退出",
+    "batchAdd": "批量添加字段...",
+    "batchReplace": "批量替换...",
     "backToGrid": "返回数据集",
     "clearSearch": "清空搜索",
     "expandFileTree": "显示侧边栏",
@@ -60,6 +63,27 @@
     "alpha3Notice": "Alpha 3 版提示：本版本仍处于测试阶段，功能和数据结构可能继续调整，请在重要操作前备份数据。",
     "version": "Alpha 3 测试版",
     "close": "关闭"
+  },
+  "batchEdit": {
+    "addTitle": "批量添加字段",
+    "replaceTitle": "批量替换",
+    "text": "文本",
+    "find": "查找",
+    "replace": "替换为",
+    "options": "选项",
+    "position": "位置",
+    "prefix": "前缀",
+    "suffix": "后缀",
+    "target": "目标",
+    "annotation": "标注",
+    "instruction": "指令",
+    "both": "两者",
+    "scope": "范围",
+    "allRows": "所有行",
+    "selectedRows": "选中行",
+    "caseSensitive": "区分大小写",
+    "wholeWord": "全词匹配",
+    "spaceUnderscore": "空格/下划线互换"
   },
   "tools": {
     "formatValidator": {
@@ -393,7 +417,9 @@
     "onnxRuntimeInstalling": "正在安装 ONNX Runtime 依赖...",
     "pythonEnvActionFailed": "运行时操作失败：{{message}}",
     "autoSaveAfterAnnotation": "标注后自动保存",
-    "autoSaveAfterAnnotationDescription": "执行标注完成后自动保存生成的标注内容。"
+    "autoSaveAfterAnnotationDescription": "执行标注完成后自动保存生成的标注内容。",
+    "autoSaveAfterBatch": "批处理后自动保存",
+    "autoSaveAfterBatchDescription": "批量添加和批量替换应用后自动保存改动。"
   },
   "logs": {
     "title": "日志",
@@ -459,6 +485,9 @@
     "folderAnnotationSaveFailures": "{{count}} 个文件夹标注保存失败，请查看日志。",
     "annotationStopped": "用户已停止标注任务。",
     "savedMarksCleared": "已清理保存标记。",
+    "batchAddComplete": "批量添加已生成 {{count}} 行未保存草稿。",
+    "batchReplaceComplete": "批量替换已生成 {{count}} 行未保存草稿。",
+    "batchAutoSaveFailed": "批处理自动保存失败：{{message}}",
     "menuActionFailed": "菜单操作失败：{{message}}",
     "annotationScopeSelected": "选中图片",
     "annotationScopeAll": "所有图片",
