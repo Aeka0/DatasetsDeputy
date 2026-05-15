@@ -1,6 +1,4 @@
 import {
-  Check,
-  ChevronDown,
   Globe2,
   HardDrive,
   Languages,
@@ -9,7 +7,7 @@ import {
   Wifi,
   X
 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useShallow } from "zustand/react/shallow";
 
@@ -35,6 +33,7 @@ import {
 } from "../../lib/theme";
 import { useDatasetStore } from "../../stores/datasetStore";
 import { AnimatedPortal, useAnimatedPortalClose } from "../ui/AnimatedPortal";
+import { AppSelect } from "../ui/AppSelect";
 import { Button } from "../ui/Button";
 import { Switch } from "../ui/Switch";
 
@@ -246,99 +245,6 @@ const convertFormatOptions = [
 
 interface SettingsDialogProps {
   onClose: () => void;
-}
-
-interface SelectOption {
-  value: string;
-  label: string;
-}
-
-interface SettingsSelectProps {
-  value: string;
-  options: SelectOption[];
-  onChange: (value: string) => void;
-  className?: string;
-}
-
-function SettingsSelect({ value, options, onChange, className = "" }: SettingsSelectProps) {
-  const [open, setOpen] = useState(false);
-  const containerRef = useRef<HTMLDivElement>(null);
-  const selectedOption = options.find((option) => option.value === value) ?? options[0];
-
-  useEffect(() => {
-    if (!open) return;
-
-    const close = (event: MouseEvent) => {
-      if (
-        event.target instanceof Node &&
-        containerRef.current?.contains(event.target)
-      ) {
-        return;
-      }
-      setOpen(false);
-    };
-
-    const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        setOpen(false);
-      }
-    };
-
-    window.addEventListener("mousedown", close);
-    window.addEventListener("keydown", closeOnEscape);
-    return () => {
-      window.removeEventListener("mousedown", close);
-      window.removeEventListener("keydown", closeOnEscape);
-    };
-  }, [open]);
-
-  return (
-    <div ref={containerRef} className={`no-drag relative ${className}`}>
-      <button
-        type="button"
-        className="glass-input flex h-8 w-full items-center justify-between gap-2 px-2.5 text-left text-[13px]"
-        aria-haspopup="listbox"
-        aria-expanded={open}
-        onClick={() => setOpen((current) => !current)}
-      >
-        <span className="truncate">{selectedOption?.label}</span>
-        <ChevronDown
-          size={14}
-          className={`shrink-0 text-neutral-400 transition ${open ? "rotate-180" : ""}`}
-        />
-      </button>
-
-      {open ? (
-        <div className="app-dropdown-menu absolute left-0 top-9 z-[70] min-w-full rounded-lg py-2">
-          <div className="app-dropdown-backdrop" />
-          {options.map((option) => {
-            const selected = option.value === value;
-
-            return (
-              <button
-                key={option.value}
-                type="button"
-                className={`app-dropdown-item flex h-9 w-full items-center gap-2 px-3.5 text-left text-[13px] font-medium transition hover:bg-neutral-100 ${
-                  selected ? "text-neutral-950" : "text-neutral-600"
-                }`}
-                role="option"
-                aria-selected={selected}
-                onClick={() => {
-                  onChange(option.value);
-                  setOpen(false);
-                }}
-              >
-                <span className="flex w-4 shrink-0 justify-center">
-                  {selected ? <Check size={14} /> : null}
-                </span>
-                <span className="min-w-0 flex-1 truncate">{option.label}</span>
-              </button>
-            );
-          })}
-        </div>
-      ) : null}
-    </div>
-  );
 }
 
 export function SettingsDialog({ onClose }: SettingsDialogProps) {
@@ -965,7 +871,7 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
                       {t("settings.languageDescription")}
                     </div>
                   </div>
-                  <SettingsSelect
+                  <AppSelect
                     className="min-w-[150px]"
                     value={currentLanguage}
                     options={languageOptions.map((option) => ({
@@ -1024,7 +930,7 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
                         <div className="text-[12px] text-neutral-500">
                           {t("settings.pythonEnvMode")}
                         </div>
-                        <SettingsSelect
+                        <AppSelect
                           value={pythonEnvSettings.mode}
                           options={pythonEnvModeOptions.map((option) => ({
                             value: option.value,
@@ -1155,7 +1061,7 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
                           <div className="text-[12px] font-medium text-neutral-900">
                             {t("settings.pytorchRuntime")}
                           </div>
-                          <SettingsSelect
+                          <AppSelect
                             value={pythonEnvSettings.installProfile}
                             options={pythonInstallProfileOptions.map((option) => ({
                               value: option.value,
@@ -1180,7 +1086,7 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
                           <div className="text-[12px] font-medium text-neutral-900">
                             {t("settings.onnxRuntime")}
                           </div>
-                          <SettingsSelect
+                          <AppSelect
                             value={pythonEnvSettings.onnxInstallProfile}
                             options={onnxInstallProfileOptions.map((option) => ({
                               value: option.value,
@@ -1303,7 +1209,7 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
                       {t("settings.thumbnailSizeDescription")}
                     </div>
                   </div>
-                  <SettingsSelect
+                  <AppSelect
                     className="w-[128px] shrink-0"
                     value={String(thumbnailSettings.thumbnailSize)}
                     options={thumbnailSizeOptions}
@@ -1385,7 +1291,7 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
                       {t("settings.themeDescription")}
                     </div>
                   </div>
-                  <SettingsSelect
+                  <AppSelect
                     className="min-w-[150px]"
                     value={themePreference}
                     options={themeOptions.map((option) => ({
@@ -1406,7 +1312,7 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
                       {t("settings.uiAnimationDescription")}
                     </div>
                   </div>
-                  <SettingsSelect
+                  <AppSelect
                     className="min-w-[150px]"
                     value={uiAnimationPreference}
                     options={uiAnimationOptions.map((option) => ({
@@ -1532,7 +1438,7 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
                           <span className="mb-1 block text-[12px] font-medium text-neutral-600">
                             {t("settings.geminiModel")}
                           </span>
-                          <SettingsSelect
+                          <AppSelect
                             className="w-full"
                             value={geminiSettings.model}
                             options={geminiSettings.availableModels.map((model) => ({
@@ -1633,7 +1539,7 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
                         <span className="mb-1 block text-[12px] font-medium text-neutral-600">
                           {t("settings.geminiImageResize")}
                         </span>
-                        <SettingsSelect
+                        <AppSelect
                           className="w-full"
                           value={geminiSettings.imageResizeMode}
                           options={resizeOptions.map((option) => ({
@@ -1649,7 +1555,7 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
                         <span className="mb-1 block text-[12px] font-medium text-neutral-600">
                           {t("settings.geminiImageFormat")}
                         </span>
-                        <SettingsSelect
+                        <AppSelect
                           className="w-full"
                           value={geminiSettings.imageConvertFormat}
                           options={convertFormatOptions.map((option) => ({

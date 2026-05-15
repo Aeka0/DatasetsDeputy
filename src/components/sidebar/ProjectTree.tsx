@@ -18,6 +18,7 @@ import { useShallow } from "zustand/react/shallow";
 
 import { cn } from "../../lib/cn";
 import { formatAppError } from "../../lib/errors";
+import { formatDialogMenuLabel } from "../../lib/menuLabels";
 import { useDatasetStore } from "../../stores/datasetStore";
 import type { DatasetProject } from "../../types";
 import { AnimatedPortal } from "../ui/AnimatedPortal";
@@ -575,7 +576,7 @@ export function ProjectTree() {
                       setContextMenu(undefined);
                     }}
                   >
-                    {t("tree.consolidateLooseFiles")}
+                    {formatDialogMenuLabel(t("tree.consolidateLooseFiles"))}
                   </button>
                   <button
                     className="app-dropdown-item flex h-9 w-full items-center px-3.5 text-left text-[12px] font-medium text-neutral-700 transition hover:bg-neutral-100"
@@ -584,7 +585,7 @@ export function ProjectTree() {
                       setContextMenu(undefined);
                     }}
                   >
-                    {t("tree.delete")}
+                    {formatDialogMenuLabel(t("tree.delete"))}
                   </button>
                 </>
               ) : (
@@ -624,7 +625,7 @@ export function ProjectTree() {
                         setContextMenu(undefined);
                       }}
                     >
-                      {t("tree.newChildFolder")}
+                      {formatDialogMenuLabel(t("tree.newChildFolder"))}
                     </button>
                   ) : null}
                   {!isVirtualRoot(contextMenu.project) && !isDatasetRoot(contextMenu.project) ? (
@@ -634,7 +635,7 @@ export function ProjectTree() {
                         className="app-dropdown-item flex h-9 w-full items-center px-3.5 text-left text-[12px] font-medium text-neutral-700 transition hover:bg-neutral-100"
                         onClick={() => startRename(contextMenu.project)}
                       >
-                        {t("tree.renameFolder")}
+                        {formatDialogMenuLabel(t("tree.renameFolder"))}
                       </button>
                     </>
                   ) : null}
@@ -647,9 +648,11 @@ export function ProjectTree() {
                         setPendingRemoval(project);
                       }}
                     >
-                      {isDatabaseLikeTrainingSet(contextMenu.project)
-                        ? t("tree.removeSubfolder")
-                        : t("tree.delete")}
+                      {formatDialogMenuLabel(
+                        isDatabaseLikeTrainingSet(contextMenu.project)
+                          ? t("tree.removeSubfolder")
+                          : t("tree.delete")
+                      )}
                     </button>
                   ) : null}
                   <button
@@ -661,9 +664,11 @@ export function ProjectTree() {
                       setPendingRemoval(project);
                     }}
                   >
-                    {contextMenu.project.sourceKind === "folder"
-                      ? t("tree.removeWorkspaceFolderPath")
-                      : t("tree.removeTrainingSet")}
+                    {formatDialogMenuLabel(
+                      contextMenu.project.sourceKind === "folder"
+                        ? t("tree.removeWorkspaceFolderPath")
+                        : t("tree.removeTrainingSet")
+                    )}
                   </button>
                 </>
               )}

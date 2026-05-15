@@ -27,6 +27,7 @@ import { useShallow } from "zustand/react/shallow";
 import { cn } from "../../lib/cn";
 import { formatAppError } from "../../lib/errors";
 import { formatBytes } from "../../lib/format";
+import { formatDialogMenuLabel } from "../../lib/menuLabels";
 import { findProjectTrail, flattenProjects, getProjectDisplayName } from "../../lib/projects";
 import { hasTauriRuntime, invokeCommand } from "../../lib/tauri";
 import { useDatasetStore, type ViewFilterMode } from "../../stores/datasetStore";
@@ -1030,7 +1031,7 @@ function DatasetOverview({
                                   }}
                                 >
                                   <Pencil size={13} />
-                                  {t("workspace.renameAnnotationType")}
+                                  {formatDialogMenuLabel(t("workspace.renameAnnotationType"))}
                                 </button>
                                 <button
                                   type="button"
@@ -1056,7 +1057,7 @@ function DatasetOverview({
                                   }}
                                 >
                                   <Trash2 size={13} />
-                                  {t("workspace.deleteAnnotationType")}
+                                  {formatDialogMenuLabel(t("workspace.deleteAnnotationType"))}
                                 </button>
                               </div>
                             ) : null}
@@ -1656,7 +1657,7 @@ export function DatasetWorkspace() {
                 className="app-dropdown-item flex h-9 w-full items-center px-3.5 text-left text-[12px] font-medium text-neutral-700 transition hover:bg-neutral-100"
                 onClick={() => startRenameImage(imageContextMenu.image)}
               >
-                <span>{t("itemMenu.rename")}</span>
+                <span>{formatDialogMenuLabel(t("itemMenu.rename"))}</span>
               </button>
               <div className="app-dropdown-separator my-1.5 h-px bg-neutral-200" />
               <button
@@ -1664,7 +1665,7 @@ export function DatasetWorkspace() {
                 className="app-dropdown-item flex h-9 w-full items-center px-3.5 text-left text-[12px] font-medium text-neutral-700 transition hover:bg-neutral-100"
                 onClick={() => startDeleteImage(imageContextMenu.image)}
               >
-                <span>{t("itemMenu.delete")}</span>
+                <span>{formatDialogMenuLabel(t("itemMenu.delete"))}</span>
               </button>
             </div>,
             document.body

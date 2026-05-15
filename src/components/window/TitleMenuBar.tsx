@@ -11,6 +11,7 @@ import {
   type AnnotationPromptSettings
 } from "../../lib/annotationPrompt";
 import { formatAppError } from "../../lib/errors";
+import { formatDialogMenuLabel } from "../../lib/menuLabels";
 import { findProject, formatProjectPath, getProjectDisplayName } from "../../lib/projects";
 import { hasTauriRuntime, invokeCommand } from "../../lib/tauri";
 import { useDatasetStore, type ViewFilterMode } from "../../stores/datasetStore";
@@ -21,6 +22,7 @@ import {
   type AnnotationConflictStrategy,
   type AnnotationExecutionScope
 } from "../annotation/AnnotationExecutionDialog";
+import { BatchAnnotationFormatConversionDialog } from "../annotation/BatchAnnotationFormatConversionDialog";
 import { PromptManagementDialog } from "../annotation/PromptManagementDialog";
 import { Wd14TaggerSettingsDialog } from "../annotation/Wd14TaggerSettingsDialog";
 import { SettingsDialog } from "../settings/SettingsDialog";
@@ -37,6 +39,7 @@ type DialogKey =
   | "settings"
   | "batchAdd"
   | "batchReplace"
+  | "batchAnnotationFormatConversion"
   | "formatValidator"
   | "trainingCacheCleaner"
   | "about";
@@ -111,10 +114,7 @@ const menuLabels: Array<{ key: MenuKey; labelKey: string }> = [
 const annotationCancelledError = "annotation_cancelled";
 
 function formatMenuActionLabel(action: MenuAction) {
-  if (!action.opensDialog || /(\.\.\.|…)$/.test(action.label)) {
-    return action.label;
-  }
-  return `${action.label}...`;
+  return action.opensDialog ? formatDialogMenuLabel(action.label) : action.label;
 }
 
 function isAnnotatableProject(project: DatasetProject | undefined) {
@@ -801,6 +801,11 @@ export function TitleMenuBar({
         disabled: !canBatchEdit,
         opensDialog: true,
         onSelect: () => setDialog("batchReplace")
+      },
+      {
+        label: t("menu.batchAnnotationFormatConversion"),
+        opensDialog: true,
+        onSelect: () => setDialog("batchAnnotationFormatConversion")
       }
     ],
     annotation: [
@@ -1355,6 +1360,9 @@ export function TitleMenuBar({
           onClose={() => setDialog(undefined)}
           onConfirm={applyBatchReplace}
         />
+      ) : null}
+      {dialog === "batchAnnotationFormatConversion" ? (
+        <BatchAnnotationFormatConversionDialog onClose={() => setDialog(undefined)} />
       ) : null}
       {dialog === "annotationExecution" && selectedProject ? (
         <AnnotationExecutionDialog
