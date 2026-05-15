@@ -10,12 +10,37 @@ $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
 
 $ProjectRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
-$ReleaseRoot = if ($OutputDir) { [IO.Path]::GetFullPath($OutputDir) } else { Join-Path $ProjectRoot "release\DatasetsDeputy" }
-$ReleaseZip = if ($ZipPath) { [IO.Path]::GetFullPath($ZipPath) } else { Join-Path $ProjectRoot "release\DatasetsDeputy.zip" }
+$ReleaseRoot = if ($OutputDir) {
+    if ([IO.Path]::IsPathRooted($OutputDir)) {
+        [IO.Path]::GetFullPath($OutputDir)
+    }
+    else {
+        [IO.Path]::GetFullPath((Join-Path $ProjectRoot $OutputDir))
+    }
+}
+else {
+    Join-Path $ProjectRoot "release\DatasetsDeputy"
+}
+$ReleaseZip = if ($ZipPath) {
+    if ([IO.Path]::IsPathRooted($ZipPath)) {
+        [IO.Path]::GetFullPath($ZipPath)
+    }
+    else {
+        [IO.Path]::GetFullPath((Join-Path $ProjectRoot $ZipPath))
+    }
+}
+else {
+    Join-Path $ProjectRoot "release\DatasetsDeputy.zip"
+}
 $TauriDir = Join-Path $ProjectRoot "src-tauri"
 $ExeSource = Join-Path $TauriDir "target\release\datasets-deputy.exe"
 $ExeTarget = Join-Path $ReleaseRoot "DatasetsDeputy.exe"
 $CargoBin = Join-Path $env:USERPROFILE ".cargo\bin"
+$AssetRoot = Join-Path $ProjectRoot "assets"
+$SplashAssetDir = Join-Path $AssetRoot "splash"
+$PublicSplashDir = Join-Path $ProjectRoot "public\splash"
+$IconAssetPath = Join-Path $AssetRoot "icon\Deputy.ico"
+$TauriIconPath = Join-Path $TauriDir "icons\icon.ico"
 $DefaultWindowRenderMode = "auto"
 $SupportedWindowRenderModes = @("blur", "acrylic")
 
@@ -152,6 +177,21 @@ function Get-GitCommit {
     }
 }
 
+function Sync-ProjectAssets {
+    if (-not (Test-Path $SplashAssetDir)) {
+        throw "未找到启动图资源目录：$SplashAssetDir"
+    }
+    if (-not (Test-Path $IconAssetPath)) {
+        throw "未找到应用图标资源：$IconAssetPath"
+    }
+
+    New-Item -ItemType Directory -Force -Path $PublicSplashDir | Out-Null
+    New-Item -ItemType Directory -Force -Path (Split-Path -Parent $TauriIconPath) | Out-Null
+
+    Copy-Item (Join-Path $SplashAssetDir "*") $PublicSplashDir -Recurse -Force
+    Copy-Item $IconAssetPath $TauriIconPath -Force
+}
+
 Write-Step "准备构建环境"
 Set-Location $ProjectRoot
 
@@ -179,6 +219,9 @@ if ($Install -or -not (Test-Path (Join-Path $ProjectRoot "node_modules"))) {
     Write-Step "安装 npm 依赖"
     Invoke-Checked $NpmCmd @("install")
 }
+
+Write-Step "从 assets 同步项目资源"
+Sync-ProjectAssets
 
 Write-Step "停止正在运行的发布版程序"
 Stop-ReleaseProcesses

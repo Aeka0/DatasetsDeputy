@@ -8,6 +8,11 @@ Set-StrictMode -Version Latest
 
 $ProjectRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $CargoBin = Join-Path $env:USERPROFILE ".cargo\bin"
+$AssetRoot = Join-Path $ProjectRoot "assets"
+$SplashAssetDir = Join-Path $AssetRoot "splash"
+$PublicSplashDir = Join-Path $ProjectRoot "public\splash"
+$IconAssetPath = Join-Path $AssetRoot "icon\Deputy.ico"
+$TauriIconPath = Join-Path $ProjectRoot "src-tauri\icons\icon.ico"
 
 function Write-Step {
     param([string]$Message)
@@ -33,6 +38,21 @@ function Resolve-CommandPath {
     }
 
     throw "Required command not found: $($Candidates -join ', ')"
+}
+
+function Sync-ProjectAssets {
+    if (-not (Test-Path $SplashAssetDir)) {
+        throw "Splash asset directory not found: $SplashAssetDir"
+    }
+    if (-not (Test-Path $IconAssetPath)) {
+        throw "App icon asset not found: $IconAssetPath"
+    }
+
+    New-Item -ItemType Directory -Force -Path $PublicSplashDir | Out-Null
+    New-Item -ItemType Directory -Force -Path (Split-Path -Parent $TauriIconPath) | Out-Null
+
+    Copy-Item (Join-Path $SplashAssetDir "*") $PublicSplashDir -Recurse -Force
+    Copy-Item $IconAssetPath $TauriIconPath -Force
 }
 
 Write-Step "Preparing dev environment"
@@ -69,6 +89,9 @@ if ($Install -or -not (Test-Path (Join-Path $ProjectRoot "node_modules"))) {
     Write-Step "Installing npm dependencies"
     & $NpmCmd install
 }
+
+Write-Step "Syncing project assets from assets"
+Sync-ProjectAssets
 
 if (-not (Test-Path $ViteCli)) {
     throw "Vite CLI not found. Run .\dev.ps1 -Install first."

@@ -879,16 +879,14 @@ fn check_database_problem_items(
             summary.missing += 1;
             continue;
         }
-        let result = (|| -> AppResult<bool> {
-            repair_database_image_thumbnail(
-                &mut db,
-                &mut image,
-                &source_kind,
-                &thumbnail_dir,
-                thumbnail_settings.thumbnail_size,
-                true,
-            )
-        })();
+        let result = repair_database_image_thumbnail(
+            &mut db,
+            &mut image,
+            &source_kind,
+            &thumbnail_dir,
+            thumbnail_settings.thumbnail_size,
+            true,
+        );
 
         match result {
             Ok(true) => summary.updated += 1,

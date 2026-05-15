@@ -62,8 +62,15 @@
     "formatValidator": "格式校验",
     "trainingCacheCleaner": "移除训练器缓存",
     "aboutBody": "数据集图片预览、标注维度管理与导出工具。",
-    "alpha3Notice": "Alpha 3 版提示：本版本仍处于测试阶段，功能和数据结构可能继续调整，请在重要操作前备份数据。",
-    "version": "Alpha 3 测试版",
+    "versionLabel": "版本",
+    "version": "Alpha 4",
+    "authorLabel": "作者",
+    "author": "Aeka",
+    "projectLabel": "项目",
+    "project": "github.com/Aeka0/DatasetsDeputy",
+    "licenseLabel": "协议",
+    "license": "AGPL v3",
+    "developmentNotice": "开发版本：功能尚不完整，且可能出现错误。",
     "close": "关闭"
   },
   "batchEdit": {

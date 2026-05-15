@@ -62,8 +62,15 @@
     "formatValidator": "Format validator",
     "trainingCacheCleaner": "Remove trainer cache",
     "aboutBody": "Dataset image preview, annotation dimension management, and export tools.",
-    "alpha3Notice": "Alpha 3 notice: this build is still in testing. Features and data structures may change, so back up important data before major operations.",
-    "version": "Alpha 3 preview",
+    "versionLabel": "Version",
+    "version": "Alpha 4",
+    "authorLabel": "Author",
+    "author": "Aeka",
+    "projectLabel": "Project",
+    "project": "github.com/Aeka0/DatasetsDeputy",
+    "licenseLabel": "License",
+    "license": "AGPL v3",
+    "developmentNotice": "Development build: features are incomplete and errors may occur.",
     "close": "Close"
   },
   "batchEdit": {

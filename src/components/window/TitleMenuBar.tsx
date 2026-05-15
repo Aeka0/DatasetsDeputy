@@ -567,7 +567,7 @@ export function TitleMenuBar({
   );
   const [openMenu, setOpenMenu] = useState<MenuKey>();
   const [activeSubmenu, setActiveSubmenu] = useState<string>();
-  const [dialog, setDialog] = useState<DialogKey>();
+  const [dialog, setDialog] = useState<DialogKey | undefined>("about");
   const [isAnnotationRunning, setIsAnnotationRunning] = useState(false);
   const [menuPosition, setMenuPosition] = useState<MenuPosition>();
   const containerRef = useRef<HTMLDivElement>(null);
@@ -1503,27 +1503,55 @@ export function TitleMenuBar({
 
       <AnimatedPortal open={dialog === "about"}>
         {dialog === "about" ? (
-        <div className="no-drag fixed inset-0 z-50 flex items-center justify-center bg-neutral-950/16">
-          <div className="w-[360px] rounded-md border border-neutral-200 bg-white p-5">
-            <h2 className="m-0 text-base font-semibold text-neutral-900">
-              Datasets Deputy
-            </h2>
-            <p className="mt-3 text-sm leading-6 text-neutral-600">
-              {t("menu.aboutBody")}
-            </p>
-            <p className="mt-3 border-l-2 border-amber-300 pl-3 text-xs leading-5 text-amber-800">
-              {t("menu.alpha3Notice")}
-            </p>
-            <div className="mt-3 text-xs text-neutral-400">{t("menu.version")}</div>
-            <div className="mt-5 flex justify-end">
+        <div className="no-drag fixed inset-0 z-50 flex items-center justify-center bg-neutral-950/16 px-5">
+          <div className="w-full max-w-[460px] overflow-hidden rounded-lg border border-neutral-200 bg-white shadow-[0_24px_72px_rgba(23,23,23,0.18)]">
+            <header className="border-b border-neutral-200 px-5 py-4">
+              <h2 className="m-0 text-[16px] font-semibold text-neutral-950">
+                Datasets Deputy
+              </h2>
+              <p className="mt-1 text-[13px] leading-5 text-neutral-600">
+                {t("menu.aboutBody")}
+              </p>
+            </header>
+
+            <div className="px-5 py-4">
+              <dl className="m-0 grid grid-cols-[72px_minmax(0,1fr)] gap-x-4 gap-y-3 text-[13px]">
+                <dt className="text-neutral-500">{t("menu.versionLabel")}</dt>
+                <dd className="m-0 font-medium text-neutral-900">{t("menu.version")}</dd>
+
+                <dt className="text-neutral-500">{t("menu.authorLabel")}</dt>
+                <dd className="m-0 text-neutral-900">{t("menu.author")}</dd>
+
+                <dt className="text-neutral-500">{t("menu.projectLabel")}</dt>
+                <dd className="m-0 min-w-0">
+                  <a
+                    className="break-all text-neutral-900 underline decoration-neutral-300 underline-offset-2 transition hover:decoration-neutral-700"
+                    href="https://github.com/Aeka0/DatasetsDeputy"
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    {t("menu.project")}
+                  </a>
+                </dd>
+
+                <dt className="text-neutral-500">{t("menu.licenseLabel")}</dt>
+                <dd className="m-0 text-neutral-900">{t("menu.license")}</dd>
+              </dl>
+
+              <p className="mt-4 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] leading-5 text-amber-900">
+                {t("menu.developmentNotice")}
+              </p>
+            </div>
+
+            <footer className="flex justify-end border-t border-neutral-200 px-5 py-4">
               <button
                 type="button"
-                className="rounded-md bg-neutral-900 px-3 py-1.5 text-sm text-white transition hover:bg-neutral-800"
+                className="h-8 rounded-md bg-neutral-900 px-3 text-[13px] font-medium text-white transition hover:bg-neutral-800"
                 onClick={() => setDialog(undefined)}
               >
                 {t("menu.close")}
               </button>
-            </div>
+            </footer>
           </div>
         </div>
         ) : null}
