@@ -32,6 +32,7 @@ import { findProjectTrail, flattenProjects, getProjectDisplayName } from "../../
 import { hasTauriRuntime, invokeCommand } from "../../lib/tauri";
 import { useDatasetStore, type ViewFilterMode } from "../../stores/datasetStore";
 import type {
+  AnnotationChange,
   AnnotationProfile,
   DatasetImage,
   DatasetProject,
@@ -231,6 +232,38 @@ function hasUnsavedChange(
     (annotationDrafts[image.id] ?? "") !== (annotation?.content ?? "") ||
     (instructionDrafts[image.id] ?? "") !== (annotation?.instruction ?? "")
   );
+}
+
+function getImageDraftChange(
+  image: DatasetImage,
+  profileId: number | undefined,
+  tableDraftProfileId: number | undefined,
+  annotationDrafts: Record<number, string>,
+  instructionDrafts: Record<number, string>
+) {
+  if (profileId === undefined || tableDraftProfileId !== profileId) return undefined;
+
+  const annotation = getAnnotationForProfile(image, profileId);
+  const content = annotationDrafts[image.id] ?? "";
+  const instruction = instructionDrafts[image.id] ?? "";
+  const contentChanged = content !== (annotation?.content ?? "");
+  const instructionChanged = instruction !== (annotation?.instruction ?? "");
+
+  if (!contentChanged && !instructionChanged) return undefined;
+
+  const change: AnnotationChange = {
+    imageId: image.id,
+    profileId
+  };
+
+  if (contentChanged) {
+    change.content = content;
+  }
+  if (instructionChanged) {
+    change.instruction = instruction;
+  }
+
+  return change;
 }
 
 function createViewFilterImageIds({
@@ -1215,6 +1248,9 @@ export function DatasetWorkspace() {
     deleteAnnotationProfile,
     selectProject,
     selectImage,
+    applyTableDraft,
+    markTableCellSaved,
+    saveAnnotationChanges,
     renameDatasetImage,
     deleteDatasetImage
   } = useDatasetStore(
@@ -1246,6 +1282,9 @@ export function DatasetWorkspace() {
       deleteAnnotationProfile: state.deleteAnnotationProfile,
       selectProject: state.selectProject,
       selectImage: state.selectImage,
+      applyTableDraft: state.applyTableDraft,
+      markTableCellSaved: state.markTableCellSaved,
+      saveAnnotationChanges: state.saveAnnotationChanges,
       renameDatasetImage: state.renameDatasetImage,
       deleteDatasetImage: state.deleteDatasetImage
     }))
@@ -1263,6 +1302,7 @@ export function DatasetWorkspace() {
   const [deleteImage, setDeleteImage] = useState<DatasetImage>();
   const [deleteError, setDeleteError] = useState("");
   const [isDeletingImage, setIsDeletingImage] = useState(false);
+  const [isSavingImageChanges, setIsSavingImageChanges] = useState(false);
   const selectedProject = flattenProjects(projects).find(
     (project) => project.id === selectedProjectId
   );
@@ -1326,6 +1366,25 @@ export function DatasetWorkspace() {
     const projectProfiles = [...matchedProfiles, ...inferredProfiles];
     return projectProfiles.length > 0 ? projectProfiles : profiles;
   }, [images, profiles, selectedProject]);
+  const contextMenuProfileId =
+    selectedProject?.sourceKind === "folder"
+      ? getEffectiveProfileId(images, selectedProject, activeProfileId)
+      : tableProfiles.some((profile) => profile.id === activeProfileId)
+      ? activeProfileId
+      : tableProfiles[0]?.id;
+  const contextMenuImage = imageContextMenu
+    ? images.find((image) => image.id === imageContextMenu.image.id) ?? imageContextMenu.image
+    : undefined;
+  const contextMenuChange = contextMenuImage
+    ? getImageDraftChange(
+        contextMenuImage,
+        contextMenuProfileId,
+        tableDraftProfileId,
+        tableAnnotationDrafts,
+        tableInstructionDrafts
+      )
+    : undefined;
+  const contextMenuImageIsDirty = Boolean(contextMenuChange);
   const canImportImagesToFolder =
     isImportableDatasetChild(selectedProject) && Boolean(selectedProject?.datasetId);
   const workspaceViewTransitionKey = `${selectedProjectId ?? "none"}:${activeTab}:${
@@ -1391,8 +1450,44 @@ export function DatasetWorkspace() {
     setImageContextMenu({
       image,
       left: Math.min(event.clientX, window.innerWidth - 180),
-      top: Math.min(event.clientY, window.innerHeight - 96)
+      top: Math.min(event.clientY, window.innerHeight - 168)
     });
+  };
+
+  const discardImageChanges = (image: DatasetImage) => {
+    if (contextMenuProfileId === undefined) return;
+
+    const annotation = getAnnotationForProfile(image, contextMenuProfileId);
+    applyTableDraft(contextMenuProfileId, image.id, {
+      content: annotation?.content ?? "",
+      instruction: annotation?.instruction ?? ""
+    });
+    setImageContextMenu(undefined);
+  };
+
+  const saveImageChanges = async (image: DatasetImage) => {
+    if (!contextMenuChange || isSavingImageChanges) return;
+
+    setIsSavingImageChanges(true);
+    try {
+      await saveAnnotationChanges([contextMenuChange]);
+      if (contextMenuChange.content !== undefined) {
+        markTableCellSaved(`${image.id}:annotation`);
+      }
+      if (contextMenuChange.instruction !== undefined) {
+        markTableCellSaved(`${image.id}:instruction`);
+      }
+      setImageContextMenu(undefined);
+    } catch (error) {
+      addAppLog(
+        t("appLog.menuActionFailed", {
+          message: formatAppError(error)
+        }),
+        "error"
+      );
+    } finally {
+      setIsSavingImageChanges(false);
+    }
   };
 
   const startRenameImage = (image: DatasetImage) => {
@@ -1652,6 +1747,31 @@ export function DatasetWorkspace() {
               onContextMenu={(event) => event.preventDefault()}
             >
               <div className="app-dropdown-backdrop" />
+              <button
+                type="button"
+                className="app-dropdown-item flex h-9 w-full items-center px-3.5 text-left text-[12px] font-medium text-neutral-700 transition hover:bg-neutral-100 disabled:cursor-not-allowed disabled:text-neutral-400 disabled:hover:bg-transparent"
+                disabled={!contextMenuImageIsDirty || isSavingImageChanges || !contextMenuImage}
+                onClick={() => {
+                  if (contextMenuImage) {
+                    discardImageChanges(contextMenuImage);
+                  }
+                }}
+              >
+                <span>{t("itemMenu.discardChanges")}</span>
+              </button>
+              <button
+                type="button"
+                className="app-dropdown-item flex h-9 w-full items-center px-3.5 text-left text-[12px] font-medium text-neutral-700 transition hover:bg-neutral-100 disabled:cursor-not-allowed disabled:text-neutral-400 disabled:hover:bg-transparent"
+                disabled={!contextMenuImageIsDirty || isSavingImageChanges || !contextMenuImage}
+                onClick={() => {
+                  if (contextMenuImage) {
+                    void saveImageChanges(contextMenuImage);
+                  }
+                }}
+              >
+                <span>{t("itemMenu.saveChanges")}</span>
+              </button>
+              <div className="app-dropdown-separator my-1.5 h-px bg-neutral-200" />
               <button
                 type="button"
                 className="app-dropdown-item flex h-9 w-full items-center px-3.5 text-left text-[12px] font-medium text-neutral-700 transition hover:bg-neutral-100"

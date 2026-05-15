@@ -307,6 +307,8 @@
     "keptTitle": "仍会保留的："
   },
   "itemMenu": {
+    "discardChanges": "放弃更改",
+    "saveChanges": "保存更改",
     "rename": "重命名",
     "delete": "删除",
     "renameTitle": "重命名条目",

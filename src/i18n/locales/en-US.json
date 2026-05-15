@@ -307,6 +307,8 @@
     "keptTitle": "Kept:"
   },
   "itemMenu": {
+    "discardChanges": "Discard changes",
+    "saveChanges": "Save changes",
     "rename": "Rename",
     "delete": "Delete",
     "renameTitle": "Rename item",
