@@ -8,6 +8,7 @@ mod folders;
 mod gemini;
 mod model_settings;
 mod python_env;
+mod tag_sheet;
 mod thumbnail;
 mod thumbnail_settings;
 mod wd14_tagger;
@@ -151,6 +152,7 @@ pub fn run() {
             commands::generate_gemini_annotation,
             commands::generate_wd14_annotation,
             commands::generate_wd14_annotations,
+            commands::list_danbooru_style_tags,
             commands::get_python_env_settings,
             commands::save_python_env_settings,
             commands::get_model_settings,

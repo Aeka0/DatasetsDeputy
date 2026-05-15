@@ -20,6 +20,7 @@ use crate::{
     gemini::{self, GeminiSettings},
     model_settings::{self, ModelSettings},
     python_env::{self, PythonEnvInstallResult, PythonEnvProbeReport, PythonEnvSettings},
+    tag_sheet,
     thumbnail,
     thumbnail_settings::{self, ThumbnailSettings},
     wd14_tagger,
@@ -1111,6 +1112,11 @@ pub async fn generate_wd14_annotations(
     })
     .await
     .map_err(|error| AppError::InvalidInput(format!("WD14 annotation task failed: {error}")))?
+}
+
+#[tauri::command]
+pub fn list_danbooru_style_tags() -> AppResult<Vec<String>> {
+    tag_sheet::danbooru_style_tags()
 }
 
 #[tauri::command]

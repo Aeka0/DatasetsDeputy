@@ -51,7 +51,7 @@
     "active": true,
     "targets": "all",
     "icon": ["icons/icon.ico"],
-    "resources": [],
+    "resources": ["../assets/tagsheet/danbooru-full.csv"],
     "externalBin": [],
     "windows": {
       "wix": {

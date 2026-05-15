@@ -45,6 +45,7 @@
     "batchAdd": "Batch add fields",
     "batchReplace": "Batch replace",
     "batchAnnotationFormatConversion": "Batch annotation format conversion",
+    "batchAnnotationNormalization": "Batch normalize annotations",
     "backToGrid": "Back to dataset",
     "clearSearch": "Clear search",
     "expandFileTree": "Show sidebar",
@@ -105,8 +106,34 @@
     "descriptionNaturalLanguageToAnima": "Convert natural language to Anima-format annotations. This conversion relies on an LLM.",
     "placeholderLineOne": "Convert annotations in the current training set for different annotation formats.",
     "placeholderLineTwo": "Some conversions require LLM API access, and conversion quality depends on the model.",
-    "addQualityWords": "Add quality words",
+    "stepOneTitle": "Step 1 - Add prefix to style tags",
+    "stepOneDescription": "An @ will be added before every style tag.",
+    "stepTwoTitle": "Step 2 - Add quality words",
+    "addMethod": "Add method",
+    "qualityWordsNone": "Do not add",
+    "qualityWordsPrefix": "Prefix",
+    "qualityWordsSuffix": "Suffix",
+    "reverseStepOneTitle": "Step 1 - Remove @ prefixes",
+    "reverseStepOneDescription": "Remove every @ before style tags.",
+    "reverseStepTwoTitle": "Step 2 - Remove quality words",
+    "reverseStepTwoDescription": "Find quality words and remove them.",
+    "reverseStepThreeTitle": "Step 3 - Remove isolated punctuation",
+    "reverseStepThreeDescription": "Remove isolated punctuation left behind by the conversion.",
     "execute": "Run conversion"
+  },
+  "annotationNormalization": {
+    "title": "Batch normalize annotations",
+    "description": "Process all annotations under the current annotation profile in the current dataset.",
+    "execute": "Run normalization",
+    "options": {
+      "lowercase": "Lowercase",
+      "halfWidth": "Use half-width",
+      "removeSpecial": "Remove special brackets",
+      "underscoreToSpace": "Underscores to spaces",
+      "removeNewlines": "Newlines to separators",
+      "removeJunk": "Remove common junk",
+      "removeNonAscii": "Remove non-ASCII"
+    }
   },
   "tools": {
     "formatValidator": {
@@ -510,6 +537,8 @@
     "savedMarksCleared": "Saved markers cleared.",
     "batchAddComplete": "Batch add prepared {{count}} row(s) as unsaved drafts.",
     "batchReplaceComplete": "Batch replace prepared {{count}} row(s) as unsaved drafts.",
+    "batchAnnotationNormalizationComplete": "Batch normalization processed {{count}} row(s).",
+    "annotationFormatConversionComplete": "Annotation format conversion processed {{count}} row(s).",
     "batchAutoSaveFailed": "Batch auto-save failed: {{message}}",
     "menuActionFailed": "Menu action failed: {{message}}",
     "annotationScopeSelected": "Selected images",

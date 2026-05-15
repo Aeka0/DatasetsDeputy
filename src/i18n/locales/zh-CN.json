@@ -45,6 +45,7 @@
     "batchAdd": "批量添加字段",
     "batchReplace": "批量替换",
     "batchAnnotationFormatConversion": "批量标注格式转换",
+    "batchAnnotationNormalization": "批量标准化标注",
     "backToGrid": "返回数据集",
     "clearSearch": "清空搜索",
     "expandFileTree": "显示侧边栏",
@@ -105,8 +106,34 @@
     "descriptionNaturalLanguageToAnima": "将自然语言转换为 Anima 格式的标注。此类转换需要依赖 LLM。",
     "placeholderLineOne": "针对不同格式的标注格式进行当前训练集的标注转换。",
     "placeholderLineTwo": "部分转换需要接入 LLM API，转换质量取决于模型。",
-    "addQualityWords": "添加质量词",
+    "stepOneTitle": "Step 1 - 风格词增加前缀",
+    "stepOneDescription": "将会为所有风格词前方增加一个 @。",
+    "stepTwoTitle": "Step 2 - 添加质量词",
+    "addMethod": "添加方式",
+    "qualityWordsNone": "不添加",
+    "qualityWordsPrefix": "前缀",
+    "qualityWordsSuffix": "后缀",
+    "reverseStepOneTitle": "Step 1 - 去除 @ 前缀",
+    "reverseStepOneDescription": "将风格词前方的所有 @ 去除。",
+    "reverseStepTwoTitle": "Step 2 - 去除质量词",
+    "reverseStepTwoDescription": "找到质量词并去除。",
+    "reverseStepThreeTitle": "Step 3 - 移除孤立标点符号",
+    "reverseStepThreeDescription": "移除转换后残留的孤立标点符号。",
     "execute": "执行转换"
+  },
+  "annotationNormalization": {
+    "title": "批量标准化标注",
+    "description": "处理当前数据集当前标注分类下的全部标注内容。",
+    "execute": "执行标准化",
+    "options": {
+      "lowercase": "转为小写",
+      "halfWidth": "转为半角",
+      "removeSpecial": "移除特殊括号",
+      "underscoreToSpace": "下划线转空格",
+      "removeNewlines": "换行转分隔",
+      "removeJunk": "移除常见冗余词",
+      "removeNonAscii": "移除非 ASCII 字符"
+    }
   },
   "tools": {
     "formatValidator": {
@@ -510,6 +537,8 @@
     "savedMarksCleared": "已清理保存标记。",
     "batchAddComplete": "批量添加已生成 {{count}} 行未保存草稿。",
     "batchReplaceComplete": "批量替换已生成 {{count}} 行未保存草稿。",
+    "batchAnnotationNormalizationComplete": "批量标准化已处理 {{count}} 行。",
+    "annotationFormatConversionComplete": "标注格式转换已处理 {{count}} 行。",
     "batchAutoSaveFailed": "批处理自动保存失败：{{message}}",
     "menuActionFailed": "菜单操作失败：{{message}}",
     "annotationScopeSelected": "选中图片",

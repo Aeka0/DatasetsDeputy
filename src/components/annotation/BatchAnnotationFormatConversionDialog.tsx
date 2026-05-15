@@ -2,30 +2,44 @@ import { ArrowLeftRight, X } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
+import type { QualityWordPlacement } from "../../lib/annotationFormatConversion";
 import { AnimatedPortal, useAnimatedPortalClose } from "../ui/AnimatedPortal";
 import { AppSelect, type AppSelectOption } from "../ui/AppSelect";
 import { Button } from "../ui/Button";
 
-type AnnotationFormat = "unset" | "booruTag" | "anima" | "naturalLanguage";
+export type AnnotationFormat = "unset" | "booruTag" | "anima" | "naturalLanguage";
 type UsableAnnotationFormat = Exclude<AnnotationFormat, "unset">;
 type ConversionRuleKey = `${UsableAnnotationFormat}->${UsableAnnotationFormat}`;
 
+export interface BatchAnnotationFormatConversionOptions {
+  currentFormat: UsableAnnotationFormat;
+  targetFormat: UsableAnnotationFormat;
+  qualityWordPlacement: QualityWordPlacement;
+}
+
 interface BatchAnnotationFormatConversionDialogProps {
   onClose: () => void;
+  onConfirm: (options: BatchAnnotationFormatConversionOptions) => void | Promise<void>;
 }
 
 interface ConversionRule {
   descriptionKey: string;
-  renderOptions?: () => ReactNode;
+  renderOptions?: (context: ConversionRuleContext) => ReactNode;
+}
+
+interface ConversionRuleContext {
+  qualityWordPlacement: QualityWordPlacement;
+  setQualityWordPlacement: (placement: QualityWordPlacement) => void;
 }
 
 const conversionRules: Partial<Record<ConversionRuleKey, ConversionRule>> = {
   "booruTag->anima": {
     descriptionKey: "annotationFormatConversion.descriptionBooruTagToAnima",
-    renderOptions: () => <BooruTagToAnimaOptions />
+    renderOptions: (context) => <BooruTagToAnimaOptions {...context} />
   },
   "anima->booruTag": {
-    descriptionKey: "annotationFormatConversion.descriptionAnimaToBooruTag"
+    descriptionKey: "annotationFormatConversion.descriptionAnimaToBooruTag",
+    renderOptions: () => <AnimaToBooruTagOptions />
   },
   "booruTag->naturalLanguage": {
     descriptionKey: "annotationFormatConversion.descriptionBooruTagToNaturalLanguage"
@@ -52,28 +66,101 @@ function buildRuleKey(
   return `${currentFormat}->${targetFormat}`;
 }
 
-function BooruTagToAnimaOptions() {
+function BooruTagToAnimaOptions({
+  qualityWordPlacement,
+  setQualityWordPlacement
+}: ConversionRuleContext) {
+  const { t } = useTranslation();
+  const qualityWordOptions: AppSelectOption<QualityWordPlacement>[] = [
+    {
+      value: "none",
+      label: t("annotationFormatConversion.qualityWordsNone")
+    },
+    {
+      value: "prefix",
+      label: t("annotationFormatConversion.qualityWordsPrefix")
+    },
+    {
+      value: "suffix",
+      label: t("annotationFormatConversion.qualityWordsSuffix")
+    }
+  ];
+
+  return (
+    <div className="space-y-3">
+      <section className="rounded-lg border border-neutral-200 bg-white">
+        <div className="border-b border-neutral-100 px-4 py-3 text-[13px] font-semibold text-neutral-900">
+          {t("annotationFormatConversion.stepOneTitle")}
+        </div>
+        <div className="px-4 py-3 text-[13px] leading-6 text-neutral-700">
+          {t("annotationFormatConversion.stepOneDescription")}
+        </div>
+      </section>
+
+      <section className="rounded-lg border border-neutral-200 bg-white">
+        <div className="border-b border-neutral-100 px-4 py-3 text-[13px] font-semibold text-neutral-900">
+          {t("annotationFormatConversion.stepTwoTitle")}
+        </div>
+        <div className="grid min-h-12 grid-cols-[92px_minmax(0,1fr)] items-center gap-3 px-4 py-3">
+          <div className="text-[13px] text-neutral-700">
+            {t("annotationFormatConversion.addMethod")}
+          </div>
+          <AppSelect
+            value={qualityWordPlacement}
+            options={qualityWordOptions}
+            onChange={setQualityWordPlacement}
+          />
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function AnimaToBooruTagOptions() {
   const { t } = useTranslation();
 
   return (
-    <section className="rounded-lg border border-neutral-200 bg-white">
-      <div className="px-4 py-3">
-        <label className="flex min-h-8 items-center gap-2 text-[13px] text-neutral-700">
-          <input type="checkbox" />
-          {t("annotationFormatConversion.addQualityWords")}
-        </label>
-      </div>
-    </section>
+    <div className="space-y-3">
+      <section className="rounded-lg border border-neutral-200 bg-white">
+        <div className="border-b border-neutral-100 px-4 py-3 text-[13px] font-semibold text-neutral-900">
+          {t("annotationFormatConversion.reverseStepOneTitle")}
+        </div>
+        <div className="px-4 py-3 text-[13px] leading-6 text-neutral-700">
+          {t("annotationFormatConversion.reverseStepOneDescription")}
+        </div>
+      </section>
+
+      <section className="rounded-lg border border-neutral-200 bg-white">
+        <div className="border-b border-neutral-100 px-4 py-3 text-[13px] font-semibold text-neutral-900">
+          {t("annotationFormatConversion.reverseStepTwoTitle")}
+        </div>
+        <div className="px-4 py-3 text-[13px] leading-6 text-neutral-700">
+          {t("annotationFormatConversion.reverseStepTwoDescription")}
+        </div>
+      </section>
+
+      <section className="rounded-lg border border-neutral-200 bg-white">
+        <div className="border-b border-neutral-100 px-4 py-3 text-[13px] font-semibold text-neutral-900">
+          {t("annotationFormatConversion.reverseStepThreeTitle")}
+        </div>
+        <div className="px-4 py-3 text-[13px] leading-6 text-neutral-700">
+          {t("annotationFormatConversion.reverseStepThreeDescription")}
+        </div>
+      </section>
+    </div>
   );
 }
 
 export function BatchAnnotationFormatConversionDialog({
-  onClose
+  onClose,
+  onConfirm
 }: BatchAnnotationFormatConversionDialogProps) {
   const { t } = useTranslation();
   const { open, close } = useAnimatedPortalClose(onClose);
   const [currentFormat, setCurrentFormat] = useState<AnnotationFormat>("unset");
   const [targetFormat, setTargetFormat] = useState<AnnotationFormat>("unset");
+  const [qualityWordPlacement, setQualityWordPlacement] =
+    useState<QualityWordPlacement>("none");
   const hasFormatsSelected =
     isUsableFormat(currentFormat) && isUsableFormat(targetFormat);
   const activeRule = hasFormatsSelected
@@ -180,7 +267,12 @@ export function BatchAnnotationFormatConversionDialog({
                   <div>{t("annotationFormatConversion.placeholderLineTwo")}</div>
                 </div>
               ) : activeRule?.renderOptions ? (
-                <div className="w-full">{activeRule.renderOptions()}</div>
+                <div className="w-full">
+                  {activeRule.renderOptions({
+                    qualityWordPlacement,
+                    setQualityWordPlacement
+                  })}
+                </div>
               ) : null}
             </div>
           </div>
@@ -189,7 +281,18 @@ export function BatchAnnotationFormatConversionDialog({
             <Button type="button" variant="secondary" onClick={close}>
               {t("actions.cancel")}
             </Button>
-            <Button type="button" disabled={!hasFormatsSelected} onClick={close}>
+            <Button
+              type="button"
+              disabled={!hasFormatsSelected}
+              onClick={() => {
+                if (!hasFormatsSelected) return;
+                void onConfirm({
+                  currentFormat,
+                  targetFormat,
+                  qualityWordPlacement
+                });
+              }}
+            >
               {t("annotationFormatConversion.execute")}
             </Button>
           </footer>

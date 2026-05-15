@@ -10,6 +10,14 @@ import {
   generateAnnotationPrompt,
   type AnnotationPromptSettings
 } from "../../lib/annotationPrompt";
+import {
+  convertAnimaToBooruTag,
+  convertBooruTagToAnima
+} from "../../lib/annotationFormatConversion";
+import {
+  normalizeAnnotation,
+  type AnnotationNormalizationOptions
+} from "../../lib/annotationNormalization";
 import { formatAppError } from "../../lib/errors";
 import { formatDialogMenuLabel } from "../../lib/menuLabels";
 import { findProject, formatProjectPath, getProjectDisplayName } from "../../lib/projects";
@@ -22,7 +30,11 @@ import {
   type AnnotationConflictStrategy,
   type AnnotationExecutionScope
 } from "../annotation/AnnotationExecutionDialog";
-import { BatchAnnotationFormatConversionDialog } from "../annotation/BatchAnnotationFormatConversionDialog";
+import {
+  BatchAnnotationFormatConversionDialog,
+  type BatchAnnotationFormatConversionOptions
+} from "../annotation/BatchAnnotationFormatConversionDialog";
+import { BatchAnnotationNormalizationDialog } from "../annotation/BatchAnnotationNormalizationDialog";
 import { PromptManagementDialog } from "../annotation/PromptManagementDialog";
 import { Wd14TaggerSettingsDialog } from "../annotation/Wd14TaggerSettingsDialog";
 import { SettingsDialog } from "../settings/SettingsDialog";
@@ -40,6 +52,7 @@ type DialogKey =
   | "batchAdd"
   | "batchReplace"
   | "batchAnnotationFormatConversion"
+  | "batchAnnotationNormalization"
   | "formatValidator"
   | "trainingCacheCleaner"
   | "about";
@@ -508,6 +521,7 @@ export function TitleMenuBar({
     autoSaveAfterAnnotation,
     autoSaveAfterBatch,
     setAppView,
+    setWorkspaceTab,
     addAppLog,
     setViewFilter,
     clearTableSavedCellMarks,
@@ -536,6 +550,7 @@ export function TitleMenuBar({
       autoSaveAfterAnnotation: state.autoSaveAfterAnnotation,
       autoSaveAfterBatch: state.autoSaveAfterBatch,
       setAppView: state.setAppView,
+      setWorkspaceTab: state.setWorkspaceTab,
       addAppLog: state.addAppLog,
       setViewFilter: state.setViewFilter,
       clearTableSavedCellMarks: state.clearTableSavedCellMarks,
@@ -764,6 +779,89 @@ export function TitleMenuBar({
     setDialog(undefined);
   };
 
+  const applyAnnotationFormatConversion = async (
+    options: BatchAnnotationFormatConversionOptions
+  ) => {
+    try {
+      if (selectedProfileId === undefined) {
+        setDialog(undefined);
+        return;
+      }
+
+      const isBooruTagToAnima =
+        options.currentFormat === "booruTag" && options.targetFormat === "anima";
+      const isAnimaToBooruTag =
+        options.currentFormat === "anima" && options.targetFormat === "booruTag";
+      if (!isBooruTagToAnima && !isAnimaToBooruTag) {
+        setDialog(undefined);
+        return;
+      }
+
+      const styleTags = isBooruTagToAnima
+        ? new Set(await invokeCommand<string[]>("list_danbooru_style_tags"))
+        : undefined;
+      setWorkspaceTab("table");
+
+      const changes = getBatchTargetImages("all")
+        .map((image) => {
+          const current = getCurrentAnnotationDraft(image, selectedProfileId);
+          const next = isBooruTagToAnima
+            ? convertBooruTagToAnima(
+                current,
+                styleTags ?? new Set<string>(),
+                options.qualityWordPlacement
+              )
+            : convertAnimaToBooruTag(current);
+
+          return next !== current
+            ? {
+                imageId: image.id,
+                content: next
+              }
+            : undefined;
+        })
+        .filter((draft): draft is { imageId: number; content: string } => Boolean(draft));
+
+      if (changes.length > 0) {
+        await finalizeBatchChanges(changes);
+      }
+      addAppLog(t("appLog.annotationFormatConversionComplete", { count: changes.length }));
+      setDialog(undefined);
+    } catch (error) {
+      addAppLog(t("appLog.menuActionFailed", { message: formatAppError(error) }), "error");
+    }
+  };
+
+  const applyBatchAnnotationNormalization = async (
+    options: AnnotationNormalizationOptions
+  ) => {
+    if (selectedProfileId === undefined) {
+      setDialog(undefined);
+      return;
+    }
+
+    setWorkspaceTab("table");
+    const changes = getBatchTargetImages("all")
+      .map((image) => {
+        const current = getCurrentAnnotationDraft(image, selectedProfileId);
+        const next = normalizeAnnotation(current, options);
+
+        return next !== current
+          ? {
+              imageId: image.id,
+              content: next
+            }
+          : undefined;
+      })
+      .filter((draft): draft is { imageId: number; content: string } => Boolean(draft));
+
+    if (changes.length > 0) {
+      await finalizeBatchChanges(changes);
+    }
+    addAppLog(t("appLog.batchAnnotationNormalizationComplete", { count: changes.length }));
+    setDialog(undefined);
+  };
+
   const menus: Record<MenuKey, MenuEntry[]> = {
     file: [
       {
@@ -804,8 +902,15 @@ export function TitleMenuBar({
       },
       {
         label: t("menu.batchAnnotationFormatConversion"),
+        disabled: !canBatchEdit,
         opensDialog: true,
         onSelect: () => setDialog("batchAnnotationFormatConversion")
+      },
+      {
+        label: t("menu.batchAnnotationNormalization"),
+        disabled: !canBatchEdit,
+        opensDialog: true,
+        onSelect: () => setDialog("batchAnnotationNormalization")
       }
     ],
     annotation: [
@@ -1362,7 +1467,16 @@ export function TitleMenuBar({
         />
       ) : null}
       {dialog === "batchAnnotationFormatConversion" ? (
-        <BatchAnnotationFormatConversionDialog onClose={() => setDialog(undefined)} />
+        <BatchAnnotationFormatConversionDialog
+          onClose={() => setDialog(undefined)}
+          onConfirm={applyAnnotationFormatConversion}
+        />
+      ) : null}
+      {dialog === "batchAnnotationNormalization" ? (
+        <BatchAnnotationNormalizationDialog
+          onClose={() => setDialog(undefined)}
+          onConfirm={applyBatchAnnotationNormalization}
+        />
       ) : null}
       {dialog === "annotationExecution" && selectedProject ? (
         <AnnotationExecutionDialog
