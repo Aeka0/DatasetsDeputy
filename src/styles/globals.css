@@ -96,6 +96,10 @@ textarea {
   background: #e0e0e0;
 }
 
+.rich-textarea-input::selection {
+  color: var(--app-text);
+}
+
 ::-webkit-scrollbar {
   width: 0;
   height: 0;
@@ -670,6 +674,10 @@ html[data-theme="dark"] {
 
 html[data-theme="dark"] ::selection {
   background: #565656;
+  color: #f5f5f5;
+}
+
+html[data-theme="dark"] .rich-textarea-input::selection {
   color: #f5f5f5;
 }
 

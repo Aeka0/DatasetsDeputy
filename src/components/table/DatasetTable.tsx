@@ -836,7 +836,7 @@ export function DatasetTable({
                     onChange={(event) => updateTableAnnotationDraft(image.id, event.target.value)}
                     onKeyDown={(event) => moveFocusToAdjacentRow(image.id, "annotation", event)}
                     className={cn(
-                      "glass-input h-[100px] w-full resize-none rounded-md p-2 text-[13px] leading-5 disabled:cursor-wait disabled:opacity-80",
+                      "rich-textarea-input glass-input h-[100px] w-full resize-none rounded-md p-2 text-[13px] leading-5 disabled:cursor-wait disabled:opacity-80",
                       getCellStateClass(image.id, "annotation")
                     )}
                     style={{ width: "100%", height: "100px" }}
@@ -866,7 +866,7 @@ export function DatasetTable({
                     onChange={(event) => updateTableInstructionDraft(image.id, event.target.value)}
                     onKeyDown={(event) => moveFocusToAdjacentRow(image.id, "instruction", event)}
                     className={cn(
-                      "glass-input h-[100px] w-full resize-none rounded-md p-2 text-[13px] leading-5",
+                      "rich-textarea-input glass-input h-[100px] w-full resize-none rounded-md p-2 text-[13px] leading-5",
                       getCellStateClass(image.id, "instruction")
                     )}
                     style={{ width: "100%", height: "100px" }}
