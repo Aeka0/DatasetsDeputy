@@ -158,10 +158,17 @@ textarea {
 
 .hover-scrollbar:hover > .overlay-scrollbar-thumb {
   opacity: 1;
+  pointer-events: auto;
 }
 
-.hover-scrollbar:hover > .overlay-scrollbar-thumb:hover {
-  background-color: var(--app-scrollbar-thumb-hover);
+.hover-scrollbar:hover > .overlay-scrollbar-thumb:hover,
+.overlay-scrollbar-thumb-dragging {
+  background-color: var(--app-scrollbar-thumb-hover) !important;
+}
+
+.overlay-scrollbar-thumb-dragging {
+  opacity: 1 !important;
+  pointer-events: auto !important;
 }
 
 .app-drag-region {

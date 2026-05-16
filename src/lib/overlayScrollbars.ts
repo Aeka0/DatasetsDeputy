@@ -69,6 +69,57 @@ function setupHost(host: HTMLElement) {
     });
   };
 
+  const onScroll = () => {
+    updateThumbs(host, verticalThumb, horizontalThumb);
+  };
+
+  const makeDraggable = (thumb: HTMLElement, isVertical: boolean) => {
+    let startPos = 0;
+    let startScroll = 0;
+
+    const onPointerMove = (e: PointerEvent) => {
+      const { clientHeight, clientWidth, scrollHeight, scrollWidth } = host;
+      if (isVertical) {
+        const thumbHeight = Math.max(28, Math.round((clientHeight / scrollHeight) * clientHeight));
+        const maxThumbY = clientHeight - thumbHeight - 4;
+        const maxScrollY = scrollHeight - clientHeight;
+        if (maxThumbY > 0) {
+          const deltaY = e.clientY - startPos;
+          host.scrollTop = startScroll + deltaY * (maxScrollY / maxThumbY);
+        }
+      } else {
+        const thumbWidth = Math.max(28, Math.round((clientWidth / scrollWidth) * clientWidth));
+        const maxThumbX = clientWidth - thumbWidth - 4;
+        const maxScrollX = scrollWidth - clientWidth;
+        if (maxThumbX > 0) {
+          const deltaX = e.clientX - startPos;
+          host.scrollLeft = startScroll + deltaX * (maxScrollX / maxThumbX);
+        }
+      }
+    };
+
+    const onPointerUp = () => {
+      document.removeEventListener("pointermove", onPointerMove);
+      document.removeEventListener("pointerup", onPointerUp);
+      document.removeEventListener("pointercancel", onPointerUp);
+      thumb.classList.remove("overlay-scrollbar-thumb-dragging");
+    };
+
+    thumb.addEventListener("pointerdown", (e: PointerEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      startPos = isVertical ? e.clientY : e.clientX;
+      startScroll = isVertical ? host.scrollTop : host.scrollLeft;
+      document.addEventListener("pointermove", onPointerMove);
+      document.addEventListener("pointerup", onPointerUp);
+      document.addEventListener("pointercancel", onPointerUp);
+      thumb.classList.add("overlay-scrollbar-thumb-dragging");
+    });
+  };
+
+  makeDraggable(verticalThumb, true);
+  makeDraggable(horizontalThumb, false);
+
   const resizeObserver = new ResizeObserver(requestUpdate);
   resizeObserver.observe(host);
 
@@ -106,7 +157,7 @@ function setupHost(host: HTMLElement) {
     subtree: true
   });
 
-  host.addEventListener("scroll", requestUpdate, { passive: true });
+  host.addEventListener("scroll", onScroll, { passive: true });
   host.addEventListener("pointerenter", requestUpdate);
   host.addEventListener("focusin", requestUpdate);
   requestUpdate();
@@ -117,7 +168,7 @@ function setupHost(host: HTMLElement) {
       resizeObserver.disconnect();
       contentResizeObserver.disconnect();
       contentObserver.disconnect();
-      host.removeEventListener("scroll", requestUpdate);
+      host.removeEventListener("scroll", onScroll);
       host.removeEventListener("pointerenter", requestUpdate);
       host.removeEventListener("focusin", requestUpdate);
       verticalThumb.remove();
