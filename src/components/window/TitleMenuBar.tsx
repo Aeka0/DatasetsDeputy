@@ -11,8 +11,8 @@ import {
   type AnnotationPromptSettings
 } from "../../lib/annotationPrompt";
 import {
-  convertAnimaToBooruTag,
-  convertBooruTagToAnima
+  getAnnotationFormatConverter,
+  prepareAnnotationFormatConversion
 } from "../../lib/annotationFormatConversion";
 import {
   normalizeAnnotation,
@@ -527,6 +527,8 @@ export function TitleMenuBar({
     clearTableSavedCellMarks,
     openImportWizard,
     openExportDialog,
+    openImportDatabaseDialog,
+    openExportDatabaseDialog,
     load,
     applyGeneratedAnnotationDraft,
     applyBatchTableDrafts,
@@ -556,6 +558,8 @@ export function TitleMenuBar({
       clearTableSavedCellMarks: state.clearTableSavedCellMarks,
       openImportWizard: state.openImportWizard,
       openExportDialog: state.openExportDialog,
+      openImportDatabaseDialog: state.openImportDatabaseDialog,
+      openExportDatabaseDialog: state.openExportDatabaseDialog,
       load: state.load,
       applyGeneratedAnnotationDraft: state.applyGeneratedAnnotationDraft,
       applyBatchTableDrafts: state.applyBatchTableDrafts,
@@ -580,6 +584,9 @@ export function TitleMenuBar({
     formatProjectPath(projects, selectedProjectId, getSelectedProjectDisplayName) ??
     (selectedProject ? getSelectedProjectDisplayName(selectedProject) : "");
   const canRunAnnotation = isAnnotatableProject(selectedProject) && !isAnnotationRunning;
+  const hasDatabaseDatasets = images.some(
+    (image) => image.sourceKind === "database" || image.sourceKind === "asset"
+  );
   const selectedProjectImageIds = new Set(selectedProject?.imageIds ?? []);
   const selectedTargetImageIds = selectedImageIds.filter((imageId) =>
     selectedProjectImageIds.has(imageId)
@@ -788,30 +795,25 @@ export function TitleMenuBar({
         return;
       }
 
-      const isBooruTagToAnima =
-        options.currentFormat === "booruTag" && options.targetFormat === "anima";
-      const isAnimaToBooruTag =
-        options.currentFormat === "anima" && options.targetFormat === "booruTag";
-      if (!isBooruTagToAnima && !isAnimaToBooruTag) {
+      const converter = getAnnotationFormatConverter(
+        options.currentFormat,
+        options.targetFormat
+      );
+      if (!converter) {
         setDialog(undefined);
         return;
       }
 
-      const styleTags = isBooruTagToAnima
-        ? new Set(await invokeCommand<string[]>("list_danbooru_style_tags"))
-        : undefined;
+      const conversionContext = await prepareAnnotationFormatConversion(converter, {
+        loadDanbooruStyleTags: async () =>
+          new Set(await invokeCommand<string[]>("list_danbooru_style_tags"))
+      });
       setWorkspaceTab("table");
 
       const changes = getBatchTargetImages("all")
         .map((image) => {
           const current = getCurrentAnnotationDraft(image, selectedProfileId);
-          const next = isBooruTagToAnima
-            ? convertBooruTagToAnima(
-                current,
-                styleTags ?? new Set<string>(),
-                options.qualityWordPlacement
-              )
-            : convertAnimaToBooruTag(current);
+          const next = converter.convert(current, options, conversionContext);
 
           return next !== current
             ? {
@@ -875,6 +877,19 @@ export function TitleMenuBar({
         disabled: images.length === 0 || isLoading,
         opensDialog: true,
         onSelect: openExportDialog
+      },
+      { type: "separator" },
+      {
+        label: t("menu.importDatabase"),
+        disabled: isLoading,
+        opensDialog: true,
+        onSelect: openImportDatabaseDialog
+      },
+      {
+        label: t("menu.exportDatabase"),
+        disabled: !hasDatabaseDatasets || isLoading,
+        opensDialog: true,
+        onSelect: openExportDatabaseDialog
       },
       {
         label: t("menu.refresh"),

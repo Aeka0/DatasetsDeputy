@@ -195,6 +195,8 @@ pub fn run() {
             commands::consolidate_loose_files,
             commands::delete_loose_files,
             commands::delete_workspace_subfolder,
+            commands::start_export_database,
+            commands::import_database,
             commands::prepare_export_dataset,
             commands::start_export_dataset,
             commands::scan_training_cache,

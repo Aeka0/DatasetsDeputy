@@ -12,6 +12,8 @@ import { ImportProgressView } from "./components/content/ImportProgressView";
 import { ImportReportView } from "./components/content/ImportReportView";
 import { ImportWizardView } from "./components/content/ImportWizardView";
 import { WelcomeView } from "./components/content/WelcomeView";
+import { ExportDatabaseDialog } from "./components/database/ExportDatabaseDialog";
+import { ImportDatabaseDialog } from "./components/database/ImportDatabaseDialog";
 import { ExportDialog } from "./components/export/ExportDialog";
 import { ProjectTree } from "./components/sidebar/ProjectTree";
 import { TitleMenuBar } from "./components/window/TitleMenuBar";
@@ -163,6 +165,7 @@ export default function App() {
       loadWindowRendering,
       store.initImportEvents(),
       store.initExportEvents(),
+      store.initDatabaseExportEvents(),
       store.load()
     ])
       .catch((error) => {
@@ -330,6 +333,8 @@ export default function App() {
         </section>
       </div>
       <ExportDialog />
+      <ExportDatabaseDialog />
+      <ImportDatabaseDialog />
       <AnimatedPortal open={showUnsavedExitDialog}>
         <div className="no-drag fixed inset-0 z-[90] flex items-center justify-center bg-neutral-950/24 px-5">
           <section

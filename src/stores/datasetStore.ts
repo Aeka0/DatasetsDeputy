@@ -10,6 +10,10 @@ import type { TableDraftMap } from "../lib/tableDrafts";
 import type {
   AnnotationChange,
   AnnotationProfile,
+  DatabaseExportProgress,
+  DatabaseExportRequest,
+  DatabaseImportRequest,
+  DatabaseImportResult,
   DatasetImage,
   DatasetProject,
   DatasetSourceKind,
@@ -147,6 +151,7 @@ const sampleProjects: DatasetProject[] = [
 
 let unlistenImportProgress: UnlistenFn | undefined;
 let unlistenExportProgress: UnlistenFn | undefined;
+let unlistenDatabaseExportProgress: UnlistenFn | undefined;
 const thumbnailRequestsInFlight = new Set<number>();
 
 function normalizePath(path: string) {
@@ -470,13 +475,17 @@ interface DatasetState {
   importReport?: ImportReport;
   exportPreview?: ExportPreview;
   exportProgress?: ExportProgress;
+  databaseExportProgress?: DatabaseExportProgress;
   pendingImportKind?: PendingImportKind;
   preparedImportKind?: Exclude<DatasetSourceKind, "folder">;
   showImportWizard: boolean;
   showExportDialog: boolean;
+  showExportDatabaseDialog: boolean;
+  showImportDatabaseDialog: boolean;
   annotationType: string;
   initImportEvents: () => Promise<void>;
   initExportEvents: () => Promise<void>;
+  initDatabaseExportEvents: () => Promise<void>;
   load: () => Promise<void>;
   refreshImages: () => Promise<void>;
   ensureThumbnails: (imageIds: number[]) => Promise<void>;
@@ -501,6 +510,12 @@ interface DatasetState {
   closeExportDialog: () => void;
   prepareExportDataset: (request: ExportDatasetRequest) => Promise<ExportPreview | undefined>;
   startExportDataset: (request: ExportDatasetRequest) => Promise<void>;
+  openExportDatabaseDialog: () => void;
+  closeExportDatabaseDialog: () => void;
+  openImportDatabaseDialog: () => void;
+  closeImportDatabaseDialog: () => void;
+  startExportDatabase: (request: DatabaseExportRequest) => Promise<void>;
+  importDatabase: (request: DatabaseImportRequest) => Promise<DatabaseImportResult | undefined>;
   setAppView: (view: AppView) => void;
   setWorkspaceTab: (tab: WorkspaceTab) => void;
   addAppLog: (message: string, level?: AppLogEntry["level"]) => void;
@@ -738,10 +753,13 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
   importReport: undefined,
   exportPreview: undefined,
   exportProgress: undefined,
+  databaseExportProgress: undefined,
   pendingImportKind: undefined,
   preparedImportKind: undefined,
   showImportWizard: false,
   showExportDialog: false,
+  showExportDatabaseDialog: false,
+  showImportDatabaseDialog: false,
   initImportEvents: async () => {
     if (!hasTauriRuntime() || unlistenImportProgress) {
       return;
@@ -825,6 +843,40 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
         }
       }
     });
+  },
+  initDatabaseExportEvents: async () => {
+    if (!hasTauriRuntime() || unlistenDatabaseExportProgress) {
+      return;
+    }
+
+    unlistenDatabaseExportProgress = await listen<DatabaseExportProgress>(
+      "database-export-progress",
+      (event) => {
+        const progress = event.payload;
+        set({
+          databaseExportProgress: progress,
+          isLoading: !progress.done
+        });
+
+        if (progress.done) {
+          if (progress.phase === "failed") {
+            get().addAppLog(
+              i18next.t("appLog.databaseExportFailed", {
+                message: progress.error ?? i18next.t("errors.unknown")
+              }),
+              "error"
+            );
+          } else {
+            get().addAppLog(
+              i18next.t("appLog.databaseExportCompleted", {
+                exported: progress.exported,
+                failed: progress.failed
+              })
+            );
+          }
+        }
+      }
+    );
   },
   load: async () => {
     if (!hasTauriRuntime()) {
@@ -1663,6 +1715,94 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
         "error"
       );
       throw error;
+    }
+  },
+  openExportDatabaseDialog: () => {
+    get().addAppLog(i18next.t("appLog.databaseExportDialogOpened"));
+    set({
+      showExportDatabaseDialog: true,
+      databaseExportProgress: undefined
+    });
+  },
+  closeExportDatabaseDialog: () => set({ showExportDatabaseDialog: false }),
+  openImportDatabaseDialog: () => {
+    get().addAppLog(i18next.t("appLog.databaseImportDialogOpened"));
+    set({ showImportDatabaseDialog: true });
+  },
+  closeImportDatabaseDialog: () => set({ showImportDatabaseDialog: false }),
+  startExportDatabase: async (request) => {
+    if (!hasTauriRuntime()) {
+      get().addAppLog(i18next.t("appLog.realExportUnsupported"), "warning");
+      return;
+    }
+
+    await get().initDatabaseExportEvents();
+    set({
+      isLoading: true,
+      databaseExportProgress: {
+        phase: "checkpointing",
+        processed: 0,
+        total: 1,
+        exported: 0,
+        failed: 0,
+        outputPath: request.outputPath,
+        estimatedSizeBytes: 0,
+        writtenSizeBytes: 0,
+        done: false
+      }
+    });
+    get().addAppLog(i18next.t("appLog.databaseExportStarting"));
+
+    try {
+      await invokeCommand<void>("start_export_database", { request });
+    } catch (error) {
+      set({ isLoading: false, databaseExportProgress: undefined });
+      get().addAppLog(
+        i18next.t("appLog.databaseExportStartFailed", { message: formatAppError(error) }),
+        "error"
+      );
+      throw error;
+    }
+  },
+  importDatabase: async (request) => {
+    if (!hasTauriRuntime()) {
+      get().addAppLog(i18next.t("appLog.realImportUnsupported"), "warning");
+      return undefined;
+    }
+
+    set({ isLoading: true });
+    get().addAppLog(i18next.t("appLog.databaseImportStarting"));
+    try {
+      const result = await invokeCommand<DatabaseImportResult>("import_database", { request });
+      const [images, profiles] = await Promise.all([
+        invokeCommand<DatasetImage[]>("list_images"),
+        invokeCommand<AnnotationProfile[]>("list_annotation_profiles")
+      ]);
+      set({
+        images,
+        profiles,
+        projects: createProjectTree(images, result.rootName, result.rootPath),
+        showImportDatabaseDialog: false,
+        appView: "workspace",
+        selectedProjectId: undefined,
+        ...createImageSelection([]),
+        previewImageId: undefined
+      });
+      get().addAppLog(
+        i18next.t("appLog.databaseImportCompleted", {
+          imageCount: result.imageCount,
+          copiedImageCount: result.copiedImageCount
+        })
+      );
+      return result;
+    } catch (error) {
+      get().addAppLog(
+        i18next.t("appLog.databaseImportFailed", { message: formatAppError(error) }),
+        "error"
+      );
+      throw error;
+    } finally {
+      set({ isLoading: false });
     }
   },
   setAppView: (view) => set({ appView: view, previewImageId: undefined }),

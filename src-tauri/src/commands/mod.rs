@@ -1,14 +1,18 @@
 use std::{
     collections::HashSet,
-    fs,
+    fs::{self, File},
+    io,
     path::{Component, Path, PathBuf},
+    time::{SystemTime, UNIX_EPOCH},
 };
 
+use rusqlite::{params, Connection, OpenFlags, OptionalExtension};
 use serde::Deserialize;
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_dialog::DialogExt;
+use zip::{write::SimpleFileOptions, CompressionMethod, ZipArchive, ZipWriter};
 
 use crate::{
     app_dirs,
@@ -68,6 +72,55 @@ pub struct ImportProgress {
     pub root_path: Option<String>,
     pub done: bool,
     pub report: Option<ImportReport>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DatabaseExportRequest {
+    pub dataset_id: String,
+    pub output_path: String,
+    pub include_images: bool,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DatabaseExportProgress {
+    pub phase: String,
+    pub processed: usize,
+    pub total: usize,
+    pub exported: usize,
+    pub failed: usize,
+    pub current_path: Option<String>,
+    pub output_path: Option<String>,
+    pub estimated_size_bytes: u64,
+    pub written_size_bytes: u64,
+    pub done: bool,
+    pub error: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DatabaseImportRequest {
+    pub source_path: String,
+    pub image_target_dir: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DatabaseImportResult {
+    pub dataset_id: String,
+    pub database_path: String,
+    pub image_count: usize,
+    pub copied_image_count: usize,
+    pub root_name: Option<String>,
+    pub root_path: Option<String>,
+}
+
+struct DatabaseMetadata {
+    source_kind: String,
+    root_name: Option<String>,
+    root_path: Option<String>,
+    image_count: usize,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -174,6 +227,7 @@ pub fn finish_startup_windows(app: AppHandle) -> Result<(), String> {
     .map_err(|error| format!("调度启动窗口切换失败：{error}"))
 }
 
+#[derive(Clone)]
 struct DatasetDatabaseRef {
     prefix: i64,
     path: PathBuf,
@@ -430,6 +484,581 @@ fn remove_sqlite_files(path: &Path) -> AppResult<()> {
         }
     }
     Ok(())
+}
+
+fn sqlite_files_exist(path: &Path) -> bool {
+    sqlite_sidecar_paths(path).into_iter().any(|file| file.exists())
+}
+
+fn unique_sqlite_path(path: &Path) -> PathBuf {
+    if !sqlite_files_exist(path) {
+        return path.to_path_buf();
+    }
+
+    let parent = path.parent().map(Path::to_path_buf).unwrap_or_default();
+    let stem = path
+        .file_stem()
+        .and_then(|value| value.to_str())
+        .filter(|value| !value.is_empty())
+        .unwrap_or("database");
+
+    for index in 2.. {
+        let candidate = parent.join(format!("{stem}-{index}.sqlite"));
+        if !sqlite_files_exist(&candidate) {
+            return candidate;
+        }
+    }
+
+    unreachable!("unique sqlite path loop should always return")
+}
+
+fn timestamp_millis() -> u128 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_millis())
+        .unwrap_or(0)
+}
+
+fn database_ref_for_dataset_id(
+    dirs: &app_dirs::AppDirs,
+    dataset_id: &str,
+) -> AppResult<(String, DatasetDatabaseRef)> {
+    let (source_kind, prefix_value) = if let Some(value) = dataset_id.strip_prefix("database:") {
+        ("database", value)
+    } else if let Some(value) = dataset_id.strip_prefix("asset:") {
+        ("asset", value)
+    } else {
+        return Err(AppError::InvalidInput(format!(
+            "不支持的数据库 ID：{dataset_id}"
+        )));
+    };
+    let prefix = prefix_value
+        .parse::<i64>()
+        .map_err(|_| AppError::InvalidInput(format!("无效的数据库 ID：{dataset_id}")))?;
+    let db_ref = dataset_database_refs(dirs)?
+        .into_iter()
+        .find(|db_ref| db_ref.prefix == prefix)
+        .ok_or_else(|| AppError::InvalidInput(format!("未找到数据库：{dataset_id}")))?;
+    let db = open_database(&db_ref.path)?;
+    if db.dataset_source_kind()? != source_kind {
+        return Err(AppError::InvalidInput(format!(
+            "数据库类型不匹配：{dataset_id}"
+        )));
+    }
+    Ok((source_kind.to_owned(), db_ref))
+}
+
+fn database_id_for_path(dirs: &app_dirs::AppDirs, path: &Path, source_kind: &str) -> AppResult<String> {
+    let canonical_target = dunce::canonicalize(path).ok();
+    let db_ref = dataset_database_refs(dirs)?
+        .into_iter()
+        .find(|db_ref| {
+            db_ref.path == path
+                || canonical_target
+                    .as_ref()
+                    .and_then(|target| dunce::canonicalize(&db_ref.path).ok().map(|current| current == *target))
+                    .unwrap_or(false)
+        })
+        .ok_or_else(|| {
+            AppError::InvalidInput(format!(
+                "导入完成但无法定位数据库：{}",
+                path.to_string_lossy()
+            ))
+        })?;
+    Ok(format!("{source_kind}:{}", db_ref.prefix))
+}
+
+fn checkpoint_database(path: &Path) -> AppResult<()> {
+    let conn = Connection::open(path)?;
+    conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE);")?;
+    Ok(())
+}
+
+fn metadata_value(conn: &Connection, key: &str) -> AppResult<Option<String>> {
+    Ok(conn
+        .query_row(
+            "SELECT value FROM dataset_metadata WHERE key = ?1",
+            params![key],
+            |row| row.get(0),
+        )
+        .optional()?)
+}
+
+fn validate_database_file(path: &Path) -> AppResult<DatabaseMetadata> {
+    if !path.is_file() {
+        return Err(AppError::InvalidInput(format!(
+            "数据库文件不存在：{}",
+            path.to_string_lossy()
+        )));
+    }
+
+    let conn = Connection::open_with_flags(path, OpenFlags::SQLITE_OPEN_READ_ONLY)?;
+    for table in [
+        "images",
+        "annotation_profiles",
+        "annotations",
+        "dataset_metadata",
+    ] {
+        let exists: Option<i64> = conn
+            .query_row(
+                "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?1",
+                params![table],
+                |row| row.get(0),
+            )
+            .optional()?;
+        if exists.is_none() {
+            return Err(AppError::InvalidInput(format!(
+                "不是有效的 Datasets Deputy 数据库：缺少表 {table}"
+            )));
+        }
+    }
+
+    let source_kind = normalize_database_source_kind(metadata_value(&conn, "source_kind")?)?;
+    let root_name = metadata_value(&conn, "root_name")?;
+    let root_path = metadata_value(&conn, "root_path")?;
+    let image_count = conn.query_row("SELECT COUNT(*) FROM images", [], |row| {
+        row.get::<_, i64>(0)
+    })? as usize;
+
+    Ok(DatabaseMetadata {
+        source_kind,
+        root_name,
+        root_path,
+        image_count,
+    })
+}
+
+fn imported_database_seed_path(source_path: &Path, metadata: &DatabaseMetadata) -> PathBuf {
+    metadata
+        .root_path
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(PathBuf::from)
+        .unwrap_or_else(|| {
+            source_path
+                .file_stem()
+                .map(PathBuf::from)
+                .unwrap_or_else(|| PathBuf::from("imported-database"))
+        })
+}
+
+fn imported_database_target_path(
+    dirs: &app_dirs::AppDirs,
+    seed_path: &Path,
+    source_kind: &str,
+) -> PathBuf {
+    unique_sqlite_path(&app_dirs::dataset_database_path_for_kind(
+        dirs,
+        seed_path,
+        source_kind,
+    ))
+}
+
+fn safe_relative_path(value: Option<&str>, fallback: &str) -> PathBuf {
+    let value = value
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or(fallback);
+    let normalized = value.replace('\\', "/");
+    let parts = normalized
+        .split('/')
+        .filter(|part| !part.is_empty() && *part != "." && *part != "..")
+        .collect::<Vec<_>>();
+
+    if parts.is_empty() {
+        PathBuf::from(fallback)
+    } else {
+        parts.into_iter().collect()
+    }
+}
+
+fn zip_path_string(path: &Path) -> String {
+    path.to_string_lossy().replace('\\', "/")
+}
+
+fn image_source_path(image: &DatasetImage, source_kind: &str) -> PathBuf {
+    if source_kind == "asset" {
+        image
+            .storage_path
+            .as_deref()
+            .map(PathBuf::from)
+            .unwrap_or_else(|| PathBuf::from(&image.path))
+    } else {
+        PathBuf::from(&image.path)
+    }
+}
+
+fn copy_file_to_zip(
+    zip: &mut ZipWriter<File>,
+    source: &Path,
+    entry_name: &str,
+    options: SimpleFileOptions,
+) -> AppResult<u64> {
+    zip.start_file(entry_name, options)?;
+    let mut input = File::open(source)?;
+    Ok(io::copy(&mut input, zip)?)
+}
+
+fn export_database_request(
+    dirs: &app_dirs::AppDirs,
+    request: &DatabaseExportRequest,
+    emit_progress: impl Fn(DatabaseExportProgress),
+) -> AppResult<()> {
+    let (source_kind, db_ref) = database_ref_for_dataset_id(dirs, &request.dataset_id)?;
+    let output_path = PathBuf::from(&request.output_path);
+    if let Some(parent) = output_path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+
+    emit_progress(DatabaseExportProgress {
+        phase: "checkpointing".to_owned(),
+        processed: 0,
+        total: 1,
+        exported: 0,
+        failed: 0,
+        current_path: None,
+        output_path: Some(output_path.to_string_lossy().to_string()),
+        estimated_size_bytes: 0,
+        written_size_bytes: 0,
+        done: false,
+        error: None,
+    });
+    checkpoint_database(&db_ref.path)?;
+
+    if !request.include_images {
+        let written_size_bytes = fs::copy(&db_ref.path, &output_path)?;
+        emit_progress(DatabaseExportProgress {
+            phase: "done".to_owned(),
+            processed: 1,
+            total: 1,
+            exported: 1,
+            failed: 0,
+            current_path: None,
+            output_path: Some(output_path.to_string_lossy().to_string()),
+            estimated_size_bytes: written_size_bytes,
+            written_size_bytes,
+            done: true,
+            error: None,
+        });
+        tracing::info!("数据库导出完成：{}", output_path.to_string_lossy());
+        return Ok(());
+    }
+
+    let db = open_database(&db_ref.path)?;
+    let images = db.list_images()?;
+    let db_size = fs::metadata(&db_ref.path)?.len();
+    let estimated_image_size = images
+        .iter()
+        .map(|image| image_source_path(image, &source_kind))
+        .filter_map(|path| fs::metadata(path).ok().map(|metadata| metadata.len()))
+        .sum::<u64>();
+    let estimated_size_bytes = db_size + estimated_image_size;
+    let total = images.len() + 1;
+    let snapshot_path = dirs
+        .temp
+        .join(format!("database-export-{}.sqlite", timestamp_millis()));
+    fs::copy(&db_ref.path, &snapshot_path)?;
+
+    let output_file = File::create(&output_path)?;
+    let mut zip = ZipWriter::new(output_file);
+    let options = SimpleFileOptions::default().compression_method(CompressionMethod::Deflated);
+    let mut written_size_bytes =
+        copy_file_to_zip(&mut zip, &snapshot_path, "database.sqlite", options)?;
+    let _ = fs::remove_file(&snapshot_path);
+    let mut exported = 1;
+    let mut failed = 0;
+
+    emit_progress(DatabaseExportProgress {
+        phase: "exporting_images".to_owned(),
+        processed: 1,
+        total,
+        exported,
+        failed,
+        current_path: Some("database.sqlite".to_owned()),
+        output_path: Some(output_path.to_string_lossy().to_string()),
+        estimated_size_bytes,
+        written_size_bytes,
+        done: false,
+        error: None,
+    });
+
+    let mut used_entries = HashSet::new();
+    for (index, image) in images.iter().enumerate() {
+        let source = image_source_path(image, &source_kind);
+        let relative_path = deduplicate_relative_path(
+            safe_relative_path(image.dataset_path.as_deref(), &image.file_name),
+            &mut used_entries,
+        );
+        let entry_name = format!("images/{}", zip_path_string(&relative_path));
+        let result = copy_file_to_zip(&mut zip, &source, &entry_name, options);
+        match result {
+            Ok(written) => {
+                written_size_bytes += written;
+                exported += 1;
+            }
+            Err(error) => {
+                failed += 1;
+                tracing::warn!("数据库图片打包失败：{}：{}", source.to_string_lossy(), error);
+            }
+        }
+
+        emit_progress(DatabaseExportProgress {
+            phase: "exporting_images".to_owned(),
+            processed: index + 2,
+            total,
+            exported,
+            failed,
+            current_path: Some(image.file_name.clone()),
+            output_path: Some(output_path.to_string_lossy().to_string()),
+            estimated_size_bytes,
+            written_size_bytes,
+            done: false,
+            error: None,
+        });
+    }
+
+    zip.finish()?;
+    emit_progress(DatabaseExportProgress {
+        phase: "done".to_owned(),
+        processed: total,
+        total,
+        exported,
+        failed,
+        current_path: None,
+        output_path: Some(output_path.to_string_lossy().to_string()),
+        estimated_size_bytes,
+        written_size_bytes,
+        done: true,
+        error: None,
+    });
+    tracing::info!(
+        "数据库打包导出完成：exported={}, failed={}, output={}",
+        exported,
+        failed,
+        output_path.to_string_lossy()
+    );
+    Ok(())
+}
+
+fn extract_database_zip(
+    source_path: &Path,
+    image_target_dir: &Path,
+    temp_dir: &Path,
+) -> AppResult<(PathBuf, usize)> {
+    fs::create_dir_all(temp_dir)?;
+    fs::create_dir_all(image_target_dir)?;
+    let mut archive = ZipArchive::new(File::open(source_path)?)?;
+    let temp_database_path = temp_dir.join("database.sqlite");
+    let mut found_database = false;
+    let mut copied_images = 0;
+
+    for index in 0..archive.len() {
+        let mut entry = archive.by_index(index)?;
+        let Some(enclosed_name) = entry.enclosed_name().map(PathBuf::from) else {
+            continue;
+        };
+        if entry.is_dir() {
+            continue;
+        }
+
+        if enclosed_name == Path::new("database.sqlite") {
+            let mut output = File::create(&temp_database_path)?;
+            io::copy(&mut entry, &mut output)?;
+            found_database = true;
+            continue;
+        }
+
+        let Ok(relative_image_path) = enclosed_name.strip_prefix("images") else {
+            continue;
+        };
+        if relative_image_path.as_os_str().is_empty() {
+            continue;
+        }
+        let target = image_target_dir.join(relative_image_path);
+        if target.exists() {
+            return Err(AppError::InvalidInput(format!(
+                "目标图片已存在：{}",
+                target.to_string_lossy()
+            )));
+        }
+        if let Some(parent) = target.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        let mut output = File::create(target)?;
+        io::copy(&mut entry, &mut output)?;
+        copied_images += 1;
+    }
+
+    if !found_database {
+        return Err(AppError::InvalidInput(
+            "压缩包中未找到 database.sqlite".to_owned(),
+        ));
+    }
+
+    Ok((temp_database_path, copied_images))
+}
+
+fn update_imported_zip_database(
+    database_path: &Path,
+    image_target_dir: &Path,
+    source_kind: &str,
+) -> AppResult<DatabaseMetadata> {
+    let mut conn = Connection::open(database_path)?;
+    conn.pragma_update(None, "foreign_keys", "ON")?;
+    let root_name = image_target_dir
+        .file_name()
+        .and_then(|value| value.to_str())
+        .unwrap_or("Dataset")
+        .to_owned();
+    let root_path = image_target_dir.to_string_lossy().to_string();
+    let images = {
+        let mut stmt = conn.prepare("SELECT id, dataset_path, file_name FROM images ORDER BY id")?;
+        let rows = stmt.query_map([], |row| {
+            Ok((
+                row.get::<_, i64>(0)?,
+                row.get::<_, Option<String>>(1)?,
+                row.get::<_, String>(2)?,
+            ))
+        })?;
+        rows.collect::<Result<Vec<_>, _>>()?
+    };
+    let image_count = images.len();
+
+    let tx = conn.transaction()?;
+    for (image_id, dataset_path, file_name) in images {
+        let relative_path = safe_relative_path(dataset_path.as_deref(), &file_name);
+        let target_path = image_target_dir.join(relative_path);
+        let target_path = target_path.to_string_lossy().to_string();
+        if source_kind == "asset" {
+            tx.execute(
+                "UPDATE images SET path = ?1, storage_path = ?2, thumbnail_path = NULL WHERE id = ?3",
+                params![target_path, target_path, image_id],
+            )?;
+        } else {
+            tx.execute(
+                "UPDATE images SET path = ?1, storage_path = NULL, thumbnail_path = NULL WHERE id = ?2",
+                params![target_path, image_id],
+            )?;
+        }
+    }
+    tx.execute(
+        "INSERT INTO dataset_metadata (key, value) VALUES ('root_name', ?1)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+        params![root_name],
+    )?;
+    tx.execute(
+        "INSERT INTO dataset_metadata (key, value) VALUES ('root_path', ?1)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+        params![root_path],
+    )?;
+    tx.execute(
+        "INSERT INTO dataset_metadata (key, value) VALUES ('source_kind', ?1)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+        params![source_kind],
+    )?;
+    tx.commit()?;
+
+    Ok(DatabaseMetadata {
+        source_kind: source_kind.to_owned(),
+        root_name: Some(root_name),
+        root_path: Some(root_path),
+        image_count,
+    })
+}
+
+fn import_sqlite_database(
+    dirs: &app_dirs::AppDirs,
+    source_path: &Path,
+) -> AppResult<DatabaseImportResult> {
+    let metadata = validate_database_file(source_path)?;
+    let seed_path = imported_database_seed_path(source_path, &metadata);
+    let target_path = imported_database_target_path(dirs, &seed_path, &metadata.source_kind);
+    fs::copy(source_path, &target_path)?;
+    let db = open_database(&target_path)?;
+    db.clear_thumbnail_paths()?;
+    drop(db);
+
+    let dataset_id = database_id_for_path(dirs, &target_path, &metadata.source_kind)?;
+    tracing::info!(
+        "数据库文件导入完成：{} -> {}",
+        source_path.to_string_lossy(),
+        target_path.to_string_lossy()
+    );
+    Ok(DatabaseImportResult {
+        dataset_id,
+        database_path: target_path.to_string_lossy().to_string(),
+        image_count: metadata.image_count,
+        copied_image_count: 0,
+        root_name: metadata.root_name,
+        root_path: metadata.root_path,
+    })
+}
+
+fn import_zipped_database(
+    dirs: &app_dirs::AppDirs,
+    source_path: &Path,
+    image_target_dir: &Path,
+) -> AppResult<DatabaseImportResult> {
+    let temp_dir = dirs
+        .temp
+        .join(format!("database-import-{}", timestamp_millis()));
+    let (temp_database_path, copied_image_count) =
+        extract_database_zip(source_path, image_target_dir, &temp_dir)?;
+    let metadata = validate_database_file(&temp_database_path)?;
+    let metadata =
+        update_imported_zip_database(&temp_database_path, image_target_dir, &metadata.source_kind)?;
+    let target_path = imported_database_target_path(dirs, image_target_dir, &metadata.source_kind);
+    fs::copy(&temp_database_path, &target_path)?;
+    let _ = fs::remove_dir_all(&temp_dir);
+
+    let dataset_id = database_id_for_path(dirs, &target_path, &metadata.source_kind)?;
+    tracing::info!(
+        "数据库压缩包导入完成：{} -> {}，图片 {} 个",
+        source_path.to_string_lossy(),
+        target_path.to_string_lossy(),
+        copied_image_count
+    );
+    Ok(DatabaseImportResult {
+        dataset_id,
+        database_path: target_path.to_string_lossy().to_string(),
+        image_count: metadata.image_count,
+        copied_image_count,
+        root_name: metadata.root_name,
+        root_path: metadata.root_path,
+    })
+}
+
+fn import_database_request(
+    dirs: &app_dirs::AppDirs,
+    request: &DatabaseImportRequest,
+) -> AppResult<DatabaseImportResult> {
+    let source_path = PathBuf::from(&request.source_path);
+    let extension = source_path
+        .extension()
+        .and_then(|value| value.to_str())
+        .map(|value| value.to_ascii_lowercase())
+        .unwrap_or_default();
+
+    match extension.as_str() {
+        "sqlite" => import_sqlite_database(dirs, &source_path),
+        "zip" => {
+            let image_target_dir = request
+                .image_target_dir
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(PathBuf::from)
+                .ok_or_else(|| {
+                    AppError::InvalidInput("导入压缩包需要选择图片目标文件夹".to_owned())
+                })?;
+            import_zipped_database(dirs, &source_path, &image_target_dir)
+        }
+        _ => Err(AppError::InvalidInput(format!(
+            "不支持的数据库导入文件类型：{}",
+            source_path.to_string_lossy()
+        ))),
+    }
 }
 
 /// Check whether any asset database still references the given `storage_path`.
@@ -2355,6 +2984,51 @@ pub fn delete_workspace_subfolder(
     tracing::info!("正在删除工作文件夹子目录及其全部内容：{:?}", path);
     fs::remove_dir_all(path)?;
     Ok(())
+}
+
+#[tauri::command]
+pub fn start_export_database(app: AppHandle, request: DatabaseExportRequest) -> AppResult<()> {
+    let dirs = app_dirs::ensure_release_dirs(&app)?;
+    let app_for_thread = app.clone();
+    std::thread::spawn(move || {
+        let emit_progress = |progress: DatabaseExportProgress| {
+            if let Err(error) = app_for_thread.emit("database-export-progress", progress) {
+                tracing::warn!("数据库导出进度发送失败：{}", error);
+            }
+        };
+
+        if let Err(error) = export_database_request(&dirs, &request, emit_progress) {
+            let _ = app_for_thread.emit(
+                "database-export-progress",
+                DatabaseExportProgress {
+                    phase: "failed".to_owned(),
+                    processed: 0,
+                    total: 0,
+                    exported: 0,
+                    failed: 1,
+                    current_path: None,
+                    output_path: Some(request.output_path),
+                    estimated_size_bytes: 0,
+                    written_size_bytes: 0,
+                    done: true,
+                    error: Some(error.to_string()),
+                },
+            );
+            tracing::error!("数据库导出失败：{}", error);
+        }
+    });
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn import_database(
+    state: State<'_, AppState>,
+    request: DatabaseImportRequest,
+) -> AppResult<DatabaseImportResult> {
+    let dirs = state.dirs.clone();
+    tauri::async_runtime::spawn_blocking(move || import_database_request(&dirs, &request))
+        .await
+        .map_err(|error| AppError::InvalidInput(format!("数据库导入任务失败：{error}")))?
 }
 
 #[tauri::command]

@@ -32,3 +32,4 @@ tracing-appender = "0.2"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 walkdir = "2"
 windows = { version = "0.61", features = ["Win32_Graphics_Dwm"] }
+zip = "8.6.0"

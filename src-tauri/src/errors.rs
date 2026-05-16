@@ -11,6 +11,8 @@ pub enum AppError {
     Image(#[from] image::ImageError),
     #[error("Serialization failed: {0}")]
     Json(#[from] serde_json::Error),
+    #[error("Zip operation failed: {0}")]
+    Zip(#[from] zip::result::ZipError),
     #[error("Dialog was cancelled")]
     DialogCancelled,
     #[error("Invalid input: {0}")]
@@ -31,6 +33,7 @@ impl AppError {
             Self::Io(_) => "io_error",
             Self::Image(_) => "image_error",
             Self::Json(_) => "json_error",
+            Self::Zip(_) => "zip_error",
             Self::DialogCancelled => "dialog_cancelled",
             Self::InvalidInput(_) => "invalid_input",
         }

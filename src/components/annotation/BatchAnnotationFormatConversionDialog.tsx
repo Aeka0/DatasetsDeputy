@@ -2,14 +2,16 @@ import { ArrowLeftRight, X } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
-import type { QualityWordPlacement } from "../../lib/annotationFormatConversion";
+import {
+  buildAnnotationFormatConversionKey,
+  type AnnotationFormat,
+  type AnnotationFormatConversionKey,
+  type QualityWordPlacement,
+  type UsableAnnotationFormat
+} from "../../lib/annotationFormatConversion";
 import { AnimatedPortal, useAnimatedPortalClose } from "../ui/AnimatedPortal";
 import { AppSelect, type AppSelectOption } from "../ui/AppSelect";
 import { Button } from "../ui/Button";
-
-export type AnnotationFormat = "unset" | "booruTag" | "anima" | "naturalLanguage";
-type UsableAnnotationFormat = Exclude<AnnotationFormat, "unset">;
-type ConversionRuleKey = `${UsableAnnotationFormat}->${UsableAnnotationFormat}`;
 
 export interface BatchAnnotationFormatConversionOptions {
   currentFormat: UsableAnnotationFormat;
@@ -32,7 +34,7 @@ interface ConversionRuleContext {
   setQualityWordPlacement: (placement: QualityWordPlacement) => void;
 }
 
-const conversionRules: Partial<Record<ConversionRuleKey, ConversionRule>> = {
+const conversionRules: Partial<Record<AnnotationFormatConversionKey, ConversionRule>> = {
   "booruTag->anima": {
     descriptionKey: "annotationFormatConversion.descriptionBooruTagToAnima",
     renderOptions: (context) => <BooruTagToAnimaOptions {...context} />
@@ -57,13 +59,6 @@ const conversionRules: Partial<Record<ConversionRuleKey, ConversionRule>> = {
 
 function isUsableFormat(value: AnnotationFormat): value is UsableAnnotationFormat {
   return value !== "unset";
-}
-
-function buildRuleKey(
-  currentFormat: UsableAnnotationFormat,
-  targetFormat: UsableAnnotationFormat
-): ConversionRuleKey {
-  return `${currentFormat}->${targetFormat}`;
 }
 
 function BooruTagToAnimaOptions({
@@ -164,7 +159,7 @@ export function BatchAnnotationFormatConversionDialog({
   const hasFormatsSelected =
     isUsableFormat(currentFormat) && isUsableFormat(targetFormat);
   const activeRule = hasFormatsSelected
-    ? conversionRules[buildRuleKey(currentFormat, targetFormat)]
+    ? conversionRules[buildAnnotationFormatConversionKey(currentFormat, targetFormat)]
     : undefined;
 
   const formatOptions: AppSelectOption<AnnotationFormat>[] = [

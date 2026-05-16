@@ -153,6 +153,40 @@ export interface ExportDatasetRequest {
   profileId?: number;
 }
 
+export interface DatabaseExportRequest {
+  datasetId: string;
+  outputPath: string;
+  includeImages: boolean;
+}
+
+export interface DatabaseExportProgress {
+  phase: "checkpointing" | "exporting_images" | "done" | "failed";
+  processed: number;
+  total: number;
+  exported: number;
+  failed: number;
+  currentPath?: string;
+  outputPath?: string;
+  estimatedSizeBytes: number;
+  writtenSizeBytes: number;
+  done: boolean;
+  error?: string;
+}
+
+export interface DatabaseImportRequest {
+  sourcePath: string;
+  imageTargetDir?: string;
+}
+
+export interface DatabaseImportResult {
+  datasetId: string;
+  databasePath: string;
+  imageCount: number;
+  copiedImageCount: number;
+  rootName?: string;
+  rootPath?: string;
+}
+
 export interface ExportPreset {
   id: number;
   name: string;
