@@ -8,6 +8,7 @@ import { useShallow } from "zustand/react/shallow";
 import { resolveAssetSrc } from "../../lib/tauri";
 import { cn } from "../../lib/cn";
 import { highlightSearch } from "../../lib/SearchHighlight";
+import { getLatestVisibleTableCellState } from "../../lib/tableCellState";
 import { useDatasetStore } from "../../stores/datasetStore";
 import type { DatasetImage } from "../../types";
 
@@ -33,6 +34,7 @@ export function DatasetGrid({
     tableAnnotationDrafts,
     tableSavedCellKeys,
     tableFailedCellKeys,
+    tableLatestCellStates,
     highlightCellState,
     thumbnailCacheKey,
     openImagePreview,
@@ -44,6 +46,7 @@ export function DatasetGrid({
       tableAnnotationDrafts: state.tableAnnotationDrafts,
       tableSavedCellKeys: state.tableSavedCellKeys,
       tableFailedCellKeys: state.tableFailedCellKeys,
+      tableLatestCellStates: state.tableLatestCellStates,
       highlightCellState: state.highlightCellState,
       thumbnailCacheKey: state.thumbnailCacheKey,
       openImagePreview: state.openImagePreview,
@@ -76,10 +79,13 @@ export function DatasetGrid({
     const draftContent = hasDraft ? tableAnnotationDrafts[image.id] ?? "" : "";
     const isDirty = hasDraft && draftContent !== (annotation?.content ?? "");
 
-    if (isDirty) return "dataset-grid-card-dirty";
-    if (tableSavedCellKeys.includes(key)) return "dataset-grid-card-saved";
-    if (tableFailedCellKeys.includes(key)) return "dataset-grid-card-failed";
-    return "";
+    const state = getLatestVisibleTableCellState({
+      latestState: tableLatestCellStates[key],
+      isDirty,
+      isSaved: tableSavedCellKeys.includes(key),
+      isFailed: tableFailedCellKeys.includes(key)
+    });
+    return state ? `dataset-grid-card-${state}` : "";
   };
   const columnCount = useMemo(() => {
     if (containerWidth <= 0) return 1;

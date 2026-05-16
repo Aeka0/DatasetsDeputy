@@ -1220,6 +1220,15 @@ export function TitleMenuBar({
       markTableCellFailed(`${image.id}:annotation`);
     };
 
+    const markUnfinishedAnnotationsFailed = () => {
+      const generatedImageIds = new Set(generatedChanges.map((change) => change.imageId));
+      for (const image of targets) {
+        if (!generatedImageIds.has(image.id) && !failedAnnotationImageIds.has(image.id)) {
+          markAnnotationFailed(image);
+        }
+      }
+    };
+
     const markWd14MissingResultsFailed = (generatedContents: Array<string | undefined>) => {
       for (const [index, image] of targets.entries()) {
         if (generatedContents[index] === undefined) {
@@ -1345,6 +1354,7 @@ export function TitleMenuBar({
       if (message === annotationCancelledError) {
         return;
       }
+      markUnfinishedAnnotationsFailed();
       addAppLog(`Annotation task failed: ${message}`, "error");
     } finally {
       annotationCancelRef.current = false;

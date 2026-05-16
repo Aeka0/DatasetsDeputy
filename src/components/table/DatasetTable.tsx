@@ -14,6 +14,7 @@ import { useShallow } from "zustand/react/shallow";
 import { getAnnotationForProfile, getAnnotationText, getInstructionText } from "../../lib/annotations";
 import { cn } from "../../lib/cn";
 import { highlightSearch } from "../../lib/SearchHighlight";
+import { getLatestVisibleTableCellState } from "../../lib/tableCellState";
 import { getUnsavedTableDraftState } from "../../lib/tableDrafts";
 import { resolveAssetSrc } from "../../lib/tauri";
 import { useDatasetStore } from "../../stores/datasetStore";
@@ -102,6 +103,7 @@ export function DatasetTable({
     tableProfileInstructionDrafts,
     tableSavedCellKeys,
     tableFailedCellKeys,
+    tableLatestCellStates,
     annotatingImageIds,
     highlightCellState,
     thumbnailCacheKey,
@@ -131,6 +133,7 @@ export function DatasetTable({
       tableProfileInstructionDrafts: state.tableProfileInstructionDrafts,
       tableSavedCellKeys: state.tableSavedCellKeys,
       tableFailedCellKeys: state.tableFailedCellKeys,
+      tableLatestCellStates: state.tableLatestCellStates,
       annotatingImageIds: state.annotatingImageIds,
       highlightCellState: state.highlightCellState,
       thumbnailCacheKey: state.thumbnailCacheKey,
@@ -654,16 +657,13 @@ export function DatasetTable({
     }
 
     const key = createCellKey(imageId, kind);
-    if (dirtyCells.has(key)) {
-      return "dataset-cell-dirty";
-    }
-    if (tableSavedCellKeys.includes(key)) {
-      return "dataset-cell-saved";
-    }
-    if (tableFailedCellKeys.includes(key)) {
-      return "dataset-cell-failed";
-    }
-    return "";
+    const state = getLatestVisibleTableCellState({
+      latestState: tableLatestCellStates[key],
+      isDirty: dirtyCells.has(key),
+      isSaved: tableSavedCellKeys.includes(key),
+      isFailed: tableFailedCellKeys.includes(key)
+    });
+    return state ? `dataset-cell-${state}` : "";
   };
 
   const renderResizeHandle = (column: TableColumnKey) => (

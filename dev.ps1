@@ -13,6 +13,7 @@ $SplashAssetDir = Join-Path $AssetRoot "splash"
 $PublicSplashDir = Join-Path $ProjectRoot "public\splash"
 $IconAssetPath = Join-Path $AssetRoot "icon\Deputy.ico"
 $TauriIconPath = Join-Path $ProjectRoot "src-tauri\icons\icon.ico"
+$DevPort = 4173
 
 function Write-Step {
     param([string]$Message)
@@ -38,6 +39,26 @@ function Resolve-CommandPath {
     }
 
     throw "Required command not found: $($Candidates -join ', ')"
+}
+
+function Assert-PortAvailable {
+    param([int]$Port)
+
+    $listener = Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue |
+        Select-Object -First 1
+    if (-not $listener) {
+        return
+    }
+
+    $process = Get-Process -Id $listener.OwningProcess -ErrorAction SilentlyContinue
+    $processLabel = if ($process) {
+        "$($process.ProcessName) (PID $($process.Id))"
+    }
+    else {
+        "PID $($listener.OwningProcess)"
+    }
+
+    throw "Development port $Port is already in use by $processLabel."
 }
 
 function Sync-ProjectAssets {
@@ -92,6 +113,7 @@ if ($Install -or -not (Test-Path (Join-Path $ProjectRoot "node_modules"))) {
 
 Write-Step "Syncing project assets from assets"
 Sync-ProjectAssets
+Assert-PortAvailable $DevPort
 
 if (-not (Test-Path $ViteCli)) {
     throw "Vite CLI not found. Run .\dev.ps1 -Install first."
