@@ -11,8 +11,8 @@ export type AnnotationConflictStrategy = "overwrite" | "skip";
 export type AnnotationExecutionMode = "gemini" | "wd14";
 
 const modeOptions: Array<{ value: AnnotationExecutionMode; labelKey: string }> = [
-  { value: "gemini", labelKey: "annotationRun.modeGemini" },
-  { value: "wd14", labelKey: "annotationRun.modeWd14" }
+  { value: "wd14", labelKey: "annotationRun.modeWd14" },
+  { value: "gemini", labelKey: "annotationRun.modeGemini" }
 ];
 
 interface AnnotationExecutionDialogProps {
@@ -41,7 +41,7 @@ export function AnnotationExecutionDialog({
   const [scope, setScope] = useState<AnnotationExecutionScope>(
     hasSelectedImage ? "selected" : "empty"
   );
-  const [mode, setMode] = useState<AnnotationExecutionMode>("gemini");
+  const [mode, setMode] = useState<AnnotationExecutionMode>("wd14");
   const [conflictStrategy, setConflictStrategy] =
     useState<AnnotationConflictStrategy>("skip");
   const [modeMenuOpen, setModeMenuOpen] = useState(false);
@@ -49,7 +49,7 @@ export function AnnotationExecutionDialog({
   const modeButtonRef = useRef<HTMLButtonElement>(null);
   const modeMenuRef = useRef<HTMLDivElement>(null);
   const selectedModeLabel =
-    modeOptions.find((option) => option.value === mode)?.labelKey ?? "annotationRun.modeGemini";
+    modeOptions.find((option) => option.value === mode)?.labelKey ?? "annotationRun.modeWd14";
 
   useEffect(() => {
     if (!hasSelectedImage && scope === "selected") {
@@ -231,7 +231,7 @@ export function AnnotationExecutionDialog({
         ? createPortal(
         <div
           ref={modeMenuRef}
-          className="app-dropdown-menu no-drag fixed z-[60] rounded-lg py-2"
+          className="app-dropdown-menu no-drag fixed z-[1010] rounded-lg py-2"
           style={{
             left: modeMenuPosition.left,
             top: modeMenuPosition.top,
