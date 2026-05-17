@@ -19,8 +19,8 @@
   --app-radius-sm: 4px;
   --app-radius-md: 6px;
   --app-radius-lg: 8px;
-  --app-bottom-opacity: 0.45;
-  --app-top-opacity: 1;
+  --app-bottom-opacity: 0.85;
+  --app-top-opacity: 0.8;
   --app-chrome-rgb: 255 255 255;
   --app-surface-rgb: 255 255 255;
   --app-chrome-bg: rgb(var(--app-chrome-rgb) / var(--app-bottom-opacity));
