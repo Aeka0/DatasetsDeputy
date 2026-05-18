@@ -185,7 +185,10 @@ function clampUiOpacity(value: number, minOpacity: number) {
 function getStoredOpacity(storageKey: string, fallback: number, minOpacity: number) {
   if (typeof localStorage === "undefined") return fallback;
 
-  const stored = Number(localStorage.getItem(storageKey));
+  const rawStored = localStorage.getItem(storageKey);
+  if (rawStored === null) return fallback;
+
+  const stored = Number(rawStored);
   return Number.isFinite(stored) ? clampUiOpacity(stored, minOpacity) : fallback;
 }
 
