@@ -855,7 +855,7 @@ fn extract_database_zip(
 
     for index in 0..archive.len() {
         let mut entry = archive.by_index(index)?;
-        let Some(enclosed_name) = entry.enclosed_name().map(PathBuf::from) else {
+        let Some(enclosed_name) = entry.enclosed_name() else {
             continue;
         };
         if entry.is_dir() {
