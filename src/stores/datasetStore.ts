@@ -153,6 +153,9 @@ let unlistenImportProgress: UnlistenFn | undefined;
 let unlistenExportProgress: UnlistenFn | undefined;
 let unlistenDatabaseExportProgress: UnlistenFn | undefined;
 const thumbnailRequestsInFlight = new Set<number>();
+const thumbnailRequestQueue: number[] = [];
+let thumbnailQueueRunning = false;
+const thumbnailBatchSize = 8;
 
 function normalizePath(path: string) {
   return path.replaceAll("\\", "/").replace(/\/+$/, "");
@@ -964,23 +967,39 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
       return true;
     });
 
-    for (const imageId of pendingImageIds) {
-      try {
-        const updated = await invokeCommand<number>("ensure_thumbnails", {
-          imageIds: [imageId]
-        });
+    thumbnailRequestQueue.push(...pendingImageIds);
+    if (thumbnailQueueRunning) {
+      return;
+    }
+
+    thumbnailQueueRunning = true;
+    try {
+      while (thumbnailRequestQueue.length > 0) {
+        const batch = thumbnailRequestQueue.splice(0, thumbnailBatchSize);
+        let updated = 0;
+
+        try {
+          updated = await invokeCommand<number>("ensure_thumbnails", {
+            imageIds: batch
+          });
+        } catch (error) {
+          get().addAppLog(
+            i18next.t("appLog.refreshImagesFailed", { message: formatAppError(error) }),
+            "error"
+          );
+        } finally {
+          for (const imageId of batch) {
+            thumbnailRequestsInFlight.delete(imageId);
+          }
+        }
+
         if (updated > 0) {
           await get().refreshImages();
           get().bumpThumbnailCacheKey();
         }
-      } catch (error) {
-        get().addAppLog(
-          i18next.t("appLog.refreshImagesFailed", { message: formatAppError(error) }),
-          "error"
-        );
-      } finally {
-        thumbnailRequestsInFlight.delete(imageId);
       }
+    } finally {
+      thumbnailQueueRunning = false;
     }
   },
   checkProblemItems: async (project) => {

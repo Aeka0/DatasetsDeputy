@@ -113,7 +113,7 @@ pub fn create_thumbnail(
     let thumbnail = if width <= max_edge && height <= max_edge {
         image
     } else {
-        image.resize(max_edge, max_edge, FilterType::Lanczos3)
+        image.resize(max_edge, max_edge, FilterType::Triangle)
     };
     thumbnail.save(&target)?;
 

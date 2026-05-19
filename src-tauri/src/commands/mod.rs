@@ -1336,7 +1336,7 @@ fn repair_database_image_thumbnail(
         .as_deref()
         .map(Path::new)
         .is_some_and(thumbnail::is_valid_thumbnail);
-    let source_hash = if verify_source_hash || !has_cached_thumbnail {
+    let source_hash = if verify_source_hash || (!has_cached_thumbnail && image.file_hash.is_none()) {
         Some(files::hash_file(&source_path)?)
     } else {
         None

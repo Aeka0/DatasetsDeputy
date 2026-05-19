@@ -8,6 +8,7 @@ use std::{
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
+use walkdir::WalkDir;
 
 use crate::{
     app_dirs::AppDirs,
@@ -130,6 +131,7 @@ pub fn ensure_folder_thumbnails(dirs: &AppDirs, image_ids: &HashSet<i64>) -> App
         .map(|settings| settings.thumbnail_size)
         .unwrap_or(256);
     let mut updated = 0;
+    let mut remaining_ids = image_ids.clone();
 
     for root in registry
         .folders
@@ -137,9 +139,18 @@ pub fn ensure_folder_thumbnails(dirs: &AppDirs, image_ids: &HashSet<i64>) -> App
         .map(PathBuf::from)
         .filter(|path| path.is_dir())
     {
-        for path in files::collect_image_paths(&root) {
+        if remaining_ids.is_empty() {
+            break;
+        }
+
+        for path in WalkDir::new(&root)
+            .into_iter()
+            .filter_map(Result::ok)
+            .map(|entry| entry.into_path())
+            .filter(|path| path.is_file() && files::is_supported_image(path))
+        {
             let id = folder_image_id(&root, &path);
-            if !image_ids.contains(&id) {
+            if !remaining_ids.remove(&id) {
                 continue;
             }
             let metadata = fs::metadata(&path).ok();
@@ -149,6 +160,10 @@ pub fn ensure_folder_thumbnails(dirs: &AppDirs, image_ids: &HashSet<i64>) -> App
             let hash = folder_thumbnail_hash(&path, metadata.as_ref());
             if thumbnail::create_thumbnail(&path, &thumbnail_dir, &hash, thumbnail_size).is_ok() {
                 updated += 1;
+            }
+
+            if remaining_ids.is_empty() {
+                break;
             }
         }
     }
