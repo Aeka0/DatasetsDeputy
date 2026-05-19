@@ -1,7 +1,12 @@
 import { ArrowLeftRight, X } from "lucide-react";
-import { useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
+import {
+  MAX_XML_BATCH_SIZE,
+  MIN_XML_BATCH_SIZE,
+  clampXmlBatchSize
+} from "../../lib/annotationXmlBatch";
 import {
   buildAnnotationFormatConversionKey,
   type AnnotationFormat,
@@ -12,11 +17,15 @@ import {
 import { AnimatedPortal, useAnimatedPortalClose } from "../ui/AnimatedPortal";
 import { AppSelect, type AppSelectOption } from "../ui/AppSelect";
 import { Button } from "../ui/Button";
+import { Switch } from "../ui/Switch";
 
 export interface BatchAnnotationFormatConversionOptions {
   currentFormat: UsableAnnotationFormat;
   targetFormat: UsableAnnotationFormat;
   qualityWordPlacement: QualityWordPlacement;
+  xmlBatchEnabled: boolean;
+  xmlBatchSize: number;
+  llmPrompt: string;
 }
 
 interface BatchAnnotationFormatConversionDialogProps {
@@ -32,6 +41,12 @@ interface ConversionRule {
 interface ConversionRuleContext {
   qualityWordPlacement: QualityWordPlacement;
   setQualityWordPlacement: (placement: QualityWordPlacement) => void;
+  xmlBatchEnabled: boolean;
+  setXmlBatchEnabled: (enabled: boolean) => void;
+  xmlBatchSize: number;
+  setXmlBatchSize: (size: number) => void;
+  llmPrompt: string;
+  setLlmPrompt: (prompt: string) => void;
 }
 
 const conversionRules: Partial<Record<AnnotationFormatConversionKey, ConversionRule>> = {
@@ -54,6 +69,10 @@ const conversionRules: Partial<Record<AnnotationFormatConversionKey, ConversionR
   },
   "naturalLanguage->anima": {
     descriptionKey: "annotationFormatConversion.descriptionNaturalLanguageToAnima"
+  },
+  "naturalLanguage->naturalLanguage": {
+    descriptionKey: "annotationFormatConversion.descriptionNaturalLanguageRewrite",
+    renderOptions: (context) => <NaturalLanguageRewriteOptions {...context} />
   }
 };
 
@@ -146,6 +165,75 @@ function AnimaToBooruTagOptions() {
   );
 }
 
+function NaturalLanguageRewriteOptions({
+  xmlBatchEnabled,
+  setXmlBatchEnabled,
+  xmlBatchSize,
+  setXmlBatchSize,
+  llmPrompt,
+  setLlmPrompt
+}: ConversionRuleContext) {
+  const { t } = useTranslation();
+
+  return (
+    <div className="space-y-3">
+      <section className="rounded-lg border border-neutral-200 bg-white">
+        <div className="border-b border-neutral-100 px-4 py-3 text-[13px] font-semibold text-neutral-900">
+          {t("annotationFormatConversion.nlRewriteStepOneTitle")}
+        </div>
+        <div className="space-y-3 px-4 py-3">
+          <Switch
+            checked={xmlBatchEnabled}
+            label={t("annotationFormatConversion.xmlBatchEnabled")}
+            onCheckedChange={setXmlBatchEnabled}
+          />
+          <label className={xmlBatchEnabled ? "block" : "block opacity-45"}>
+            <div className="mb-2 flex items-center justify-between gap-3 text-[13px] text-neutral-700">
+              <span>{t("annotationFormatConversion.xmlBatchSize")}</span>
+              <span className="font-medium text-neutral-900">{xmlBatchSize}</span>
+            </div>
+            <input
+              type="range"
+              min={MIN_XML_BATCH_SIZE}
+              max={MAX_XML_BATCH_SIZE}
+              step={1}
+              value={xmlBatchSize}
+              disabled={!xmlBatchEnabled}
+              className="w-full"
+              onChange={(event) => setXmlBatchSize(clampXmlBatchSize(Number(event.target.value)))}
+            />
+          </label>
+        </div>
+      </section>
+
+      <section className="rounded-lg border border-neutral-200 bg-white">
+        <div className="border-b border-neutral-100 px-4 py-3 text-[13px] font-semibold text-neutral-900">
+          {t("annotationFormatConversion.nlRewriteStepTwoTitle")}
+        </div>
+        <div className="px-4 py-3">
+          <textarea
+            value={llmPrompt}
+            onChange={(event) => setLlmPrompt(event.target.value)}
+            placeholder={t("annotationFormatConversion.llmPromptPlaceholder")}
+            className="batch-edit-textarea glass-input h-32 w-full resize-none px-3 py-2 text-[13px]"
+          />
+        </div>
+      </section>
+
+      <section className="rounded-lg border border-neutral-200 bg-white">
+        <div className="border-b border-neutral-100 px-4 py-3 text-[13px] font-semibold text-neutral-900">
+          {t("annotationFormatConversion.nlRewriteStepThreeTitle")}
+        </div>
+        <div className="px-4 py-3 text-[13px] leading-6 text-neutral-700">
+          {xmlBatchEnabled
+            ? t("annotationFormatConversion.nlRewriteStepThreeXml")
+            : t("annotationFormatConversion.nlRewriteStepThreeDisabled")}
+        </div>
+      </section>
+    </div>
+  );
+}
+
 export function BatchAnnotationFormatConversionDialog({
   onClose,
   onConfirm
@@ -156,11 +244,22 @@ export function BatchAnnotationFormatConversionDialog({
   const [targetFormat, setTargetFormat] = useState<AnnotationFormat>("unset");
   const [qualityWordPlacement, setQualityWordPlacement] =
     useState<QualityWordPlacement>("none");
+  const [xmlBatchEnabled, setXmlBatchEnabled] = useState(true);
+  const [xmlBatchSize, setXmlBatchSize] = useState(8);
+  const [llmPrompt, setLlmPrompt] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const isMountedRef = useRef(true);
   const hasFormatsSelected =
     isUsableFormat(currentFormat) && isUsableFormat(targetFormat);
+  const isNaturalLanguageRewrite =
+    currentFormat === "naturalLanguage" && targetFormat === "naturalLanguage";
   const activeRule = hasFormatsSelected
     ? conversionRules[buildAnnotationFormatConversionKey(currentFormat, targetFormat)]
     : undefined;
+  const canExecute =
+    hasFormatsSelected &&
+    !isSubmitting &&
+    (!isNaturalLanguageRewrite || llmPrompt.trim().length > 0);
 
   const formatOptions: AppSelectOption<AnnotationFormat>[] = [
     {
@@ -181,11 +280,17 @@ export function BatchAnnotationFormatConversionDialog({
     }
   ];
 
+  useEffect(() => {
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
+
   return (
     <AnimatedPortal open={open}>
       <div className="no-drag fixed inset-0 z-50 flex items-center justify-center bg-neutral-950/18 px-5">
         <section
-          className="flex w-full max-w-[680px] flex-col overflow-hidden rounded-lg border border-neutral-200 bg-white shadow-[0_24px_72px_rgba(23,23,23,0.22)]"
+          className="flex h-[620px] max-h-[calc(100vh-48px)] w-full max-w-[680px] flex-col overflow-hidden rounded-lg border border-neutral-200 bg-white shadow-[0_24px_72px_rgba(23,23,23,0.22)]"
           role="dialog"
           aria-modal="true"
           aria-labelledby="batch-annotation-format-conversion-title"
@@ -207,12 +312,13 @@ export function BatchAnnotationFormatConversionDialog({
               aria-label={t("menu.close")}
               title={t("menu.close")}
               onClick={close}
+              disabled={isSubmitting}
             >
               <X className="h-4 w-4 shrink-0" strokeWidth={2} aria-hidden="true" />
             </Button>
           </header>
 
-          <div className="grid min-h-[320px] grid-cols-[250px_minmax(0,1fr)] bg-neutral-50/42">
+          <div className="grid min-h-0 flex-1 grid-cols-[250px_minmax(0,1fr)] bg-neutral-50/42">
             <div className="border-r border-neutral-200 p-5">
               <div className="space-y-4">
                 <label className="block">
@@ -255,7 +361,7 @@ export function BatchAnnotationFormatConversionDialog({
               </div>
             </div>
 
-            <div className="flex p-5">
+            <div className="flex min-h-0 overflow-y-auto p-5">
               {!hasFormatsSelected ? (
                 <div className="m-auto max-w-[320px] text-center text-[13px] leading-6 text-neutral-500">
                   <div>{t("annotationFormatConversion.placeholderLineOne")}</div>
@@ -265,7 +371,13 @@ export function BatchAnnotationFormatConversionDialog({
                 <div className="w-full">
                   {activeRule.renderOptions({
                     qualityWordPlacement,
-                    setQualityWordPlacement
+                    setQualityWordPlacement,
+                    xmlBatchEnabled,
+                    setXmlBatchEnabled,
+                    xmlBatchSize,
+                    setXmlBatchSize,
+                    llmPrompt,
+                    setLlmPrompt
                   })}
                 </div>
               ) : null}
@@ -273,22 +385,39 @@ export function BatchAnnotationFormatConversionDialog({
           </div>
 
           <footer className="flex shrink-0 items-center justify-end gap-2 border-t border-neutral-200 px-5 py-3">
-            <Button type="button" variant="secondary" onClick={close}>
+            <Button
+              type="button"
+              variant="secondary"
+              disabled={isSubmitting}
+              onClick={close}
+            >
               {t("actions.cancel")}
             </Button>
             <Button
               type="button"
-              disabled={!hasFormatsSelected}
-              onClick={() => {
-                if (!hasFormatsSelected) return;
-                void onConfirm({
-                  currentFormat,
-                  targetFormat,
-                  qualityWordPlacement
-                });
+              disabled={!canExecute}
+              onClick={async () => {
+                if (!canExecute) return;
+                setIsSubmitting(true);
+                try {
+                  await onConfirm({
+                    currentFormat,
+                    targetFormat,
+                    qualityWordPlacement,
+                    xmlBatchEnabled,
+                    xmlBatchSize: clampXmlBatchSize(xmlBatchSize),
+                    llmPrompt
+                  });
+                } finally {
+                  if (isMountedRef.current) {
+                    setIsSubmitting(false);
+                  }
+                }
               }}
             >
-              {t("annotationFormatConversion.execute")}
+              {isSubmitting
+                ? t("annotationFormatConversion.executing")
+                : t("annotationFormatConversion.execute")}
             </Button>
           </footer>
         </section>

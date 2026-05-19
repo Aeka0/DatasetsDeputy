@@ -150,6 +150,7 @@ pub fn run() {
             commands::fetch_gemini_models,
             commands::test_gemini_connection,
             commands::generate_gemini_annotation,
+            commands::generate_gemini_text,
             commands::generate_wd14_annotation,
             commands::generate_wd14_annotations,
             commands::list_danbooru_style_tags,

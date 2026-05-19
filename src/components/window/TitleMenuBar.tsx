@@ -11,6 +11,11 @@ import {
   type AnnotationPromptSettings
 } from "../../lib/annotationPrompt";
 import {
+  buildAnnotationXmlBatch,
+  clampXmlBatchSize,
+  parseAnnotationXmlBatchResponse
+} from "../../lib/annotationXmlBatch";
+import {
   getAnnotationFormatConverter,
   prepareAnnotationFormatConversion
 } from "../../lib/annotationFormatConversion";
@@ -229,6 +234,42 @@ function hasUnsavedChange(
 
 function escapeRegExp(value: string) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function chunkArray<T>(items: T[], size: number) {
+  const chunks: T[][] = [];
+  for (let index = 0; index < items.length; index += size) {
+    chunks.push(items.slice(index, index + size));
+  }
+  return chunks;
+}
+
+function buildSingleNaturalLanguageRewritePrompt(userPrompt: string, annotation: string) {
+  return [
+    "Rewrite the following dataset annotation according to the user instruction.",
+    "Return only the rewritten annotation text. Do not add explanations.",
+    "",
+    "User instruction:",
+    userPrompt.trim(),
+    "",
+    "Annotation:",
+    annotation
+  ].join("\n");
+}
+
+function buildNaturalLanguageRewriteXmlPrompt(userPrompt: string, annotationXml: string) {
+  return [
+    "You are rewriting dataset annotation text contained in XML.",
+    "The XML root is <annotations>. Each <item> has a stable id attribute and one <text> child.",
+    "Keep the XML structure exactly: preserve every item id, preserve the same number of items, and only rewrite the text inside <text>.",
+    "Return only valid XML. Do not wrap it in Markdown. Do not add explanations.",
+    "",
+    "User instruction:",
+    userPrompt.trim(),
+    "",
+    "Input XML:",
+    annotationXml
+  ].join("\n");
 }
 
 function BatchAddDialog({
@@ -573,10 +614,13 @@ export function TitleMenuBar({
   const [activeSubmenu, setActiveSubmenu] = useState<string>();
   const [dialog, setDialog] = useState<DialogKey | undefined>("about");
   const [isAnnotationRunning, setIsAnnotationRunning] = useState(false);
+  const [isBatchActionRunning, setIsBatchActionRunning] = useState(false);
   const [menuPosition, setMenuPosition] = useState<MenuPosition>();
   const containerRef = useRef<HTMLDivElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const annotationCancelRef = useRef(false);
+  const batchActionRunIdRef = useRef(0);
+  const activeBatchActionImageIdsRef = useRef<number[]>([]);
   const selectedProject = findProject(projects, selectedProjectId);
   const getSelectedProjectDisplayName = (project: DatasetProject) =>
     getProjectDisplayName(project, () => t("tree.looseFiles"));
@@ -682,6 +726,33 @@ export function TitleMenuBar({
     return getAnnotationForProfile(image, profileId)?.instruction ?? "";
   };
 
+  const beginBatchAction = () => {
+    const runId = batchActionRunIdRef.current + 1;
+    batchActionRunIdRef.current = runId;
+    activeBatchActionImageIdsRef.current = [];
+    setIsBatchActionRunning(true);
+    return runId;
+  };
+
+  const isBatchActionActive = (runId: number) => batchActionRunIdRef.current === runId;
+
+  const finishBatchAction = (runId: number) => {
+    if (!isBatchActionActive(runId)) return;
+    activeBatchActionImageIdsRef.current = [];
+    setIsBatchActionRunning(false);
+  };
+
+  const stopBatchAction = () => {
+    batchActionRunIdRef.current += 1;
+    for (const imageId of activeBatchActionImageIdsRef.current) {
+      markImageAnnotating(imageId, false);
+    }
+    activeBatchActionImageIdsRef.current = [];
+    setIsBatchActionRunning(false);
+    setDialog(undefined);
+    addAppLog(t("appLog.batchActionStopped"), "warning");
+  };
+
   const finalizeBatchChanges = async (
     changes: Array<{ imageId: number; content?: string; instruction?: string }>
   ) => {
@@ -704,7 +775,12 @@ export function TitleMenuBar({
   };
 
   const applyBatchAdd = async (options: BatchAddOptions) => {
-    if (selectedProfileId === undefined) return;
+    if (selectedProfileId === undefined) {
+      setDialog(undefined);
+      return;
+    }
+    setDialog(undefined);
+    const runId = beginBatchAction();
     const changes = getBatchTargetImages(options.scope)
       .map((image) => {
         const draft: { imageId: number; content?: string; instruction?: string } = {
@@ -734,15 +810,25 @@ export function TitleMenuBar({
         Boolean(draft)
       );
 
-    if (changes.length > 0) {
-      await finalizeBatchChanges(changes);
+    try {
+      if (isBatchActionActive(runId) && changes.length > 0) {
+        await finalizeBatchChanges(changes);
+      }
+      if (isBatchActionActive(runId)) {
+        addAppLog(t("appLog.batchAddComplete", { count: changes.length }));
+      }
+    } finally {
+      finishBatchAction(runId);
     }
-    addAppLog(t("appLog.batchAddComplete", { count: changes.length }));
-    setDialog(undefined);
   };
 
   const applyBatchReplace = async (options: BatchReplaceOptions) => {
-    if (selectedProfileId === undefined || !options.find) return;
+    if (selectedProfileId === undefined || !options.find) {
+      setDialog(undefined);
+      return;
+    }
+    setDialog(undefined);
+    const runId = beginBatchAction();
     let pattern = escapeRegExp(options.find);
     if (options.spaceUnderscore) {
       pattern = pattern.replace(/_/g, "[ _]").replace(/ /g, "[ _]");
@@ -779,28 +865,43 @@ export function TitleMenuBar({
         Boolean(draft)
       );
 
-    if (changes.length > 0) {
-      await finalizeBatchChanges(changes);
+    try {
+      if (isBatchActionActive(runId) && changes.length > 0) {
+        await finalizeBatchChanges(changes);
+      }
+      if (isBatchActionActive(runId)) {
+        addAppLog(t("appLog.batchReplaceComplete", { count: changes.length }));
+      }
+    } finally {
+      finishBatchAction(runId);
     }
-    addAppLog(t("appLog.batchReplaceComplete", { count: changes.length }));
-    setDialog(undefined);
   };
 
   const applyAnnotationFormatConversion = async (
     options: BatchAnnotationFormatConversionOptions
   ) => {
+    let runId: number | undefined;
     try {
       if (selectedProfileId === undefined) {
         setDialog(undefined);
         return;
       }
+      setDialog(undefined);
 
+      if (
+        options.currentFormat === "naturalLanguage" &&
+        options.targetFormat === "naturalLanguage"
+      ) {
+        await applyNaturalLanguageRewrite(options);
+        return;
+      }
+
+      runId = beginBatchAction();
       const converter = getAnnotationFormatConverter(
         options.currentFormat,
         options.targetFormat
       );
       if (!converter) {
-        setDialog(undefined);
         return;
       }
 
@@ -808,6 +909,7 @@ export function TitleMenuBar({
         loadDanbooruStyleTags: async () =>
           new Set(await invokeCommand<string[]>("list_danbooru_style_tags"))
       });
+      if (!isBatchActionActive(runId)) return;
       setWorkspaceTab("table");
 
       const changes = getBatchTargetImages("all")
@@ -824,14 +926,163 @@ export function TitleMenuBar({
         })
         .filter((draft): draft is { imageId: number; content: string } => Boolean(draft));
 
-      if (changes.length > 0) {
+      if (isBatchActionActive(runId) && changes.length > 0) {
         await finalizeBatchChanges(changes);
       }
-      addAppLog(t("appLog.annotationFormatConversionComplete", { count: changes.length }));
-      setDialog(undefined);
+      if (isBatchActionActive(runId)) {
+        addAppLog(t("appLog.annotationFormatConversionComplete", { count: changes.length }));
+      }
     } catch (error) {
       addAppLog(t("appLog.menuActionFailed", { message: formatAppError(error) }), "error");
+    } finally {
+      if (runId !== undefined) {
+        finishBatchAction(runId);
+      }
     }
+  };
+
+  const applyNaturalLanguageRewrite = async (
+    options: BatchAnnotationFormatConversionOptions
+  ) => {
+    if (selectedProfileId === undefined) {
+      setDialog(undefined);
+      return;
+    }
+    setDialog(undefined);
+
+    const userPrompt = options.llmPrompt.trim();
+    if (!userPrompt) {
+      addAppLog("Natural language rewrite skipped: prompt is empty.", "warning");
+      return;
+    }
+    if (!hasTauriRuntime()) {
+      addAppLog(t("appLog.annotationTauriRequired"), "error");
+      return;
+    }
+
+    const runId = beginBatchAction();
+    setWorkspaceTab("table");
+    const targets = getBatchTargetImages("all")
+      .map((image) => ({
+        image,
+        current: getCurrentAnnotationDraft(image, selectedProfileId)
+      }))
+      .filter((target) => target.current.trim().length > 0);
+    const skippedCount = getBatchTargetImages("all").length - targets.length;
+    if (targets.length === 0) {
+      addAppLog("Natural language rewrite skipped: no non-empty annotations.", "warning");
+      finishBatchAction(runId);
+      return;
+    }
+
+    const batchSize = clampXmlBatchSize(options.xmlBatchSize);
+    const batches = options.xmlBatchEnabled
+      ? chunkArray(targets, batchSize)
+      : targets.map((target) => [target]);
+    let changedCount = 0;
+    let processedCount = 0;
+    let failedCount = 0;
+
+    addAppLog(
+      `Natural language rewrite started: ${targets.length} non-empty row(s), ${skippedCount} empty row(s) skipped.`
+    );
+
+    for (const [batchIndex, batch] of batches.entries()) {
+      if (!isBatchActionActive(runId)) break;
+      const batchLabel = `${batchIndex + 1}/${batches.length}`;
+      activeBatchActionImageIdsRef.current = batch.map((target) => target.image.id);
+      for (const target of batch) {
+        markImageAnnotating(target.image.id, true);
+      }
+
+      try {
+        const changes: Array<{ imageId: number; content: string }> = [];
+        if (options.xmlBatchEnabled) {
+          const xml = buildAnnotationXmlBatch(
+            batch.map((target) => ({
+              id: target.image.id,
+              text: target.current
+            }))
+          );
+          const response = await invokeCommand<string>("generate_gemini_text", {
+            prompt: buildNaturalLanguageRewriteXmlPrompt(userPrompt, xml)
+          });
+          if (!isBatchActionActive(runId)) {
+            addAppLog(`Discarded natural language rewrite batch ${batchLabel} after stop.`, "warning");
+            return;
+          }
+          const rewrittenById = parseAnnotationXmlBatchResponse(
+            response,
+            batch.map((target) => target.image.id)
+          );
+
+          for (const target of batch) {
+            const content = rewrittenById.get(target.image.id) ?? "";
+            clearTableCellFailure(`${target.image.id}:annotation`);
+            if (content !== target.current) {
+              changes.push({
+                imageId: target.image.id,
+                content
+              });
+            }
+          }
+        } else {
+          const target = batch[0];
+          if (!target) continue;
+
+          const content = await invokeCommand<string>("generate_gemini_text", {
+            prompt: buildSingleNaturalLanguageRewritePrompt(userPrompt, target.current)
+          });
+          if (!isBatchActionActive(runId)) {
+            addAppLog(`Discarded natural language rewrite batch ${batchLabel} after stop.`, "warning");
+            return;
+          }
+          clearTableCellFailure(`${target.image.id}:annotation`);
+          if (content !== target.current) {
+            changes.push({
+              imageId: target.image.id,
+              content
+            });
+          }
+        }
+
+        processedCount += batch.length;
+        changedCount += changes.length;
+        if (isBatchActionActive(runId) && changes.length > 0) {
+          await finalizeBatchChanges(changes);
+        }
+        if (isBatchActionActive(runId)) {
+          addAppLog(
+            `Natural language rewrite batch ${batchLabel} completed: ${batch.length} row(s), ${changes.length} changed.`
+          );
+        }
+      } catch (error) {
+        if (!isBatchActionActive(runId)) return;
+        const message = formatAppError(error);
+        failedCount += batch.length;
+        for (const target of batch) {
+          markTableCellFailed(`${target.image.id}:annotation`);
+        }
+        addAppLog(
+          `Natural language rewrite batch ${batchLabel} failed: ${message}`,
+          "error"
+        );
+      } finally {
+        if (isBatchActionActive(runId)) {
+          for (const target of batch) {
+            markImageAnnotating(target.image.id, false);
+          }
+          activeBatchActionImageIdsRef.current = [];
+        }
+      }
+    }
+
+    if (isBatchActionActive(runId)) {
+      addAppLog(
+        `Natural language rewrite completed: ${processedCount} row(s) processed, ${changedCount} changed, ${failedCount} failed.`
+      );
+    }
+    finishBatchAction(runId);
   };
 
   const applyBatchAnnotationNormalization = async (
@@ -842,6 +1093,8 @@ export function TitleMenuBar({
       return;
     }
 
+    setDialog(undefined);
+    const runId = beginBatchAction();
     setWorkspaceTab("table");
     const changes = getBatchTargetImages("all")
       .map((image) => {
@@ -857,11 +1110,16 @@ export function TitleMenuBar({
       })
       .filter((draft): draft is { imageId: number; content: string } => Boolean(draft));
 
-    if (changes.length > 0) {
-      await finalizeBatchChanges(changes);
+    try {
+      if (isBatchActionActive(runId) && changes.length > 0) {
+        await finalizeBatchChanges(changes);
+      }
+      if (isBatchActionActive(runId)) {
+        addAppLog(t("appLog.batchAnnotationNormalizationComplete", { count: changes.length }));
+      }
+    } finally {
+      finishBatchAction(runId);
     }
-    addAppLog(t("appLog.batchAnnotationNormalizationComplete", { count: changes.length }));
-    setDialog(undefined);
   };
 
   const menus: Record<MenuKey, MenuEntry[]> = {
@@ -905,27 +1163,33 @@ export function TitleMenuBar({
     edit: [
       {
         label: t("menu.batchAdd"),
-        disabled: !canBatchEdit,
+        disabled: !canBatchEdit || isBatchActionRunning,
         opensDialog: true,
         onSelect: () => setDialog("batchAdd")
       },
       {
         label: t("menu.batchReplace"),
-        disabled: !canBatchEdit,
+        disabled: !canBatchEdit || isBatchActionRunning,
         opensDialog: true,
         onSelect: () => setDialog("batchReplace")
       },
       {
         label: t("menu.batchAnnotationFormatConversion"),
-        disabled: !canBatchEdit,
+        disabled: !canBatchEdit || isBatchActionRunning,
         opensDialog: true,
         onSelect: () => setDialog("batchAnnotationFormatConversion")
       },
       {
         label: t("menu.batchAnnotationNormalization"),
-        disabled: !canBatchEdit,
+        disabled: !canBatchEdit || isBatchActionRunning,
         opensDialog: true,
         onSelect: () => setDialog("batchAnnotationNormalization")
+      },
+      { type: "separator" },
+      {
+        label: t("menu.stopAction"),
+        disabled: !isBatchActionRunning,
+        onSelect: stopBatchAction
       }
     ],
     annotation: [

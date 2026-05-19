@@ -307,35 +307,10 @@ fn mime_type_for_path(path: &Path) -> AppResult<String> {
     Ok(mime.to_owned())
 }
 
-pub async fn generate_annotation(
+async fn generate_content(
     settings: &GeminiSettings,
-    image_path: &Path,
-    prompt: &str,
+    request: GenerateContentRequest,
 ) -> AppResult<String> {
-    if settings.api_key.trim().is_empty() {
-        return Err(AppError::InvalidInput(
-            "Gemini API key is required".to_owned(),
-        ));
-    }
-    if prompt.trim().is_empty() {
-        return Err(AppError::InvalidInput(
-            "Annotation prompt is empty".to_owned(),
-        ));
-    }
-
-    let image_bytes = fs::read(image_path)?;
-    let request = GenerateContentRequest {
-        contents: vec![GenerateContentMessage {
-            parts: vec![
-                GenerateContentPart::Text(prompt.trim().to_owned()),
-                GenerateContentPart::InlineData(InlineData {
-                    mime_type: mime_type_for_path(image_path)?,
-                    data: general_purpose::STANDARD.encode(image_bytes),
-                }),
-            ],
-        }],
-    };
-
     let client = http_client(settings, 120)?;
     let endpoint = format!(
         "https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent",
@@ -378,4 +353,57 @@ pub async fn generate_annotation(
     }
 
     Ok(text)
+}
+
+pub async fn generate_text(settings: &GeminiSettings, prompt: &str) -> AppResult<String> {
+    if settings.api_key.trim().is_empty() {
+        return Err(AppError::InvalidInput(
+            "Gemini API key is required".to_owned(),
+        ));
+    }
+    if prompt.trim().is_empty() {
+        return Err(AppError::InvalidInput(
+            "Annotation prompt is empty".to_owned(),
+        ));
+    }
+
+    let request = GenerateContentRequest {
+        contents: vec![GenerateContentMessage {
+            parts: vec![GenerateContentPart::Text(prompt.trim().to_owned())],
+        }],
+    };
+
+    generate_content(settings, request).await
+}
+
+pub async fn generate_annotation(
+    settings: &GeminiSettings,
+    image_path: &Path,
+    prompt: &str,
+) -> AppResult<String> {
+    if settings.api_key.trim().is_empty() {
+        return Err(AppError::InvalidInput(
+            "Gemini API key is required".to_owned(),
+        ));
+    }
+    if prompt.trim().is_empty() {
+        return Err(AppError::InvalidInput(
+            "Annotation prompt is empty".to_owned(),
+        ));
+    }
+
+    let image_bytes = fs::read(image_path)?;
+    let request = GenerateContentRequest {
+        contents: vec![GenerateContentMessage {
+            parts: vec![
+                GenerateContentPart::Text(prompt.trim().to_owned()),
+                GenerateContentPart::InlineData(InlineData {
+                    mime_type: mime_type_for_path(image_path)?,
+                    data: general_purpose::STANDARD.encode(image_bytes),
+                }),
+            ],
+        }],
+    };
+
+    generate_content(settings, request).await
 }

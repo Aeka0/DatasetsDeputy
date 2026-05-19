@@ -1686,6 +1686,15 @@ pub async fn generate_gemini_annotation(
 }
 
 #[tauri::command]
+pub async fn generate_gemini_text(
+    state: State<'_, AppState>,
+    prompt: String,
+) -> AppResult<String> {
+    let settings = gemini::load_settings(&state.dirs)?;
+    gemini::generate_text(&settings, &prompt).await
+}
+
+#[tauri::command]
 pub async fn generate_wd14_annotation(
     state: State<'_, AppState>,
     image_path: String,
