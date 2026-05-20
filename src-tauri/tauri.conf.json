@@ -5,7 +5,7 @@
   "identifier": "com.datasetsdeputy.desktop",
   "build": {
     "beforeDevCommand": "node ./node_modules/vite/bin/vite.js",
-    "devUrl": "http://localhost:4173",
+    "devUrl": "http://localhost:11115",
     "beforeBuildCommand": "npm run build",
     "frontendDist": "../dist"
   },

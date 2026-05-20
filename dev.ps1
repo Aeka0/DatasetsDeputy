@@ -13,7 +13,7 @@ $SplashAssetDir = Join-Path $AssetRoot "splash"
 $PublicSplashDir = Join-Path $ProjectRoot "public\splash"
 $IconAssetPath = Join-Path $AssetRoot "icon\Deputy.ico"
 $TauriIconPath = Join-Path $ProjectRoot "src-tauri\icons\icon.ico"
-$DevPort = 4173
+$DevPort = 11115
 
 function Write-Step {
     param([string]$Message)
