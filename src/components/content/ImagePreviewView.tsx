@@ -1,6 +1,6 @@
-import { ArrowLeft, CircleAlert, FileText, LoaderCircle, Plus, Save, Trash2 } from "lucide-react";
+import { ArrowLeft, Check, CircleAlert, Copy, FileText, LoaderCircle, Plus, Save } from "lucide-react";
 import type { KeyboardEvent as ReactKeyboardEvent, SyntheticEvent } from "react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useShallow } from "zustand/react/shallow";
 
@@ -13,6 +13,29 @@ import type { AnnotationProfile } from "../../types";
 
 type DraftTab = "annotation" | "instruction";
 type ImageDimensions = { imageId: number; width: number; height: number };
+
+async function copyTextToClipboard(text: string) {
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(text);
+    return;
+  }
+
+  const textArea = document.createElement("textarea");
+  textArea.value = text;
+  textArea.setAttribute("readonly", "");
+  textArea.style.position = "fixed";
+  textArea.style.left = "-9999px";
+  document.body.appendChild(textArea);
+  textArea.select();
+
+  try {
+    if (!document.execCommand("copy")) {
+      throw new Error("Clipboard copy failed");
+    }
+  } finally {
+    textArea.remove();
+  }
+}
 
 export function ImagePreviewView() {
   const { t } = useTranslation();
@@ -33,7 +56,6 @@ export function ImagePreviewView() {
     saveAnnotation,
     saveInstruction,
     createAnnotationProfile,
-    clearAnnotation,
     applyTableDraft,
     addAppLog
   } = useDatasetStore(
@@ -54,7 +76,6 @@ export function ImagePreviewView() {
       saveAnnotation: state.saveAnnotation,
       saveInstruction: state.saveInstruction,
       createAnnotationProfile: state.createAnnotationProfile,
-      clearAnnotation: state.clearAnnotation,
       applyTableDraft: state.applyTableDraft,
       addAppLog: state.addAppLog
     }))
@@ -72,6 +93,8 @@ export function ImagePreviewView() {
   const [createProfileError, setCreateProfileError] = useState("");
   const [pendingProfileId, setPendingProfileId] = useState<number>();
   const [loadedDimensions, setLoadedDimensions] = useState<ImageDimensions>();
+  const [copiedDraftTab, setCopiedDraftTab] = useState<DraftTab>();
+  const clearCopyFeedbackTimerRef = useRef<number | undefined>(undefined);
 
   const availableProfiles = useMemo(() => {
     if (!selectedImage?.datasetId) return [];
@@ -171,6 +194,19 @@ export function ImagePreviewView() {
     selectedImage,
     selectedProfileId
   ]);
+
+  useEffect(() => {
+    setCopiedDraftTab(undefined);
+  }, [activeDraftTab, content, instruction]);
+
+  useEffect(
+    () => () => {
+      if (clearCopyFeedbackTimerRef.current !== undefined) {
+        window.clearTimeout(clearCopyFeedbackTimerRef.current);
+      }
+    },
+    []
+  );
 
   if (!selectedImage) {
     return null;
@@ -276,6 +312,38 @@ export function ImagePreviewView() {
     if (selectedProfileId === undefined) return;
     applyTableDraft(selectedProfileId, selectedImage.id, { instruction: value });
   };
+
+  const copyCurrentDraft = () => {
+    const copiedTab = activeDraftTab;
+    const copiedText = activeDraftTab === "annotation" ? content : instruction;
+    const copiedField =
+      activeDraftTab === "annotation" ? t("image.annotationTab") : t("image.instructionTab");
+
+    copyTextToClipboard(copiedText).then(
+      () => {
+        setCopiedDraftTab(copiedTab);
+        if (clearCopyFeedbackTimerRef.current !== undefined) {
+          window.clearTimeout(clearCopyFeedbackTimerRef.current);
+        }
+        clearCopyFeedbackTimerRef.current = window.setTimeout(() => {
+          setCopiedDraftTab((current) => (current === copiedTab ? undefined : current));
+          clearCopyFeedbackTimerRef.current = undefined;
+        }, 1200);
+        addAppLog(t("appLog.copiedDraft", { field: copiedField }));
+      },
+      (error) => {
+        addAppLog(t("appLog.copyDraftFailed", { message: formatAppError(error) }), "error");
+      }
+    );
+  };
+
+  const isCopyDisabled = activeDraftTab === "annotation" ? !content : !instruction;
+  const isCopied = copiedDraftTab === activeDraftTab && !isCopyDisabled;
+  const copyButtonLabel = isCopied
+    ? t("image.copied")
+    : activeDraftTab === "annotation"
+      ? t("image.copyAnnotation")
+      : t("image.copyInstruction");
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -494,22 +562,19 @@ export function ImagePreviewView() {
                 <Save size={15} />
                 {t("image.save")}
               </button>
-              {selectedAnnotation ? (
-                <button
-                  className="no-drag inline-flex h-8 w-8 items-center justify-center rounded-md border border-rose-200 bg-white text-rose-700 transition hover:bg-rose-50"
-                  onClick={() => {
-                    clearAnnotation(selectedAnnotation.id).catch((error) => {
-                      addAppLog(
-                        t("appLog.clearAnnotationFailed", { message: formatAppError(error) }),
-                        "error"
-                      );
-                    });
-                  }}
-                  title={t("image.delete")}
-                >
-                  <Trash2 size={15} />
-                </button>
-              ) : null}
+              <button
+                className={`no-drag inline-flex h-8 w-8 items-center justify-center rounded-md border transition disabled:cursor-not-allowed disabled:opacity-50 ${
+                  isCopied
+                    ? "border-neutral-300 bg-neutral-100 text-neutral-900 hover:bg-neutral-100"
+                    : "border-neutral-200 bg-white text-neutral-700 hover:bg-neutral-50"
+                }`}
+                onClick={copyCurrentDraft}
+                disabled={isCopyDisabled}
+                title={copyButtonLabel}
+                aria-label={copyButtonLabel}
+              >
+                {isCopied ? <Check size={15} /> : <Copy size={15} />}
+              </button>
             </div>
               </>
             ) : (
