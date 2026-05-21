@@ -23,8 +23,10 @@ use crate::{
     folders,
     gemini::{self, GeminiSettings},
     model_settings::{self, ModelSettings},
+    ollama,
     python_env::{self, PythonEnvInstallResult, PythonEnvProbeReport, PythonEnvSettings},
     tag_sheet,
+    textgen,
     thumbnail,
     thumbnail_settings::{self, ThumbnailSettings},
     wd14_tagger,
@@ -1692,6 +1694,26 @@ pub async fn generate_gemini_text(
 ) -> AppResult<String> {
     let settings = gemini::load_settings(&state.dirs)?;
     gemini::generate_text(&settings, &prompt).await
+}
+
+#[tauri::command]
+pub async fn generate_textgen_annotation(image_path: String, prompt: String) -> AppResult<String> {
+    textgen::generate_annotation(&PathBuf::from(image_path), &prompt).await
+}
+
+#[tauri::command]
+pub async fn generate_textgen_text(prompt: String) -> AppResult<String> {
+    textgen::generate_text(&prompt).await
+}
+
+#[tauri::command]
+pub async fn generate_ollama_annotation(image_path: String, prompt: String) -> AppResult<String> {
+    ollama::generate_annotation(&PathBuf::from(image_path), &prompt).await
+}
+
+#[tauri::command]
+pub async fn generate_ollama_text(prompt: String) -> AppResult<String> {
+    ollama::generate_text(&prompt).await
 }
 
 #[tauri::command]

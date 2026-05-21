@@ -38,7 +38,8 @@ import {
 } from "../annotation/AnnotationExecutionDialog";
 import {
   BatchAnnotationFormatConversionDialog,
-  type BatchAnnotationFormatConversionOptions
+  type BatchAnnotationFormatConversionOptions,
+  type LLMBackend
 } from "../annotation/BatchAnnotationFormatConversionDialog";
 import { BatchAnnotationNormalizationDialog } from "../annotation/BatchAnnotationNormalizationDialog";
 import { PromptManagementDialog } from "../annotation/PromptManagementDialog";
@@ -90,9 +91,7 @@ interface MenuSeparator {
 
 type MenuEntry = MenuAction | MenuSubmenu | MenuSeparator;
 
-interface GeminiSettings extends AnnotationPromptSettings {
-  model: string;
-}
+type LLMPromptSettings = AnnotationPromptSettings;
 
 interface Wd14AnnotationProgress {
   start: number;
@@ -204,7 +203,7 @@ function getImageInstruction(
   );
 }
 
-function buildGeminiPrompt(basePrompt: string, imageInstruction: string) {
+function buildLLMImagePrompt(basePrompt: string, imageInstruction: string) {
   const prompt = basePrompt.trim();
   const instruction = imageInstruction.trim();
 
@@ -213,6 +212,28 @@ function buildGeminiPrompt(basePrompt: string, imageInstruction: string) {
   }
 
   return prompt ? `${prompt}\n\nAdditional instruction for this image: ${instruction}` : instruction;
+}
+
+function getAnnotationModeLabel(
+  mode: AnnotationExecutionMode,
+  t: (key: string) => string
+) {
+  if (mode === "gemini") return t("annotationRun.modeGemini");
+  if (mode === "ollama") return t("annotationRun.modeOllama");
+  if (mode === "textgen") return t("annotationRun.modeTextgen");
+  return t("annotationRun.modeWd14");
+}
+
+function getVisionAnnotationCommand(mode: AnnotationExecutionMode) {
+  if (mode === "ollama") return "generate_ollama_annotation";
+  if (mode === "textgen") return "generate_textgen_annotation";
+  return "generate_gemini_annotation";
+}
+
+function getTextGenerationCommand(backend: LLMBackend) {
+  if (backend === "ollama") return "generate_ollama_text";
+  if (backend === "textgen") return "generate_textgen_text";
+  return "generate_gemini_text";
 }
 
 function hasEffectiveAnnotation(image: DatasetImage, profileId: number | undefined) {
@@ -985,6 +1006,7 @@ export function TitleMenuBar({
 
     const runId = beginBatchAction();
     setWorkspaceTab("table");
+    const llmCommand = getTextGenerationCommand(options.llmBackend);
     const targets = getBatchTargetImages("all")
       .map((image) => ({
         image,
@@ -1007,7 +1029,7 @@ export function TitleMenuBar({
     let failedCount = 0;
 
     addAppLog(
-      `Natural language rewrite started: ${targets.length} non-empty row(s), ${skippedCount} empty row(s) skipped.`
+      `Natural language rewrite started: ${targets.length} non-empty row(s), ${skippedCount} empty row(s) skipped. Backend: ${options.llmBackend}.`
     );
 
     for (const [batchIndex, batch] of batches.entries()) {
@@ -1027,7 +1049,7 @@ export function TitleMenuBar({
               text: target.current
             }))
           );
-          const response = await invokeCommand<string>("generate_gemini_text", {
+          const response = await invokeCommand<string>(llmCommand, {
             prompt: buildNaturalLanguageRewriteXmlPrompt(userPrompt, xml)
           });
           if (!isBatchActionActive(runId)) {
@@ -1053,7 +1075,7 @@ export function TitleMenuBar({
           const target = batch[0];
           if (!target) continue;
 
-          const content = await invokeCommand<string>("generate_gemini_text", {
+          const content = await invokeCommand<string>(llmCommand, {
             prompt: buildSingleNaturalLanguageRewritePrompt(userPrompt, target.current)
           });
           if (!isBatchActionActive(runId)) {
@@ -1454,7 +1476,7 @@ export function TitleMenuBar({
     addAppLog(t("appLog.annotationConflict", { strategy: conflictLabel }));
     addAppLog(
       t("appLog.annotationMode", {
-        mode: options.mode === "gemini" ? t("annotationRun.modeGemini") : t("annotationRun.modeWd14")
+        mode: getAnnotationModeLabel(options.mode, t)
       })
     );
     addAppLog(t("appLog.annotationTargetImages", { count: targetCount }));
@@ -1604,8 +1626,9 @@ export function TitleMenuBar({
       }
 
       const prompt = generateAnnotationPrompt(
-        await invokeCommand<GeminiSettings>("get_gemini_settings")
+        await invokeCommand<LLMPromptSettings>("get_gemini_settings")
       );
+      const annotationCommand = getVisionAnnotationCommand(options.mode);
 
       for (const image of targets) {
         if (annotationCancelRef.current) {
@@ -1616,9 +1639,9 @@ export function TitleMenuBar({
         markImageAnnotating(image.id, true);
         try {
           const imagePath = image.storagePath ?? image.path;
-          const content = await invokeCommand<string>("generate_gemini_annotation", {
+          const content = await invokeCommand<string>(annotationCommand, {
             imagePath,
-            prompt: buildGeminiPrompt(
+            prompt: buildLLMImagePrompt(
               prompt,
               getImageInstruction(
                 image,

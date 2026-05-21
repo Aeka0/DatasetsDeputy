@@ -26,8 +26,11 @@ export interface BatchAnnotationFormatConversionOptions {
   qualityWordPlacement: QualityWordPlacement;
   xmlBatchEnabled: boolean;
   xmlBatchSize: number;
+  llmBackend: LLMBackend;
   llmPrompt: string;
 }
+
+export type LLMBackend = "gemini" | "textgen" | "ollama";
 
 interface BatchAnnotationFormatConversionDialogProps {
   datasetPathLabel?: string;
@@ -47,8 +50,10 @@ interface ConversionRuleContext {
   setXmlBatchEnabled: (enabled: boolean) => void;
   xmlBatchSize: number;
   setXmlBatchSize: (size: number) => void;
+  llmBackend: LLMBackend;
+  setLLMBackend: (backend: LLMBackend) => void;
   llmPrompt: string;
-  setLlmPrompt: (prompt: string) => void;
+  setLLMPrompt: (prompt: string) => void;
 }
 
 const conversionRules: Partial<Record<AnnotationFormatConversionKey, ConversionRule>> = {
@@ -221,10 +226,17 @@ function NaturalLanguageRewriteOptions({
   setXmlBatchEnabled,
   xmlBatchSize,
   setXmlBatchSize,
+  llmBackend,
+  setLLMBackend,
   llmPrompt,
-  setLlmPrompt
+  setLLMPrompt
 }: ConversionRuleContext) {
   const { t } = useTranslation();
+  const llmBackendOptions: AppSelectOption<LLMBackend>[] = [
+    { value: "gemini", label: t("annotationFormatConversion.llmBackendGemini") },
+    { value: "textgen", label: t("annotationFormatConversion.llmBackendTextgen") },
+    { value: "ollama", label: t("annotationFormatConversion.llmBackendOllama") }
+  ];
 
   return (
     <div className="space-y-3">
@@ -261,10 +273,20 @@ function NaturalLanguageRewriteOptions({
         <div className="border-b border-neutral-100 px-4 py-3 text-[13px] font-semibold text-neutral-900">
           {t("annotationFormatConversion.nlRewriteStepTwoTitle")}
         </div>
-        <div className="px-4 py-3">
+        <div className="space-y-3 px-4 py-3">
+          <label className="block">
+            <span className="mb-1 block text-[12px] font-medium text-neutral-600">
+              {t("annotationFormatConversion.llmBackend")}
+            </span>
+            <AppSelect
+              value={llmBackend}
+              options={llmBackendOptions}
+              onChange={setLLMBackend}
+            />
+          </label>
           <textarea
             value={llmPrompt}
-            onChange={(event) => setLlmPrompt(event.target.value)}
+            onChange={(event) => setLLMPrompt(event.target.value)}
             placeholder={t("annotationFormatConversion.llmPromptPlaceholder")}
             className="batch-edit-textarea glass-input h-32 w-full resize-none px-3 py-2 text-[13px]"
           />
@@ -298,7 +320,8 @@ export function BatchAnnotationFormatConversionDialog({
     useState<QualityWordPlacement>("none");
   const [xmlBatchEnabled, setXmlBatchEnabled] = useState(true);
   const [xmlBatchSize, setXmlBatchSize] = useState(8);
-  const [llmPrompt, setLlmPrompt] = useState("");
+  const [llmBackend, setLLMBackend] = useState<LLMBackend>("gemini");
+  const [llmPrompt, setLLMPrompt] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const isMountedRef = useRef(true);
   const hasFormatsSelected =
@@ -427,6 +450,11 @@ export function BatchAnnotationFormatConversionDialog({
                     : t("annotationFormatConversion.selectFormatsHint")}
                 </p>
               </div>
+              {isNaturalLanguageRewrite ? (
+                <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-[12px] leading-5 text-amber-900">
+                  {t("annotationFormatConversion.lowQualityModelWarning")}
+                </div>
+              ) : null}
             </div>
 
             <div className="flex min-h-0 overflow-y-auto p-5">
@@ -444,8 +472,10 @@ export function BatchAnnotationFormatConversionDialog({
                     setXmlBatchEnabled,
                     xmlBatchSize,
                     setXmlBatchSize,
+                    llmBackend,
+                    setLLMBackend,
                     llmPrompt,
-                    setLlmPrompt
+                    setLLMPrompt
                   })}
                 </div>
               ) : null}
@@ -474,6 +504,7 @@ export function BatchAnnotationFormatConversionDialog({
                     qualityWordPlacement,
                     xmlBatchEnabled,
                     xmlBatchSize: clampXmlBatchSize(xmlBatchSize),
+                    llmBackend,
                     llmPrompt
                   });
                 } finally {

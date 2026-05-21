@@ -7,8 +7,10 @@ mod files;
 mod folders;
 mod gemini;
 mod model_settings;
+mod ollama;
 mod python_env;
 mod tag_sheet;
+mod textgen;
 mod thumbnail;
 mod thumbnail_settings;
 mod wd14_tagger;
@@ -151,6 +153,10 @@ pub fn run() {
             commands::test_gemini_connection,
             commands::generate_gemini_annotation,
             commands::generate_gemini_text,
+            commands::generate_ollama_annotation,
+            commands::generate_ollama_text,
+            commands::generate_textgen_annotation,
+            commands::generate_textgen_text,
             commands::generate_wd14_annotation,
             commands::generate_wd14_annotations,
             commands::list_danbooru_style_tags,

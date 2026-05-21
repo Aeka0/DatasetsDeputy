@@ -14,7 +14,7 @@ import { AnimatedPortal, useAnimatedPortalClose } from "../ui/AnimatedPortal";
 import { Button } from "../ui/Button";
 import { Switch } from "../ui/Switch";
 
-interface GeminiSettings extends AnnotationPromptSettings {
+interface LLMPromptManagementSettings extends AnnotationPromptSettings {
   apiKey: string;
   model: string;
   availableModels: string[];
@@ -25,7 +25,7 @@ interface GeminiSettings extends AnnotationPromptSettings {
   imageConvertFormat: string;
 }
 
-const fallbackSettings: GeminiSettings = {
+const fallbackSettings: LLMPromptManagementSettings = {
   ...defaultAnnotationPromptSettings,
   apiKey: "",
   model: "gemini-flash-latest",
@@ -62,7 +62,8 @@ interface PromptManagementDialogProps {
 export function PromptManagementDialog({ onClose }: PromptManagementDialogProps) {
   const { t } = useTranslation();
   const { open, close } = useAnimatedPortalClose(onClose);
-  const [settings, setSettings] = useState<GeminiSettings>(fallbackSettings);
+  const [settings, setSettings] =
+    useState<LLMPromptManagementSettings>(fallbackSettings);
   const [hasLoaded, setHasLoaded] = useState(false);
   const [message, setMessage] = useState("");
   const isEmptyMode = settings.annotationMode === "empty";
@@ -74,7 +75,7 @@ export function PromptManagementDialog({ onClose }: PromptManagementDialogProps)
       return;
     }
 
-    void invokeCommand<GeminiSettings>("get_gemini_settings")
+    void invokeCommand<LLMPromptManagementSettings>("get_gemini_settings")
       .then((loadedSettings) => {
         setSettings({ ...fallbackSettings, ...loadedSettings });
         setHasLoaded(true);
@@ -86,7 +87,9 @@ export function PromptManagementDialog({ onClose }: PromptManagementDialogProps)
     if (!hasTauriRuntime() || !hasLoaded) return;
 
     const saveTimer = window.setTimeout(() => {
-      void invokeCommand<GeminiSettings>("save_gemini_settings", { settings }).catch((error) => {
+      void invokeCommand<LLMPromptManagementSettings>("save_gemini_settings", {
+        settings
+      }).catch((error) => {
         const text = formatAppError(error);
         setMessage(t("annotationPrompt.saveFailed", { message: text }));
       });
@@ -95,7 +98,7 @@ export function PromptManagementDialog({ onClose }: PromptManagementDialogProps)
     return () => window.clearTimeout(saveTimer);
   }, [settings, hasLoaded]);
 
-  const patchSettings = (patch: Partial<GeminiSettings>) => {
+  const patchSettings = (patch: Partial<LLMPromptManagementSettings>) => {
     setMessage("");
     setSettings((current) => ({ ...current, ...patch }));
   };
@@ -175,7 +178,9 @@ export function PromptManagementDialog({ onClose }: PromptManagementDialogProps)
                     checked={Boolean(settings[option.key])}
                     label={t(option.labelKey)}
                     onCheckedChange={(checked) =>
-                      patchSettings({ [option.key]: checked } as Partial<GeminiSettings>)
+                      patchSettings({
+                        [option.key]: checked
+                      } as Partial<LLMPromptManagementSettings>)
                     }
                   />
                 ))}
