@@ -1,7 +1,11 @@
 import { ArrowLeft, Database, DatabaseZap, Folders } from "lucide-react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 
+import { cn } from "../../lib/cn";
 import { useDatasetStore } from "../../stores/datasetStore";
+
+const ATTENTION_ANIMATION_MS = 1300;
 
 export function ImportWizardView() {
   const { t } = useTranslation();
@@ -9,11 +13,34 @@ export function ImportWizardView() {
   const importFolder = useDatasetStore((state) => state.importFolder);
   const mountFolder = useDatasetStore((state) => state.mountFolder);
   const closeImportWizard = useDatasetStore((state) => state.closeImportWizard);
+  const importWizardAttentionKey = useDatasetStore((state) => state.importWizardAttentionKey);
   const isLoading = useDatasetStore((state) => state.isLoading);
+  const [isAttentionActive, setIsAttentionActive] = useState(false);
 
   const assetDatabasePoints = t("importWizard.assetDatabasePoints", { returnObjects: true }) as string[];
   const databasePoints = t("importWizard.dynamicDatabasePoints", { returnObjects: true }) as string[];
   const folderPoints = t("importWizard.folderPoints", { returnObjects: true }) as string[];
+  const optionButtonClassName = cn(
+    "no-drag import-wizard-option group row-span-3 grid min-w-0 grid-rows-subgrid content-start rounded-md bg-transparent px-5 py-8 text-left transition-[background-color,transform] duration-500 ease-in-out hover:bg-neutral-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-300 disabled:cursor-not-allowed disabled:opacity-50",
+    isAttentionActive && "import-wizard-option-attention"
+  );
+
+  useEffect(() => {
+    if (importWizardAttentionKey === 0) return;
+
+    setIsAttentionActive(false);
+    const animationFrame = window.requestAnimationFrame(() => {
+      setIsAttentionActive(true);
+    });
+    const timeout = window.setTimeout(() => {
+      setIsAttentionActive(false);
+    }, ATTENTION_ANIMATION_MS);
+
+    return () => {
+      window.cancelAnimationFrame(animationFrame);
+      window.clearTimeout(timeout);
+    };
+  }, [importWizardAttentionKey]);
 
   return (
     <div className="relative flex h-full min-h-0 items-center px-6 py-5">
@@ -35,7 +62,7 @@ export function ImportWizardView() {
         <div className="hover-scrollbar grid min-h-0 grid-cols-3 grid-rows-[auto_1fr_auto] gap-5 overflow-auto">
           <button
             type="button"
-            className="no-drag group row-span-3 grid min-w-0 grid-rows-subgrid content-start rounded-md bg-transparent px-5 py-8 text-left transition-[background-color,transform] duration-500 ease-in-out hover:bg-neutral-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-300 disabled:cursor-not-allowed disabled:opacity-50"
+            className={optionButtonClassName}
             disabled={isLoading}
             onClick={() => void importAssetDatabase()}
           >
@@ -57,7 +84,7 @@ export function ImportWizardView() {
 
           <button
             type="button"
-            className="no-drag group row-span-3 grid min-w-0 grid-rows-subgrid content-start rounded-md bg-transparent px-5 py-8 text-left transition-[background-color,transform] duration-500 ease-in-out hover:bg-neutral-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-300 disabled:cursor-not-allowed disabled:opacity-50"
+            className={optionButtonClassName}
             disabled={isLoading}
             onClick={() => void importFolder()}
           >
@@ -79,7 +106,7 @@ export function ImportWizardView() {
 
           <button
             type="button"
-            className="no-drag group row-span-3 grid min-w-0 grid-rows-subgrid content-start rounded-md bg-transparent px-5 py-8 text-left transition-[background-color,transform] duration-500 ease-in-out hover:bg-neutral-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-300 disabled:cursor-not-allowed disabled:opacity-50"
+            className={optionButtonClassName}
             disabled={isLoading}
             onClick={() => void mountFolder()}
           >

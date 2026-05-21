@@ -482,6 +482,7 @@ interface DatasetState {
   pendingImportKind?: PendingImportKind;
   preparedImportKind?: Exclude<DatasetSourceKind, "folder">;
   showImportWizard: boolean;
+  importWizardAttentionKey: number;
   showExportDialog: boolean;
   showExportDatabaseDialog: boolean;
   showImportDatabaseDialog: boolean;
@@ -760,6 +761,7 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
   pendingImportKind: undefined,
   preparedImportKind: undefined,
   showImportWizard: false,
+  importWizardAttentionKey: 0,
   showExportDialog: false,
   showExportDatabaseDialog: false,
   showImportDatabaseDialog: false,
@@ -1041,10 +1043,20 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
       set({ isCheckingProblemItems: false });
     }
   },
-  openImportWizard: () =>
-    {
-      get().addAppLog(i18next.t("appLog.importWizardOpened"));
-      set({
+  openImportWizard: () => {
+    const state = get();
+    get().addAppLog(i18next.t("appLog.importWizardOpened"));
+    if (
+      state.showImportWizard &&
+      !state.importPreview &&
+      !state.importProgress &&
+      !state.importReport
+    ) {
+      set({ importWizardAttentionKey: state.importWizardAttentionKey + 1 });
+      return;
+    }
+
+    set({
       showImportWizard: true,
       appView: "workspace",
       importPreview: undefined,
@@ -1055,8 +1067,8 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
       selectedProjectId: undefined,
       ...createImageSelection([]),
       previewImageId: undefined
-      });
-    },
+    });
+  },
   closeImportWizard: () => {
     get().addAppLog(i18next.t("appLog.importWizardClosed"));
     set({ showImportWizard: false });

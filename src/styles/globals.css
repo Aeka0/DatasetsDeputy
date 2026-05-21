@@ -420,6 +420,45 @@ html[data-window-maximized="true"] .fluent-shell {
   animation: workspace-heading-enter var(--app-motion-duration-fast) ease;
 }
 
+.import-wizard-option {
+  position: relative;
+  overflow: hidden;
+}
+
+.import-wizard-option::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0;
+  transform: translateX(-130%) skewX(-18deg);
+  background:
+    linear-gradient(
+      100deg,
+      transparent 4%,
+      rgb(255 255 255 / 0.1) 26%,
+      rgb(255 255 255 / 0.46) 50%,
+      rgb(255 255 255 / 0.1) 74%,
+      transparent 96%
+    );
+}
+
+.import-wizard-option-attention::after {
+  animation: import-wizard-option-sheen 1050ms ease-out both;
+}
+
+.import-wizard-option-attention {
+  background-color: rgb(245 245 245 / 0.8);
+}
+
+.import-wizard-option-attention:nth-child(2)::after {
+  animation-delay: 80ms;
+}
+
+.import-wizard-option-attention:nth-child(3)::after {
+  animation-delay: 160ms;
+}
+
 @keyframes app-view-enter {
   from {
     opacity: 0;
@@ -453,6 +492,22 @@ html[data-window-maximized="true"] .fluent-shell {
   to {
     opacity: 1;
     transform: translateX(0);
+  }
+}
+
+@keyframes import-wizard-option-sheen {
+  0% {
+    opacity: 0;
+    transform: translateX(-130%) skewX(-18deg);
+  }
+
+  18% {
+    opacity: 1;
+  }
+
+  100% {
+    opacity: 0;
+    transform: translateX(130%) skewX(-18deg);
   }
 }
 
@@ -661,7 +716,8 @@ html[data-ui-animation="off"] *::after {
 
 html[data-ui-animation="off"] .app-view-transition,
 html[data-ui-animation="off"] .workspace-view-transition,
-html[data-ui-animation="off"] .workspace-heading-transition {
+html[data-ui-animation="off"] .workspace-heading-transition,
+html[data-ui-animation="off"] .import-wizard-option-attention::after {
   animation: none !important;
 }
 
@@ -1032,6 +1088,10 @@ html[data-theme="dark"] .project-tree-count {
 
 html[data-theme="dark"] .title-menu-button {
   color: #ffffff;
+}
+
+html[data-theme="dark"] .import-wizard-option-attention {
+  background-color: rgb(255 255 255 / 0.08);
 }
 
 html[data-theme="dark"] .app-dropdown-menu {
