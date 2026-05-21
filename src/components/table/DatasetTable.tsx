@@ -14,6 +14,7 @@ import { useShallow } from "zustand/react/shallow";
 import { getAnnotationForProfile, getAnnotationText, getInstructionText } from "../../lib/annotations";
 import { cn } from "../../lib/cn";
 import { highlightSearch } from "../../lib/SearchHighlight";
+import { getImageSelectionClickUpdate } from "../../lib/imageSelection";
 import { getLatestVisibleTableCellState } from "../../lib/tableCellState";
 import { getUnsavedTableDraftState } from "../../lib/tableDrafts";
 import { resolveAssetSrc } from "../../lib/tauri";
@@ -107,7 +108,6 @@ export function DatasetTable({
     annotatingImageIds,
     highlightCellState,
     thumbnailCacheKey,
-    selectImage,
     setImageSelection,
     toggleImageSelection,
     openImagePreview,
@@ -137,7 +137,6 @@ export function DatasetTable({
       annotatingImageIds: state.annotatingImageIds,
       highlightCellState: state.highlightCellState,
       thumbnailCacheKey: state.thumbnailCacheKey,
-      selectImage: state.selectImage,
       setImageSelection: state.setImageSelection,
       toggleImageSelection: state.toggleImageSelection,
       openImagePreview: state.openImagePreview,
@@ -293,35 +292,22 @@ export function DatasetTable({
 
   const selectTableImage = (imageId: number, event: ReactMouseEvent<HTMLButtonElement>) => {
     event.preventDefault();
+    const selectionUpdate = getImageSelectionClickUpdate({
+      images,
+      imageId,
+      selectedImageId,
+      selectedImageIds,
+      selectionAnchorImageId,
+      shiftKey: event.shiftKey,
+      additiveKey: event.ctrlKey || event.metaKey
+    });
 
-    if (event.shiftKey) {
-      const anchorId = selectionAnchorImageId ?? selectedImageId ?? imageId;
-      const anchorIndex = images.findIndex((image) => image.id === anchorId);
-      const targetIndex = images.findIndex((image) => image.id === imageId);
-
-      if (anchorIndex === -1 || targetIndex === -1) {
-        selectImage(imageId);
-        return;
-      }
-
-      const [startIndex, endIndex] =
-        anchorIndex < targetIndex ? [anchorIndex, targetIndex] : [targetIndex, anchorIndex];
-      const rangeIds = images.slice(startIndex, endIndex + 1).map((image) => image.id);
-      const nextIds =
-        event.ctrlKey || event.metaKey
-          ? Array.from(new Set([...selectedImageIds, ...rangeIds]))
-          : rangeIds;
-
-      setImageSelection(nextIds, imageId, anchorId);
+    if (selectionUpdate.type === "toggle") {
+      toggleImageSelection(selectionUpdate.id);
       return;
     }
 
-    if (event.ctrlKey || event.metaKey) {
-      toggleImageSelection(imageId);
-      return;
-    }
-
-    selectImage(imageId);
+    setImageSelection(selectionUpdate.ids, selectionUpdate.activeId, selectionUpdate.anchorId);
   };
 
   const gridTemplateColumns = `${columnWidths.filename}px ${columnWidths.preview}px ${columnWidths.annotation}px ${columnWidths.instruction}px`;

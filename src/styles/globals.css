@@ -365,6 +365,11 @@ textarea {
   border-color: #ef4444;
 }
 
+.dataset-grid-card-selected {
+  background: var(--app-selection);
+  box-shadow: inset 0 -3px 0 var(--app-accent);
+}
+
 .dataset-preview-frame {
   position: relative;
   isolation: isolate;

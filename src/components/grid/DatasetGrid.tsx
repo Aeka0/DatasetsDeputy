@@ -8,6 +8,7 @@ import { useShallow } from "zustand/react/shallow";
 import { resolveAssetSrc } from "../../lib/tauri";
 import { cn } from "../../lib/cn";
 import { highlightSearch } from "../../lib/SearchHighlight";
+import { getImageSelectionClickUpdate } from "../../lib/imageSelection";
 import { getLatestVisibleTableCellState } from "../../lib/tableCellState";
 import { useDatasetStore } from "../../stores/datasetStore";
 import type { DatasetImage } from "../../types";
@@ -30,6 +31,9 @@ export function DatasetGrid({
   const { t } = useTranslation();
   const {
     activeProfileId,
+    selectedImageId,
+    selectedImageIds,
+    selectionAnchorImageId,
     tableDraftProfileId,
     tableAnnotationDrafts,
     tableSavedCellKeys,
@@ -37,11 +41,16 @@ export function DatasetGrid({
     tableLatestCellStates,
     highlightCellState,
     thumbnailCacheKey,
+    setImageSelection,
+    toggleImageSelection,
     openImagePreview,
     ensureThumbnails
   } = useDatasetStore(
     useShallow((state) => ({
       activeProfileId: state.activeProfileId,
+      selectedImageId: state.selectedImageId,
+      selectedImageIds: state.selectedImageIds,
+      selectionAnchorImageId: state.selectionAnchorImageId,
       tableDraftProfileId: state.tableDraftProfileId,
       tableAnnotationDrafts: state.tableAnnotationDrafts,
       tableSavedCellKeys: state.tableSavedCellKeys,
@@ -49,6 +58,8 @@ export function DatasetGrid({
       tableLatestCellStates: state.tableLatestCellStates,
       highlightCellState: state.highlightCellState,
       thumbnailCacheKey: state.thumbnailCacheKey,
+      setImageSelection: state.setImageSelection,
+      toggleImageSelection: state.toggleImageSelection,
       openImagePreview: state.openImagePreview,
       ensureThumbnails: state.ensureThumbnails
     }))
@@ -63,6 +74,7 @@ export function DatasetGrid({
     return profiles.filter((profile) => profile.datasetId !== undefined && datasetIds.has(profile.datasetId)).length;
   }, [images, profiles]);
   const isFolderMode = images.length > 0 && images.every((image) => image.sourceKind === "folder");
+  const selectedImageIdSet = useMemo(() => new Set(selectedImageIds), [selectedImageIds]);
   const selectedProfileId = profiles.some((profile) => profile.id === activeProfileId)
     ? activeProfileId
     : profiles[0]?.id;
@@ -181,6 +193,26 @@ export function DatasetGrid({
     return () => window.clearTimeout(timer);
   }, [missingVisibleIdsKey, ensureThumbnails]);
 
+  const selectGridImage = (imageId: number, event: ReactMouseEvent<HTMLElement>) => {
+    event.preventDefault();
+    const selectionUpdate = getImageSelectionClickUpdate({
+      images,
+      imageId,
+      selectedImageId,
+      selectedImageIds,
+      selectionAnchorImageId,
+      shiftKey: event.shiftKey,
+      additiveKey: event.ctrlKey || event.metaKey
+    });
+
+    if (selectionUpdate.type === "toggle") {
+      toggleImageSelection(selectionUpdate.id);
+      return;
+    }
+
+    setImageSelection(selectionUpdate.ids, selectionUpdate.activeId, selectionUpdate.anchorId);
+  };
+
   return (
     <div
       ref={parentRef}
@@ -205,59 +237,76 @@ export function DatasetGrid({
                 transform: `translateY(${Math.round(virtualRow.start)}px)`
               }}
             >
-              {rowImages.map((image) => (
-                <button
-                  key={image.id}
-                  className={cn(
-                    "no-drag group min-w-0 overflow-hidden rounded-lg border border-neutral-200 bg-white p-1.5 text-left transition hover:border-neutral-300 hover:bg-neutral-50",
-                    getAnnotationStateClass(image)
-                  )}
-                  onClick={() => openImagePreview(image.id)}
-                  onContextMenu={(event) => onImageContextMenu?.(image, event)}
-                >
-                  <div className="dataset-preview-frame flex aspect-square items-center justify-center overflow-hidden rounded-md">
-                    {image.sourceMissing ? (
-                      <CircleAlert size={issueIconSize} className="text-red-600" />
-                    ) : image.thumbnailPath && !failedPreviewKeys.has(getPreviewLoadKey(image)) ? (
-                      <img
-                        src={resolveAssetSrc(
-                          image.thumbnailPath,
-                          `${image.updatedAt}:${thumbnailCacheKey}`
-                        )}
-                        alt=""
-                        className={cn(
-                          "dataset-preview-image h-full w-full object-cover",
-                          loadedPreviewKeys.has(getPreviewLoadKey(image)) &&
-                            "dataset-preview-image-loaded"
-                        )}
-                        loading="lazy"
-                        decoding="async"
-                        onLoad={() => markPreviewLoaded(image)}
-                        onError={() => markPreviewFailed(image)}
-                      />
-                    ) : (
-                      <div className="flex h-full w-full items-center justify-center">
-                        <ImageIcon
-                          size={30}
-                          className="dataset-preview-placeholder-icon text-neutral-300"
-                        />
-                      </div>
+              {rowImages.map((image) => {
+                const isSelected = selectedImageIdSet.has(image.id);
+
+                return (
+                  <div
+                    key={image.id}
+                    className={cn(
+                      "no-drag group min-w-0 overflow-hidden rounded-lg border border-neutral-200 bg-white p-1.5 text-left transition",
+                      isSelected
+                        ? "dataset-grid-card-selected"
+                        : "hover:border-neutral-300 hover:bg-neutral-50",
+                      getAnnotationStateClass(image)
                     )}
-                  </div>
-                  <div className="px-1.5 pb-1.5 pt-2">
-                    <div className="truncate text-[13px] text-neutral-800">{highlightSearch(image.fileName, search ?? "")}</div>
-                    <div className="mt-1 flex items-center gap-1.5 text-[12px] text-neutral-500">
-                      <Files size={12} />
-                      <span className="truncate">
-                        {isFolderMode
-                          ? image.annotations.filter((annotation) => annotation.content.trim()).length
-                          : `${image.annotations.filter((annotation) => annotation.content.trim()).length}/${datasetAnnotationTypeCount}`}{" "}
-                        {t("grid.annotationCount")}
-                      </span>
+                    aria-selected={isSelected}
+                    onClick={(event) => selectGridImage(image.id, event)}
+                    onContextMenu={(event) => onImageContextMenu?.(image, event)}
+                  >
+                    <button
+                      type="button"
+                      className="dataset-preview-frame flex aspect-square w-full items-center justify-center overflow-hidden rounded-md"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        openImagePreview(image.id);
+                      }}
+                    >
+                      {image.sourceMissing ? (
+                        <CircleAlert size={issueIconSize} className="text-red-600" />
+                      ) : image.thumbnailPath && !failedPreviewKeys.has(getPreviewLoadKey(image)) ? (
+                        <img
+                          src={resolveAssetSrc(
+                            image.thumbnailPath,
+                            `${image.updatedAt}:${thumbnailCacheKey}`
+                          )}
+                          alt=""
+                          className={cn(
+                            "dataset-preview-image h-full w-full object-cover",
+                            loadedPreviewKeys.has(getPreviewLoadKey(image)) &&
+                              "dataset-preview-image-loaded"
+                          )}
+                          loading="lazy"
+                          decoding="async"
+                          onLoad={() => markPreviewLoaded(image)}
+                          onError={() => markPreviewFailed(image)}
+                        />
+                      ) : (
+                        <div className="flex h-full w-full items-center justify-center">
+                          <ImageIcon
+                            size={30}
+                            className="dataset-preview-placeholder-icon text-neutral-300"
+                          />
+                        </div>
+                      )}
+                    </button>
+                    <div className="px-1.5 pb-1.5 pt-2">
+                      <div className="truncate text-[13px] text-neutral-800">
+                        {highlightSearch(image.fileName, search ?? "")}
+                      </div>
+                      <div className="mt-1 flex items-center gap-1.5 text-[12px] text-neutral-500">
+                        <Files size={12} />
+                        <span className="truncate">
+                          {isFolderMode
+                            ? image.annotations.filter((annotation) => annotation.content.trim()).length
+                            : `${image.annotations.filter((annotation) => annotation.content.trim()).length}/${datasetAnnotationTypeCount}`}{" "}
+                          {t("grid.annotationCount")}
+                        </span>
+                      </div>
                     </div>
                   </div>
-                </button>
-              ))}
+                );
+              })}
             </div>
           );
         })}
