@@ -2,8 +2,7 @@ import type {
   AnnotationFormatConverter,
   QualityWordPlacement
 } from "../types";
-
-const animaQualityWords = "masterpiece, best quality, score_7, score_8, score_9. ";
+import { animaQualityWords } from "./animaQualityWords";
 
 function normalizeBooruTag(value: string) {
   return value.trim().replace(/ /g, "_").toLowerCase();

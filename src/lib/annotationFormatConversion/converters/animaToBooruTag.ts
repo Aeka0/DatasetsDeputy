@@ -1,5 +1,6 @@
 import { cleanupAnnotationSeparators } from "../../annotationNormalization";
 import type { AnnotationFormatConverter } from "../types";
+import { removeAnimaQualityWords } from "./animaQualityWords";
 
 function isBoundaryCharacter(value: string | undefined) {
   return value === undefined || /[\s,.;:!?()[\]{}"'，。；：！？、]/.test(value);
@@ -36,13 +37,6 @@ function removeAnimaAtPrefixes(content: string) {
   }
 
   return result;
-}
-
-function removeAnimaQualityWords(content: string) {
-  return content
-    .replace(/\bmasterpiece\b/gi, "")
-    .replace(/\bbest[ _]quality\b/gi, "")
-    .replace(/\bscore[ _][0-9]\b/gi, "");
 }
 
 export function convertAnimaToBooruTag(content: string) {

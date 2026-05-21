@@ -1,3 +1,4 @@
+import { animaToAnimaConverter } from "./converters/animaToAnima";
 import { animaToBooruTagConverter } from "./converters/animaToBooruTag";
 import { booruTagToAnimaConverter } from "./converters/booruTagToAnima";
 import type {
@@ -10,6 +11,7 @@ import type {
 
 const converters: AnnotationFormatConverter[] = [
   booruTagToAnimaConverter,
+  animaToAnimaConverter,
   animaToBooruTagConverter
 ];
 

@@ -56,6 +56,10 @@ const conversionRules: Partial<Record<AnnotationFormatConversionKey, ConversionR
     descriptionKey: "annotationFormatConversion.descriptionBooruTagToAnima",
     renderOptions: (context) => <BooruTagToAnimaOptions {...context} />
   },
+  "anima->anima": {
+    descriptionKey: "annotationFormatConversion.descriptionAnimaToAnima",
+    renderOptions: (context) => <AnimaToAnimaOptions {...context} />
+  },
   "anima->booruTag": {
     descriptionKey: "annotationFormatConversion.descriptionAnimaToBooruTag",
     renderOptions: () => <AnimaToBooruTagOptions />
@@ -120,6 +124,51 @@ function BooruTagToAnimaOptions({
         <div className="grid min-h-12 grid-cols-[92px_minmax(0,1fr)] items-center gap-3 px-4 py-3">
           <div className="text-[13px] text-neutral-700">
             {t("annotationFormatConversion.addMethod")}
+          </div>
+          <AppSelect
+            value={qualityWordPlacement}
+            options={qualityWordOptions}
+            onChange={setQualityWordPlacement}
+          />
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function AnimaToAnimaOptions({
+  qualityWordPlacement,
+  setQualityWordPlacement
+}: ConversionRuleContext) {
+  const { t } = useTranslation();
+  const qualityWordOptions: AppSelectOption<QualityWordPlacement>[] = [
+    {
+      value: "keep",
+      label: t("annotationFormatConversion.qualityWordsKeep")
+    },
+    {
+      value: "prefix",
+      label: t("annotationFormatConversion.qualityWordsPrefix")
+    },
+    {
+      value: "suffix",
+      label: t("annotationFormatConversion.qualityWordsSuffix")
+    },
+    {
+      value: "off",
+      label: t("annotationFormatConversion.qualityWordsOff")
+    }
+  ];
+
+  return (
+    <div className="space-y-3">
+      <section className="rounded-lg border border-neutral-200 bg-white">
+        <div className="border-b border-neutral-100 px-4 py-3 text-[13px] font-semibold text-neutral-900">
+          {t("annotationFormatConversion.animaStepOneTitle")}
+        </div>
+        <div className="grid min-h-12 grid-cols-[92px_minmax(0,1fr)] items-center gap-3 px-4 py-3">
+          <div className="text-[13px] text-neutral-700">
+            {t("annotationFormatConversion.qualityWordsMethod")}
           </div>
           <AppSelect
             value={qualityWordPlacement}
@@ -288,6 +337,23 @@ export function BatchAnnotationFormatConversionDialog({
       isMountedRef.current = false;
     };
   }, []);
+
+  useEffect(() => {
+    if (currentFormat === "anima" && targetFormat === "anima") {
+      if (qualityWordPlacement === "none") {
+        setQualityWordPlacement("keep");
+      }
+      return;
+    }
+
+    if (
+      currentFormat === "booruTag" &&
+      targetFormat === "anima" &&
+      (qualityWordPlacement === "keep" || qualityWordPlacement === "off")
+    ) {
+      setQualityWordPlacement("none");
+    }
+  }, [currentFormat, qualityWordPlacement, targetFormat]);
 
   return (
     <AnimatedPortal open={open}>

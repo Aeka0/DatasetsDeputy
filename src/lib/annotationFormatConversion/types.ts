@@ -3,7 +3,7 @@ export type UsableAnnotationFormat = Exclude<AnnotationFormat, "unset">;
 export type AnnotationFormatConversionKey =
   `${UsableAnnotationFormat}->${UsableAnnotationFormat}`;
 
-export type QualityWordPlacement = "none" | "prefix" | "suffix";
+export type QualityWordPlacement = "none" | "keep" | "prefix" | "suffix" | "off";
 
 export interface AnnotationFormatConversionOptions {
   qualityWordPlacement: QualityWordPlacement;
