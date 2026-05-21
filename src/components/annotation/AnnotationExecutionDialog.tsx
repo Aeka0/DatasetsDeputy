@@ -8,11 +8,17 @@ import { Button } from "../ui/Button";
 
 export type AnnotationExecutionScope = "selected" | "all" | "empty";
 export type AnnotationConflictStrategy = "overwrite" | "skip";
-export type AnnotationExecutionMode = "gemini" | "ollama" | "textgen" | "wd14";
+export type AnnotationExecutionMode =
+  | "gemini"
+  | "lmStudio"
+  | "ollama"
+  | "textgen"
+  | "wd14";
 
 const modeOptions: Array<{ value: AnnotationExecutionMode; labelKey: string }> = [
   { value: "wd14", labelKey: "annotationRun.modeWd14" },
   { value: "gemini", labelKey: "annotationRun.modeGemini" },
+  { value: "lmStudio", labelKey: "annotationRun.modeLmStudio" },
   { value: "ollama", labelKey: "annotationRun.modeOllama" },
   { value: "textgen", labelKey: "annotationRun.modeTextgen" }
 ];

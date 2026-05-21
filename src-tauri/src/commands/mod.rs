@@ -22,6 +22,7 @@ use crate::{
     files::{self, ImportPreview, ImportSummary},
     folders,
     gemini::{self, GeminiSettings},
+    lm_studio,
     model_settings::{self, ModelSettings},
     ollama,
     python_env::{self, PythonEnvInstallResult, PythonEnvProbeReport, PythonEnvSettings},
@@ -1704,6 +1705,19 @@ pub async fn generate_textgen_annotation(image_path: String, prompt: String) -> 
 #[tauri::command]
 pub async fn generate_textgen_text(prompt: String) -> AppResult<String> {
     textgen::generate_text(&prompt).await
+}
+
+#[tauri::command]
+pub async fn generate_lm_studio_annotation(
+    image_path: String,
+    prompt: String,
+) -> AppResult<String> {
+    lm_studio::generate_annotation(&PathBuf::from(image_path), &prompt).await
+}
+
+#[tauri::command]
+pub async fn generate_lm_studio_text(prompt: String) -> AppResult<String> {
+    lm_studio::generate_text(&prompt).await
 }
 
 #[tauri::command]

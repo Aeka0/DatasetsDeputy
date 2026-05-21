@@ -6,8 +6,10 @@ mod export;
 mod files;
 mod folders;
 mod gemini;
+mod lm_studio;
 mod model_settings;
 mod ollama;
+mod openai_compatible;
 mod python_env;
 mod tag_sheet;
 mod textgen;
@@ -153,6 +155,8 @@ pub fn run() {
             commands::test_gemini_connection,
             commands::generate_gemini_annotation,
             commands::generate_gemini_text,
+            commands::generate_lm_studio_annotation,
+            commands::generate_lm_studio_text,
             commands::generate_ollama_annotation,
             commands::generate_ollama_text,
             commands::generate_textgen_annotation,

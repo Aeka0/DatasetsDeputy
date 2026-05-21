@@ -6,9 +6,9 @@ use crate::{
 };
 
 const BACKEND: OpenAiCompatibleBackend = OpenAiCompatibleBackend {
-    label: "Textgen",
-    base_url: "http://127.0.0.1:5005",
-    disable_thinking: true,
+    label: "LM Studio",
+    base_url: "http://127.0.0.1:1234",
+    disable_thinking: false,
 };
 
 pub async fn generate_text(prompt: &str) -> AppResult<String> {

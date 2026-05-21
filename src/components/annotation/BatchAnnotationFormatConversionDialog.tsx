@@ -30,7 +30,7 @@ export interface BatchAnnotationFormatConversionOptions {
   llmPrompt: string;
 }
 
-export type LLMBackend = "gemini" | "textgen" | "ollama";
+export type LLMBackend = "gemini" | "lmStudio" | "textgen" | "ollama";
 
 interface BatchAnnotationFormatConversionDialogProps {
   datasetPathLabel?: string;
@@ -234,6 +234,7 @@ function NaturalLanguageRewriteOptions({
   const { t } = useTranslation();
   const llmBackendOptions: AppSelectOption<LLMBackend>[] = [
     { value: "gemini", label: t("annotationFormatConversion.llmBackendGemini") },
+    { value: "lmStudio", label: t("annotationFormatConversion.llmBackendLmStudio") },
     { value: "textgen", label: t("annotationFormatConversion.llmBackendTextgen") },
     { value: "ollama", label: t("annotationFormatConversion.llmBackendOllama") }
   ];

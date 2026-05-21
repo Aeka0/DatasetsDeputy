@@ -219,18 +219,21 @@ function getAnnotationModeLabel(
   t: (key: string) => string
 ) {
   if (mode === "gemini") return t("annotationRun.modeGemini");
+  if (mode === "lmStudio") return t("annotationRun.modeLmStudio");
   if (mode === "ollama") return t("annotationRun.modeOllama");
   if (mode === "textgen") return t("annotationRun.modeTextgen");
   return t("annotationRun.modeWd14");
 }
 
 function getVisionAnnotationCommand(mode: AnnotationExecutionMode) {
+  if (mode === "lmStudio") return "generate_lm_studio_annotation";
   if (mode === "ollama") return "generate_ollama_annotation";
   if (mode === "textgen") return "generate_textgen_annotation";
   return "generate_gemini_annotation";
 }
 
 function getTextGenerationCommand(backend: LLMBackend) {
+  if (backend === "lmStudio") return "generate_lm_studio_text";
   if (backend === "ollama") return "generate_ollama_text";
   if (backend === "textgen") return "generate_textgen_text";
   return "generate_gemini_text";
