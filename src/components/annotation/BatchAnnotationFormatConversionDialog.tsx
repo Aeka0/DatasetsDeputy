@@ -17,6 +17,7 @@ import {
 import { AnimatedPortal, useAnimatedPortalClose } from "../ui/AnimatedPortal";
 import { AppSelect, type AppSelectOption } from "../ui/AppSelect";
 import { Button } from "../ui/Button";
+import { DialogTitleWithDataset } from "../ui/DialogTitleWithDataset";
 import { Switch } from "../ui/Switch";
 
 export interface BatchAnnotationFormatConversionOptions {
@@ -29,6 +30,7 @@ export interface BatchAnnotationFormatConversionOptions {
 }
 
 interface BatchAnnotationFormatConversionDialogProps {
+  datasetPathLabel?: string;
   onClose: () => void;
   onConfirm: (options: BatchAnnotationFormatConversionOptions) => void | Promise<void>;
 }
@@ -235,6 +237,7 @@ function NaturalLanguageRewriteOptions({
 }
 
 export function BatchAnnotationFormatConversionDialog({
+  datasetPathLabel,
   onClose,
   onConfirm
 }: BatchAnnotationFormatConversionDialogProps) {
@@ -296,14 +299,13 @@ export function BatchAnnotationFormatConversionDialog({
           aria-labelledby="batch-annotation-format-conversion-title"
         >
           <header className="flex h-14 shrink-0 items-center justify-between border-b border-neutral-200 px-5">
-            <div className="flex items-center gap-2.5">
+            <div className="flex min-w-0 items-center gap-2.5">
               <ArrowLeftRight size={18} className="text-neutral-700" />
-              <h2
+              <DialogTitleWithDataset
                 id="batch-annotation-format-conversion-title"
-                className="m-0 text-[15px] font-semibold text-neutral-950"
-              >
-                {t("annotationFormatConversion.title")}
-              </h2>
+                title={t("annotationFormatConversion.title")}
+                datasetPathLabel={datasetPathLabel}
+              />
             </div>
             <Button
               type="button"

@@ -23,6 +23,7 @@ import {
   normalizeAnnotation,
   type AnnotationNormalizationOptions
 } from "../../lib/annotationNormalization";
+import { cn } from "../../lib/cn";
 import { formatAppError } from "../../lib/errors";
 import { formatDialogMenuLabel } from "../../lib/menuLabels";
 import { findProject, formatProjectPath, getProjectDisplayName } from "../../lib/projects";
@@ -46,6 +47,7 @@ import { SettingsDialog } from "../settings/SettingsDialog";
 import { FormatValidatorDialog } from "../tools/FormatValidatorDialog";
 import { TrainingCacheCleanerDialog } from "../tools/TrainingCacheCleanerDialog";
 import { AnimatedPortal } from "../ui/AnimatedPortal";
+import { DialogTitleWithDataset } from "../ui/DialogTitleWithDataset";
 import { Switch } from "../ui/Switch";
 
 type MenuKey = "file" | "edit" | "annotation" | "view" | "tools" | "settings" | "about";
@@ -274,10 +276,12 @@ function buildNaturalLanguageRewriteXmlPrompt(userPrompt: string, annotationXml:
 
 function BatchAddDialog({
   hasSelection,
+  datasetPathLabel,
   onClose,
   onConfirm
 }: {
   hasSelection: boolean;
+  datasetPathLabel?: string;
   onClose: () => void;
   onConfirm: (options: BatchAddOptions) => void;
 }) {
@@ -298,9 +302,10 @@ function BatchAddDialog({
             onConfirm({ text, position, scope, target });
           }}
         >
-          <h2 className="m-0 text-[15px] font-semibold leading-6 text-neutral-950">
-            {t("batchEdit.addTitle")}
-          </h2>
+          <DialogTitleWithDataset
+            title={t("batchEdit.addTitle")}
+            datasetPathLabel={datasetPathLabel}
+          />
           <label className="mt-4 block">
             <span className="text-[12px] font-medium text-neutral-600">
               {t("batchEdit.text")}
@@ -364,10 +369,12 @@ function BatchAddDialog({
 
 function BatchReplaceDialog({
   hasSelection,
+  datasetPathLabel,
   onClose,
   onConfirm
 }: {
   hasSelection: boolean;
+  datasetPathLabel?: string;
   onClose: () => void;
   onConfirm: (options: BatchReplaceOptions) => void;
 }) {
@@ -400,9 +407,10 @@ function BatchReplaceDialog({
           }}
         >
           <div className="border-b border-neutral-100 px-5 py-4">
-            <h2 className="m-0 text-[15px] font-semibold leading-6 text-neutral-950">
-              {t("batchEdit.replaceTitle")}
-            </h2>
+            <DialogTitleWithDataset
+              title={t("batchEdit.replaceTitle")}
+              datasetPathLabel={datasetPathLabel}
+            />
           </div>
           <div className="px-5 py-4">
             <div className="grid grid-cols-2 gap-4">
@@ -518,16 +526,27 @@ function BatchRadioGroup({
   return (
     <fieldset className={`mt-4 rounded-lg border border-neutral-200 px-3 py-2.5 ${className ?? ""}`}>
       <legend className="px-1 text-[12px] font-medium text-neutral-500">{title}</legend>
-      <div className="flex flex-wrap gap-x-4 gap-y-2">
+      <div className="flex flex-wrap gap-2">
         {options.map(([optionValue, label, disabled]) => (
-          <label key={optionValue} className="inline-flex items-center gap-2 text-[13px] text-neutral-700">
+          <label
+            key={optionValue}
+            className={cn(
+              "batch-radio-option relative inline-flex h-7 cursor-pointer items-center rounded-md px-2.5 text-[13px] font-medium transition focus-within:outline focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-neutral-900/15",
+              value === optionValue
+                ? "batch-radio-option-selected bg-neutral-900/[0.08] text-neutral-950 shadow-[inset_0_0_0_1px_rgba(23,23,23,0.08)]"
+                : "text-neutral-600 hover:bg-neutral-900/[0.05] hover:text-neutral-900",
+              disabled &&
+                "cursor-not-allowed bg-transparent text-neutral-400 opacity-60 hover:bg-transparent hover:text-neutral-400"
+            )}
+          >
             <input
               type="radio"
+              className="sr-only"
               checked={value === optionValue}
               disabled={disabled}
               onChange={() => onChange(optionValue)}
             />
-            <span className={disabled ? "text-neutral-400" : ""}>{label}</span>
+            <span>{label}</span>
           </label>
         ))}
       </div>
@@ -1744,6 +1763,7 @@ export function TitleMenuBar({
       {dialog === "batchAdd" ? (
         <BatchAddDialog
           hasSelection={selectedTargetImageIds.length > 0}
+          datasetPathLabel={selectedProjectPathLabel}
           onClose={() => setDialog(undefined)}
           onConfirm={applyBatchAdd}
         />
@@ -1751,18 +1771,21 @@ export function TitleMenuBar({
       {dialog === "batchReplace" ? (
         <BatchReplaceDialog
           hasSelection={selectedTargetImageIds.length > 0}
+          datasetPathLabel={selectedProjectPathLabel}
           onClose={() => setDialog(undefined)}
           onConfirm={applyBatchReplace}
         />
       ) : null}
       {dialog === "batchAnnotationFormatConversion" ? (
         <BatchAnnotationFormatConversionDialog
+          datasetPathLabel={selectedProjectPathLabel}
           onClose={() => setDialog(undefined)}
           onConfirm={applyAnnotationFormatConversion}
         />
       ) : null}
       {dialog === "batchAnnotationNormalization" ? (
         <BatchAnnotationNormalizationDialog
+          datasetPathLabel={selectedProjectPathLabel}
           onClose={() => setDialog(undefined)}
           onConfirm={applyBatchAnnotationNormalization}
         />

@@ -8,9 +8,11 @@ import {
 } from "../../lib/annotationNormalization";
 import { AnimatedPortal, useAnimatedPortalClose } from "../ui/AnimatedPortal";
 import { Button } from "../ui/Button";
+import { DialogTitleWithDataset } from "../ui/DialogTitleWithDataset";
 import { Switch } from "../ui/Switch";
 
 interface BatchAnnotationNormalizationDialogProps {
+  datasetPathLabel?: string;
   onClose: () => void;
   onConfirm: (options: AnnotationNormalizationOptions) => void | Promise<void>;
 }
@@ -28,6 +30,7 @@ const normalizationOptionKeys: NormalizationOptionKey[] = [
 ];
 
 export function BatchAnnotationNormalizationDialog({
+  datasetPathLabel,
   onClose,
   onConfirm
 }: BatchAnnotationNormalizationDialogProps) {
@@ -52,14 +55,13 @@ export function BatchAnnotationNormalizationDialog({
           aria-labelledby="batch-annotation-normalization-title"
         >
           <header className="flex h-14 shrink-0 items-center justify-between border-b border-neutral-200 px-5">
-            <div className="flex items-center gap-2.5">
+            <div className="flex min-w-0 items-center gap-2.5">
               <Sparkles size={18} className="text-neutral-700" />
-              <h2
+              <DialogTitleWithDataset
                 id="batch-annotation-normalization-title"
-                className="m-0 text-[15px] font-semibold text-neutral-950"
-              >
-                {t("annotationNormalization.title")}
-              </h2>
+                title={t("annotationNormalization.title")}
+                datasetPathLabel={datasetPathLabel}
+              />
             </div>
             <Button
               type="button"
