@@ -133,6 +133,10 @@ const menuLabels: Array<{ key: MenuKey; labelKey: string }> = [
 
 const annotationCancelledError = "annotation_cancelled";
 
+function getAppOverlayRoot() {
+  return document.getElementById("app-overlay-root") ?? document.body;
+}
+
 function formatMenuActionLabel(action: MenuAction) {
   return action.opensDialog ? formatDialogMenuLabel(action.label) : action.label;
 }
@@ -1688,7 +1692,7 @@ export function TitleMenuBar({
         ? createPortal(
         <div
           ref={dropdownRef}
-          className="app-dropdown-menu no-drag fixed z-50 min-w-[180px] rounded-lg py-2"
+          className="app-dropdown-menu no-drag pointer-events-auto fixed z-0 min-w-[180px] rounded-lg py-2"
           style={{ left: menuPosition.left, top: menuPosition.top }}
         >
           <div className="app-dropdown-backdrop" />
@@ -1755,7 +1759,7 @@ export function TitleMenuBar({
             )
           )}
         </div>,
-          document.body
+          getAppOverlayRoot()
         )
         : null}
 

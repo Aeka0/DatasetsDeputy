@@ -332,6 +332,7 @@ export default function App() {
           </div>
         </section>
       </div>
+      <div id="app-overlay-root" className="pointer-events-none fixed inset-0 z-[80]" />
       <ExportDialog />
       <ExportDatabaseDialog />
       <ImportDatabaseDialog />
