@@ -16,11 +16,10 @@ import { Switch } from "../ui/Switch";
 
 interface LLMPromptManagementSettings extends AnnotationPromptSettings {
   apiKey: string;
+  baseUrl: string;
   model: string;
   availableModels: string[];
   rpmLimit: number;
-  useProxy: boolean;
-  proxyPort: string;
   imageResizeMode: string;
   imageConvertFormat: string;
 }
@@ -28,11 +27,10 @@ interface LLMPromptManagementSettings extends AnnotationPromptSettings {
 const fallbackSettings: LLMPromptManagementSettings = {
   ...defaultAnnotationPromptSettings,
   apiKey: "",
+  baseUrl: "",
   model: "gemini-flash-latest",
   availableModels: ["gemini-flash-latest", "gemini-pro-latest"],
   rpmLimit: 0,
-  useProxy: false,
-  proxyPort: "7890",
   imageResizeMode: "none",
   imageConvertFormat: "none"
 };

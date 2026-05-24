@@ -1,3 +1,4 @@
+mod anthropic;
 mod app_dirs;
 mod commands;
 mod db;
@@ -6,10 +7,13 @@ mod export;
 mod files;
 mod folders;
 mod gemini;
+mod grok;
 mod lm_studio;
 mod model_settings;
 mod ollama;
+mod openai;
 mod openai_compatible;
+mod proxy_settings;
 mod python_env;
 mod tag_sheet;
 mod textgen;
@@ -155,6 +159,26 @@ pub fn run() {
             commands::test_gemini_connection,
             commands::generate_gemini_annotation,
             commands::generate_gemini_text,
+            commands::get_proxy_settings,
+            commands::save_proxy_settings,
+            commands::get_openai_settings,
+            commands::save_openai_settings,
+            commands::fetch_openai_models,
+            commands::test_openai_connection,
+            commands::generate_openai_annotation,
+            commands::generate_openai_text,
+            commands::get_anthropic_settings,
+            commands::save_anthropic_settings,
+            commands::fetch_anthropic_models,
+            commands::test_anthropic_connection,
+            commands::generate_anthropic_annotation,
+            commands::generate_anthropic_text,
+            commands::get_grok_settings,
+            commands::save_grok_settings,
+            commands::fetch_grok_models,
+            commands::test_grok_connection,
+            commands::generate_grok_annotation,
+            commands::generate_grok_text,
             commands::generate_lm_studio_annotation,
             commands::generate_lm_studio_text,
             commands::generate_ollama_annotation,

@@ -1,4 +1,4 @@
-use std::{fs, path::Path, time::Duration};
+use std::{fs, path::Path};
 
 use base64::{engine::general_purpose, Engine as _};
 use serde::{Deserialize, Serialize};
@@ -6,9 +6,11 @@ use serde::{Deserialize, Serialize};
 use crate::{
     app_dirs::AppDirs,
     errors::{AppError, AppResult},
+    proxy_settings::{self, ProxySettings},
 };
 
 const SETTINGS_FILE: &str = "gemini-settings.json";
+const DEFAULT_BASE_URL: &str = "https://generativelanguage.googleapis.com/v1beta";
 const DEFAULT_MODEL: &str = "gemini-flash-latest";
 const DEFAULT_AVAILABLE_MODELS: [&str; 2] = ["gemini-flash-latest", "gemini-pro-latest"];
 const LEGACY_DEFAULT_AVAILABLE_MODELS: [&str; 2] = ["gemini-1.5-pro-002", "gemini-1.5-flash-002"];
@@ -17,11 +19,11 @@ const LEGACY_DEFAULT_AVAILABLE_MODELS: [&str; 2] = ["gemini-1.5-pro-002", "gemin
 #[serde(rename_all = "camelCase")]
 pub struct GeminiSettings {
     pub api_key: String,
+    #[serde(default)]
+    pub base_url: String,
     pub model: String,
     pub available_models: Vec<String>,
     pub rpm_limit: u32,
-    pub use_proxy: bool,
-    pub proxy_port: String,
     pub image_resize_mode: String,
     pub image_convert_format: String,
     #[serde(default = "default_annotation_mode")]
@@ -107,14 +109,13 @@ struct GenerateContentResponsePart {
 pub fn default_settings() -> GeminiSettings {
     GeminiSettings {
         api_key: String::new(),
+        base_url: String::new(),
         model: DEFAULT_MODEL.to_owned(),
         available_models: DEFAULT_AVAILABLE_MODELS
             .iter()
             .map(|model| (*model).to_owned())
             .collect(),
         rpm_limit: 0,
-        use_proxy: false,
-        proxy_port: "7890".to_owned(),
         image_resize_mode: "none".to_owned(),
         image_convert_format: "none".to_owned(),
         annotation_mode: default_annotation_mode(),
@@ -134,6 +135,34 @@ fn default_annotation_mode() -> String {
     "exact".to_owned()
 }
 
+fn default_base_url() -> String {
+    DEFAULT_BASE_URL.to_owned()
+}
+
+fn normalize_base_url(base_url: &str) -> String {
+    let mut value = base_url.trim().trim_end_matches('/').to_owned();
+    if value.is_empty() {
+        return String::new();
+    }
+    if value.ends_with("/models") {
+        let next_len = value.len() - "/models".len();
+        value.truncate(next_len);
+    }
+    if value == "https://generativelanguage.googleapis.com" || value == DEFAULT_BASE_URL {
+        return String::new();
+    }
+    value
+}
+
+fn effective_base_url(base_url: &str) -> String {
+    let value = normalize_base_url(base_url);
+    if value.is_empty() {
+        default_base_url()
+    } else {
+        value
+    }
+}
+
 fn is_legacy_default_models(models: &[String]) -> bool {
     models.len() == LEGACY_DEFAULT_AVAILABLE_MODELS.len()
         && LEGACY_DEFAULT_AVAILABLE_MODELS
@@ -151,6 +180,7 @@ pub fn load_settings(dirs: &AppDirs) -> AppResult<GeminiSettings> {
     if settings.available_models.is_empty() {
         settings.available_models = default_settings().available_models;
     }
+    settings.base_url = normalize_base_url(&settings.base_url);
     if is_legacy_default_models(&settings.available_models) {
         settings.available_models = default_settings().available_models;
         if matches!(
@@ -162,9 +192,6 @@ pub fn load_settings(dirs: &AppDirs) -> AppResult<GeminiSettings> {
     }
     if settings.model.trim().is_empty() {
         settings.model = default_settings().model;
-    }
-    if settings.proxy_port.trim().is_empty() {
-        settings.proxy_port = default_settings().proxy_port;
     }
     if settings.image_resize_mode.trim().is_empty() {
         settings.image_resize_mode = "none".to_owned();
@@ -180,14 +207,11 @@ pub fn load_settings(dirs: &AppDirs) -> AppResult<GeminiSettings> {
 
 pub fn save_settings(dirs: &AppDirs, mut settings: GeminiSettings) -> AppResult<GeminiSettings> {
     settings.api_key = settings.api_key.trim().to_owned();
+    settings.base_url = normalize_base_url(&settings.base_url);
     settings.model = settings.model.trim().to_owned();
-    settings.proxy_port = settings.proxy_port.trim().to_owned();
     settings.annotation_mode = settings.annotation_mode.trim().to_owned();
     if settings.model.is_empty() {
         settings.model = default_settings().model;
-    }
-    if settings.proxy_port.is_empty() {
-        settings.proxy_port = default_settings().proxy_port;
     }
     if !matches!(
         settings.annotation_mode.as_str(),
@@ -210,31 +234,20 @@ pub fn save_settings(dirs: &AppDirs, mut settings: GeminiSettings) -> AppResult<
     Ok(settings)
 }
 
-fn http_client(settings: &GeminiSettings, timeout_secs: u64) -> AppResult<reqwest::Client> {
-    let mut builder = reqwest::Client::builder().timeout(Duration::from_secs(timeout_secs));
-    if settings.use_proxy {
-        let proxy_url = format!("http://127.0.0.1:{}", settings.proxy_port.trim());
-        builder = builder.proxy(
-            reqwest::Proxy::all(&proxy_url)
-                .map_err(|error| AppError::InvalidInput(format!("Invalid proxy: {error}")))?,
-        );
-    }
-
-    builder
-        .build()
-        .map_err(|error| AppError::InvalidInput(format!("HTTP client failed: {error}")))
-}
-
-pub async fn fetch_models(settings: &GeminiSettings) -> AppResult<Vec<String>> {
+pub async fn fetch_models(
+    settings: &GeminiSettings,
+    proxy_settings: &ProxySettings,
+) -> AppResult<Vec<String>> {
     if settings.api_key.trim().is_empty() {
         return Err(AppError::InvalidInput(
             "Gemini API key is required".to_owned(),
         ));
     }
 
-    let client = http_client(settings, 20)?;
+    let client = proxy_settings::http_client(proxy_settings, 20)?;
+    let base_url = effective_base_url(&settings.base_url);
     let response = client
-        .get("https://generativelanguage.googleapis.com/v1beta/models")
+        .get(format!("{}/models", base_url))
         .query(&[("key", settings.api_key.trim())])
         .send()
         .await
@@ -309,11 +322,14 @@ fn mime_type_for_path(path: &Path) -> AppResult<String> {
 
 async fn generate_content(
     settings: &GeminiSettings,
+    proxy_settings: &ProxySettings,
     request: GenerateContentRequest,
 ) -> AppResult<String> {
-    let client = http_client(settings, 120)?;
+    let client = proxy_settings::http_client(proxy_settings, 120)?;
+    let base_url = effective_base_url(&settings.base_url);
     let endpoint = format!(
-        "https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent",
+        "{}/models/{}:generateContent",
+        base_url,
         settings.model.trim()
     );
     let response = client
@@ -355,7 +371,11 @@ async fn generate_content(
     Ok(text)
 }
 
-pub async fn generate_text(settings: &GeminiSettings, prompt: &str) -> AppResult<String> {
+pub async fn generate_text(
+    settings: &GeminiSettings,
+    proxy_settings: &ProxySettings,
+    prompt: &str,
+) -> AppResult<String> {
     if settings.api_key.trim().is_empty() {
         return Err(AppError::InvalidInput(
             "Gemini API key is required".to_owned(),
@@ -373,11 +393,12 @@ pub async fn generate_text(settings: &GeminiSettings, prompt: &str) -> AppResult
         }],
     };
 
-    generate_content(settings, request).await
+    generate_content(settings, proxy_settings, request).await
 }
 
 pub async fn generate_annotation(
     settings: &GeminiSettings,
+    proxy_settings: &ProxySettings,
     image_path: &Path,
     prompt: &str,
 ) -> AppResult<String> {
@@ -405,5 +426,5 @@ pub async fn generate_annotation(
         }],
     };
 
-    generate_content(settings, request).await
+    generate_content(settings, proxy_settings, request).await
 }

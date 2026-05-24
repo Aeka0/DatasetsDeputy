@@ -10,6 +10,9 @@ export type AnnotationExecutionScope = "selected" | "all" | "empty";
 export type AnnotationConflictStrategy = "overwrite" | "skip";
 export type AnnotationExecutionMode =
   | "gemini"
+  | "openai"
+  | "anthropic"
+  | "grok"
   | "lmStudio"
   | "ollama"
   | "textgen"
@@ -18,6 +21,9 @@ export type AnnotationExecutionMode =
 const modeOptions: Array<{ value: AnnotationExecutionMode; labelKey: string }> = [
   { value: "wd14", labelKey: "annotationRun.modeWd14" },
   { value: "gemini", labelKey: "annotationRun.modeGemini" },
+  { value: "openai", labelKey: "annotationRun.modeOpenAi" },
+  { value: "anthropic", labelKey: "annotationRun.modeAnthropic" },
+  { value: "grok", labelKey: "annotationRun.modeGrok" },
   { value: "lmStudio", labelKey: "annotationRun.modeLmStudio" },
   { value: "ollama", labelKey: "annotationRun.modeOllama" },
   { value: "textgen", labelKey: "annotationRun.modeTextgen" }

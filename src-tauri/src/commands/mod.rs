@@ -15,6 +15,7 @@ use tauri_plugin_dialog::DialogExt;
 use zip::{write::SimpleFileOptions, CompressionMethod, ZipArchive, ZipWriter};
 
 use crate::{
+    anthropic::{self, AnthropicSettings},
     app_dirs,
     db::{AnnotationChange, AnnotationProfile, Database, DatasetImage, ImageSourceMetadata},
     errors::{AppError, AppResult},
@@ -22,9 +23,12 @@ use crate::{
     files::{self, ImportPreview, ImportSummary},
     folders,
     gemini::{self, GeminiSettings},
+    grok::{self, GrokSettings},
     lm_studio,
     model_settings::{self, ModelSettings},
     ollama,
+    openai::{self, OpenAiSettings},
+    proxy_settings::{self, ProxySettings},
     python_env::{self, PythonEnvInstallResult, PythonEnvProbeReport, PythonEnvSettings},
     tag_sheet,
     textgen,
@@ -1653,6 +1657,19 @@ pub fn save_gemini_settings(
 }
 
 #[tauri::command]
+pub fn get_proxy_settings(state: State<'_, AppState>) -> AppResult<ProxySettings> {
+    proxy_settings::load_settings(&state.dirs)
+}
+
+#[tauri::command]
+pub fn save_proxy_settings(
+    state: State<'_, AppState>,
+    settings: ProxySettings,
+) -> AppResult<ProxySettings> {
+    proxy_settings::save_settings(&state.dirs, settings)
+}
+
+#[tauri::command]
 pub async fn fetch_gemini_models(
     state: State<'_, AppState>,
     settings: Option<GeminiSettings>,
@@ -1661,7 +1678,8 @@ pub async fn fetch_gemini_models(
         Some(settings) => settings,
         None => gemini::load_settings(&state.dirs)?,
     };
-    gemini::fetch_models(&settings).await
+    let proxy_settings = proxy_settings::load_settings(&state.dirs)?;
+    gemini::fetch_models(&settings, &proxy_settings).await
 }
 
 #[tauri::command]
@@ -1673,7 +1691,8 @@ pub async fn test_gemini_connection(
         Some(settings) => settings,
         None => gemini::load_settings(&state.dirs)?,
     };
-    gemini::fetch_models(&settings)
+    let proxy_settings = proxy_settings::load_settings(&state.dirs)?;
+    gemini::fetch_models(&settings, &proxy_settings)
         .await
         .map(|models| models.len())
 }
@@ -1685,16 +1704,219 @@ pub async fn generate_gemini_annotation(
     prompt: String,
 ) -> AppResult<String> {
     let settings = gemini::load_settings(&state.dirs)?;
-    gemini::generate_annotation(&settings, &PathBuf::from(image_path), &prompt).await
+    let proxy_settings = proxy_settings::load_settings(&state.dirs)?;
+    gemini::generate_annotation(
+        &settings,
+        &proxy_settings,
+        &PathBuf::from(image_path),
+        &prompt,
+    )
+    .await
 }
 
 #[tauri::command]
-pub async fn generate_gemini_text(
+pub async fn generate_gemini_text(state: State<'_, AppState>, prompt: String) -> AppResult<String> {
+    let settings = gemini::load_settings(&state.dirs)?;
+    let proxy_settings = proxy_settings::load_settings(&state.dirs)?;
+    gemini::generate_text(&settings, &proxy_settings, &prompt).await
+}
+
+#[tauri::command]
+pub fn get_openai_settings(state: State<'_, AppState>) -> AppResult<OpenAiSettings> {
+    openai::load_settings(&state.dirs)
+}
+
+#[tauri::command]
+pub fn save_openai_settings(
+    state: State<'_, AppState>,
+    settings: OpenAiSettings,
+) -> AppResult<OpenAiSettings> {
+    openai::save_settings(&state.dirs, settings)
+}
+
+#[tauri::command]
+pub async fn fetch_openai_models(
+    state: State<'_, AppState>,
+    settings: Option<OpenAiSettings>,
+) -> AppResult<Vec<String>> {
+    let settings = match settings {
+        Some(settings) => settings,
+        None => openai::load_settings(&state.dirs)?,
+    };
+    let proxy_settings = proxy_settings::load_settings(&state.dirs)?;
+    openai::fetch_models(&settings, &proxy_settings).await
+}
+
+#[tauri::command]
+pub async fn test_openai_connection(
+    state: State<'_, AppState>,
+    settings: Option<OpenAiSettings>,
+) -> AppResult<usize> {
+    let settings = match settings {
+        Some(settings) => settings,
+        None => openai::load_settings(&state.dirs)?,
+    };
+    let proxy_settings = proxy_settings::load_settings(&state.dirs)?;
+    openai::fetch_models(&settings, &proxy_settings)
+        .await
+        .map(|models| models.len())
+}
+
+#[tauri::command]
+pub async fn generate_openai_annotation(
+    state: State<'_, AppState>,
+    image_path: String,
+    prompt: String,
+) -> AppResult<String> {
+    let settings = openai::load_settings(&state.dirs)?;
+    let proxy_settings = proxy_settings::load_settings(&state.dirs)?;
+    openai::generate_annotation(
+        &settings,
+        &proxy_settings,
+        &PathBuf::from(image_path),
+        &prompt,
+    )
+    .await
+}
+
+#[tauri::command]
+pub async fn generate_openai_text(state: State<'_, AppState>, prompt: String) -> AppResult<String> {
+    let settings = openai::load_settings(&state.dirs)?;
+    let proxy_settings = proxy_settings::load_settings(&state.dirs)?;
+    openai::generate_text(&settings, &proxy_settings, &prompt).await
+}
+
+#[tauri::command]
+pub fn get_anthropic_settings(state: State<'_, AppState>) -> AppResult<AnthropicSettings> {
+    anthropic::load_settings(&state.dirs)
+}
+
+#[tauri::command]
+pub fn save_anthropic_settings(
+    state: State<'_, AppState>,
+    settings: AnthropicSettings,
+) -> AppResult<AnthropicSettings> {
+    anthropic::save_settings(&state.dirs, settings)
+}
+
+#[tauri::command]
+pub async fn fetch_anthropic_models(
+    state: State<'_, AppState>,
+    settings: Option<AnthropicSettings>,
+) -> AppResult<Vec<String>> {
+    let settings = match settings {
+        Some(settings) => settings,
+        None => anthropic::load_settings(&state.dirs)?,
+    };
+    let proxy_settings = proxy_settings::load_settings(&state.dirs)?;
+    anthropic::fetch_models(&settings, &proxy_settings).await
+}
+
+#[tauri::command]
+pub async fn test_anthropic_connection(
+    state: State<'_, AppState>,
+    settings: Option<AnthropicSettings>,
+) -> AppResult<usize> {
+    let settings = match settings {
+        Some(settings) => settings,
+        None => anthropic::load_settings(&state.dirs)?,
+    };
+    let proxy_settings = proxy_settings::load_settings(&state.dirs)?;
+    anthropic::fetch_models(&settings, &proxy_settings)
+        .await
+        .map(|models| models.len())
+}
+
+#[tauri::command]
+pub async fn generate_anthropic_annotation(
+    state: State<'_, AppState>,
+    image_path: String,
+    prompt: String,
+) -> AppResult<String> {
+    let settings = anthropic::load_settings(&state.dirs)?;
+    let proxy_settings = proxy_settings::load_settings(&state.dirs)?;
+    anthropic::generate_annotation(
+        &settings,
+        &proxy_settings,
+        &PathBuf::from(image_path),
+        &prompt,
+    )
+    .await
+}
+
+#[tauri::command]
+pub async fn generate_anthropic_text(
     state: State<'_, AppState>,
     prompt: String,
 ) -> AppResult<String> {
-    let settings = gemini::load_settings(&state.dirs)?;
-    gemini::generate_text(&settings, &prompt).await
+    let settings = anthropic::load_settings(&state.dirs)?;
+    let proxy_settings = proxy_settings::load_settings(&state.dirs)?;
+    anthropic::generate_text(&settings, &proxy_settings, &prompt).await
+}
+
+#[tauri::command]
+pub fn get_grok_settings(state: State<'_, AppState>) -> AppResult<GrokSettings> {
+    grok::load_settings(&state.dirs)
+}
+
+#[tauri::command]
+pub fn save_grok_settings(
+    state: State<'_, AppState>,
+    settings: GrokSettings,
+) -> AppResult<GrokSettings> {
+    grok::save_settings(&state.dirs, settings)
+}
+
+#[tauri::command]
+pub async fn fetch_grok_models(
+    state: State<'_, AppState>,
+    settings: Option<GrokSettings>,
+) -> AppResult<Vec<String>> {
+    let settings = match settings {
+        Some(settings) => settings,
+        None => grok::load_settings(&state.dirs)?,
+    };
+    let proxy_settings = proxy_settings::load_settings(&state.dirs)?;
+    grok::fetch_models(&settings, &proxy_settings).await
+}
+
+#[tauri::command]
+pub async fn test_grok_connection(
+    state: State<'_, AppState>,
+    settings: Option<GrokSettings>,
+) -> AppResult<usize> {
+    let settings = match settings {
+        Some(settings) => settings,
+        None => grok::load_settings(&state.dirs)?,
+    };
+    let proxy_settings = proxy_settings::load_settings(&state.dirs)?;
+    grok::fetch_models(&settings, &proxy_settings)
+        .await
+        .map(|models| models.len())
+}
+
+#[tauri::command]
+pub async fn generate_grok_annotation(
+    state: State<'_, AppState>,
+    image_path: String,
+    prompt: String,
+) -> AppResult<String> {
+    let settings = grok::load_settings(&state.dirs)?;
+    let proxy_settings = proxy_settings::load_settings(&state.dirs)?;
+    grok::generate_annotation(
+        &settings,
+        &proxy_settings,
+        &PathBuf::from(image_path),
+        &prompt,
+    )
+    .await
+}
+
+#[tauri::command]
+pub async fn generate_grok_text(state: State<'_, AppState>, prompt: String) -> AppResult<String> {
+    let settings = grok::load_settings(&state.dirs)?;
+    let proxy_settings = proxy_settings::load_settings(&state.dirs)?;
+    grok::generate_text(&settings, &proxy_settings, &prompt).await
 }
 
 #[tauri::command]

@@ -1,13 +1,21 @@
 import {
+  Check,
+  ChevronDown,
+  ChevronRight,
+  Boxes,
   Globe2,
   HardDrive,
+  ImageUp,
   Languages,
   MonitorCog,
+  Network,
   Settings2,
+  Trash2,
+  Waypoints,
   Wifi,
   X
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useShallow } from "zustand/react/shallow";
 
@@ -43,7 +51,13 @@ type SettingsSectionKey =
   | "network"
   | "localFiles"
   | "appearance";
-type NetworkSectionKey = "gemini" | "proxy" | "imageTransfer";
+type NetworkSectionKey =
+  | "gemini"
+  | "openai"
+  | "anthropic"
+  | "grok"
+  | "proxy"
+  | "imageTransfer";
 type LocalFilesSectionKey = "environment" | "models" | "tempFiles";
 
 interface SettingsSection {
@@ -51,6 +65,23 @@ interface SettingsSection {
   labelKey: string;
   icon: typeof Settings2;
 }
+
+type ChildIcon =
+  | { kind: "lucide"; icon: typeof Settings2 }
+  | { kind: "svg"; src: string; alt: string };
+
+interface SettingsChildItem<T extends string> {
+  key: T;
+  label: string;
+  icon: ChildIcon;
+}
+
+const providerIcons = {
+  gemini: new URL("../../../assets/svg/googlegemini.svg", import.meta.url).href,
+  openai: new URL("../../../assets/svg/openai.svg", import.meta.url).href,
+  anthropic: new URL("../../../assets/svg/anthropic.svg", import.meta.url).href,
+  grok: new URL("../../../assets/svg/grok.svg", import.meta.url).href
+};
 
 const sections: SettingsSection[] = [
   { key: "general", labelKey: "settings.general", icon: Settings2 },
@@ -79,13 +110,25 @@ const uiAnimationOptions: Array<{ value: UiAnimationPreference; labelKey: string
 
 interface GeminiSettings {
   apiKey: string;
+  baseUrl: string;
   model: string;
   availableModels: string[];
   rpmLimit: number;
-  useProxy: boolean;
-  proxyPort: string;
   imageResizeMode: string;
   imageConvertFormat: string;
+}
+
+interface RemoteLlmSettings {
+  apiKey: string;
+  baseUrl: string;
+  model: string;
+  availableModels: string[];
+  rpmLimit: number;
+}
+
+interface ProxySettings {
+  useProxy: boolean;
+  proxyPort: string;
 }
 
 type PythonEnvMode = "externalVenv" | "managedVenv";
@@ -164,13 +207,52 @@ interface LogFilesInfo {
 
 const defaultGeminiSettings: GeminiSettings = {
   apiKey: "",
+  baseUrl: "",
   model: "gemini-flash-latest",
   availableModels: ["gemini-flash-latest", "gemini-pro-latest"],
   rpmLimit: 0,
-  useProxy: false,
-  proxyPort: "7890",
   imageResizeMode: "none",
   imageConvertFormat: "none"
+};
+
+const defaultOpenAiSettings: RemoteLlmSettings = {
+  apiKey: "",
+  baseUrl: "",
+  model: "gpt-5.5",
+  availableModels: ["gpt-5.5", "gpt-5.4", "gpt-5.4-mini", "gpt-5.4-nano"],
+  rpmLimit: 0
+};
+
+const defaultAnthropicSettings: RemoteLlmSettings = {
+  apiKey: "",
+  baseUrl: "",
+  model: "claude-sonnet-4-6",
+  availableModels: ["claude-opus-4-7", "claude-sonnet-4-6", "claude-haiku-4-5"],
+  rpmLimit: 0
+};
+
+const defaultGrokSettings: RemoteLlmSettings = {
+  apiKey: "",
+  baseUrl: "",
+  model: "grok-4.3",
+  availableModels: [
+    "grok-4.3",
+    "grok-4.3-latest",
+    "grok-4.20",
+    "grok-4.20-reasoning",
+    "grok-4.20-reasoning-latest",
+    "grok-4.20-0309",
+    "grok-4.20-0309-reasoning",
+    "grok-4.20-non-reasoning",
+    "grok-4.20-non-reasoning-latest",
+    "grok-4.20-0309-non-reasoning"
+  ],
+  rpmLimit: 0
+};
+
+const defaultProxySettings: ProxySettings = {
+  useProxy: false,
+  proxyPort: "7890"
 };
 
 const defaultPythonEnvSettings: PythonEnvSettings = {
@@ -247,6 +329,116 @@ interface SettingsDialogProps {
   onClose: () => void;
 }
 
+function EditableModelSelect({
+  value,
+  options,
+  onChange
+}: {
+  value: string;
+  options: string[];
+  onChange: (value: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const normalizedOptions = Array.from(new Set([value, ...options].filter(Boolean)));
+
+  useEffect(() => {
+    if (!open) return;
+
+    const close = (event: MouseEvent) => {
+      if (
+        event.target instanceof Node &&
+        containerRef.current?.contains(event.target)
+      ) {
+        return;
+      }
+      setOpen(false);
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setOpen(false);
+      }
+    };
+
+    window.addEventListener("mousedown", close);
+    window.addEventListener("keydown", closeOnEscape);
+    return () => {
+      window.removeEventListener("mousedown", close);
+      window.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [open]);
+
+  return (
+    <div ref={containerRef} className="no-drag relative">
+      <div className="glass-input flex h-8 w-full items-center gap-1 rounded-md px-2.5">
+        <input
+          className="min-w-0 flex-1 border-0 bg-transparent p-0 text-[13px] text-neutral-900 outline-none"
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+        />
+        <button
+          type="button"
+          className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-neutral-400 transition hover:bg-neutral-900/5 hover:text-neutral-700"
+          aria-haspopup="listbox"
+          aria-expanded={open}
+          onClick={() => setOpen((current) => !current)}
+        >
+          <ChevronDown size={14} className={cn("transition", open && "rotate-180")} />
+        </button>
+      </div>
+
+      {open ? (
+        <div className="app-dropdown-menu absolute left-0 top-9 z-[70] max-h-56 min-w-full overflow-y-auto rounded-lg py-2">
+          <div className="app-dropdown-backdrop" />
+          {normalizedOptions.map((option) => {
+            const selected = option === value;
+            return (
+              <button
+                key={option}
+                type="button"
+                className={cn(
+                  "app-dropdown-item flex h-9 w-full items-center gap-2 px-3.5 text-left text-[13px] font-medium transition hover:bg-neutral-100",
+                  selected ? "text-neutral-950" : "text-neutral-600"
+                )}
+                role="option"
+                aria-selected={selected}
+                onClick={() => {
+                  onChange(option);
+                  setOpen(false);
+                }}
+              >
+                <span className="flex w-4 shrink-0 justify-center">
+                  {selected ? <Check size={14} /> : null}
+                </span>
+                <span className="min-w-0 flex-1 truncate">{option}</span>
+              </button>
+            );
+          })}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function SettingsTreeIcon({ icon }: { icon: ChildIcon }) {
+  if (icon.kind === "svg") {
+    return (
+      <span
+        className="h-4 w-4 shrink-0 bg-current"
+        aria-label={icon.alt}
+        role="img"
+        style={{
+          WebkitMask: `url("${icon.src}") center / contain no-repeat`,
+          mask: `url("${icon.src}") center / contain no-repeat`
+        }}
+      />
+    );
+  }
+
+  const Icon = icon.icon;
+  return <Icon size={16} className="shrink-0 text-current" />;
+}
+
 export function SettingsDialog({ onClose }: SettingsDialogProps) {
   const { i18n, t } = useTranslation();
   const { open, close } = useAnimatedPortalClose(onClose);
@@ -255,6 +447,9 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
     useState<NetworkSectionKey>("gemini");
   const [activeLocalFilesSection, setActiveLocalFilesSection] =
     useState<LocalFilesSectionKey>("environment");
+  const [expandedSettingsSections, setExpandedSettingsSections] = useState<Set<SettingsSectionKey>>(
+    () => new Set(["network", "localFiles"])
+  );
   const [themePreference, setThemePreferenceState] =
     useState<ThemePreference>(getThemePreference);
   const [uiAnimationPreference, setUiAnimationPreferenceState] =
@@ -266,6 +461,25 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
   const [geminiMessage, setGeminiMessage] = useState("");
   const [isGeminiBusy, setIsGeminiBusy] = useState(false);
   const [hasLoadedGeminiSettings, setHasLoadedGeminiSettings] = useState(false);
+  const [proxySettings, setProxySettings] =
+    useState<ProxySettings>(defaultProxySettings);
+  const [proxyMessage, setProxyMessage] = useState("");
+  const [hasLoadedProxySettings, setHasLoadedProxySettings] = useState(false);
+  const [openAiSettings, setOpenAiSettings] =
+    useState<RemoteLlmSettings>(defaultOpenAiSettings);
+  const [openAiMessage, setOpenAiMessage] = useState("");
+  const [isOpenAiBusy, setIsOpenAiBusy] = useState(false);
+  const [hasLoadedOpenAiSettings, setHasLoadedOpenAiSettings] = useState(false);
+  const [anthropicSettings, setAnthropicSettings] =
+    useState<RemoteLlmSettings>(defaultAnthropicSettings);
+  const [anthropicMessage, setAnthropicMessage] = useState("");
+  const [isAnthropicBusy, setIsAnthropicBusy] = useState(false);
+  const [hasLoadedAnthropicSettings, setHasLoadedAnthropicSettings] = useState(false);
+  const [grokSettings, setGrokSettings] =
+    useState<RemoteLlmSettings>(defaultGrokSettings);
+  const [grokMessage, setGrokMessage] = useState("");
+  const [isGrokBusy, setIsGrokBusy] = useState(false);
+  const [hasLoadedGrokSettings, setHasLoadedGrokSettings] = useState(false);
   const [pythonEnvSettings, setPythonEnvSettings] =
     useState<PythonEnvSettings>(defaultPythonEnvSettings);
   const [pythonEnvProbe, setPythonEnvProbe] = useState<PythonEnvProbeReport>();
@@ -307,7 +521,74 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
   const [isTemporaryFilesBusy, setIsTemporaryFilesBusy] = useState(false);
   const [localFilesMessage, setLocalFilesMessage] = useState("");
   const active = sections.find((section) => section.key === activeSection) ?? sections[0];
+  const networkChildItems: Array<SettingsChildItem<NetworkSectionKey>> = [
+    {
+      key: "gemini",
+      label: t("settings.networkGemini"),
+      icon: { kind: "svg", src: providerIcons.gemini, alt: "Gemini" }
+    },
+    {
+      key: "openai",
+      label: t("settings.networkOpenAi"),
+      icon: { kind: "svg", src: providerIcons.openai, alt: "OpenAI" }
+    },
+    {
+      key: "anthropic",
+      label: t("settings.networkAnthropic"),
+      icon: { kind: "svg", src: providerIcons.anthropic, alt: "Anthropic" }
+    },
+    {
+      key: "grok",
+      label: t("settings.networkGrok"),
+      icon: { kind: "svg", src: providerIcons.grok, alt: "Grok" }
+    },
+    {
+      key: "proxy",
+      label: t("settings.networkProxyShort"),
+      icon: { kind: "lucide", icon: Network }
+    },
+    {
+      key: "imageTransfer",
+      label: t("settings.networkImageTransfer"),
+      icon: { kind: "lucide", icon: ImageUp }
+    }
+  ];
+  const localFilesChildItems: Array<SettingsChildItem<LocalFilesSectionKey>> = [
+    {
+      key: "environment",
+      label: t("settings.localFilesEnvironment"),
+      icon: { kind: "lucide", icon: Waypoints }
+    },
+    {
+      key: "models",
+      label: t("settings.localFilesModels"),
+      icon: { kind: "lucide", icon: Boxes }
+    },
+    {
+      key: "tempFiles",
+      label: t("settings.localFilesTempFiles"),
+      icon: { kind: "lucide", icon: Trash2 }
+    }
+  ];
+  const activeTitle =
+    activeSection === "network"
+      ? networkChildItems.find((item) => item.key === activeNetworkSection)?.label ?? t(active.labelKey)
+      : activeSection === "localFiles"
+        ? localFilesChildItems.find((item) => item.key === activeLocalFilesSection)?.label ?? t(active.labelKey)
+        : t(active.labelKey);
   const currentLanguage = i18n.language.startsWith("zh") ? "zh-CN" : "en-US";
+
+  const toggleSettingsSection = (section: SettingsSectionKey) => {
+    setExpandedSettingsSections((current) => {
+      const next = new Set(current);
+      if (next.has(section)) {
+        next.delete(section);
+      } else {
+        next.add(section);
+      }
+      return next;
+    });
+  };
 
   useEffect(() => watchThemePreference(setThemePreferenceState), []);
   useEffect(() => watchUiAnimationPreference(setUiAnimationPreferenceState), []);
@@ -320,6 +601,46 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
         setHasLoadedGeminiSettings(true);
       })
       .catch((error) => setGeminiMessage(formatAppError(error)));
+  }, []);
+  useEffect(() => {
+    if (!hasTauriRuntime()) return;
+
+    void invokeCommand<ProxySettings>("get_proxy_settings")
+      .then((settings) => {
+        setProxySettings(settings);
+        setHasLoadedProxySettings(true);
+      })
+      .catch((error) => setProxyMessage(formatAppError(error)));
+  }, []);
+  useEffect(() => {
+    if (!hasTauriRuntime()) return;
+
+    void invokeCommand<RemoteLlmSettings>("get_openai_settings")
+      .then((settings) => {
+        setOpenAiSettings(settings);
+        setHasLoadedOpenAiSettings(true);
+      })
+      .catch((error) => setOpenAiMessage(formatAppError(error)));
+  }, []);
+  useEffect(() => {
+    if (!hasTauriRuntime()) return;
+
+    void invokeCommand<RemoteLlmSettings>("get_anthropic_settings")
+      .then((settings) => {
+        setAnthropicSettings(settings);
+        setHasLoadedAnthropicSettings(true);
+      })
+      .catch((error) => setAnthropicMessage(formatAppError(error)));
+  }, []);
+  useEffect(() => {
+    if (!hasTauriRuntime()) return;
+
+    void invokeCommand<RemoteLlmSettings>("get_grok_settings")
+      .then((settings) => {
+        setGrokSettings(settings);
+        setHasLoadedGrokSettings(true);
+      })
+      .catch((error) => setGrokMessage(formatAppError(error)));
   }, []);
   useEffect(() => {
     if (!hasTauriRuntime()) return;
@@ -365,6 +686,62 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
 
     return () => window.clearTimeout(saveTimer);
   }, [geminiSettings, hasLoadedGeminiSettings]);
+  useEffect(() => {
+    if (!hasTauriRuntime() || !hasLoadedProxySettings) return;
+
+    const saveTimer = window.setTimeout(() => {
+      void invokeCommand<ProxySettings>("save_proxy_settings", {
+        settings: proxySettings
+      }).catch((error) => {
+        const message = formatAppError(error);
+        setProxyMessage(t("settings.proxyActionFailed", { message }));
+      });
+    }, 500);
+
+    return () => window.clearTimeout(saveTimer);
+  }, [proxySettings, hasLoadedProxySettings]);
+  useEffect(() => {
+    if (!hasTauriRuntime() || !hasLoadedOpenAiSettings) return;
+
+    const saveTimer = window.setTimeout(() => {
+      void invokeCommand<RemoteLlmSettings>("save_openai_settings", {
+        settings: openAiSettings
+      }).catch((error) => {
+        const message = formatAppError(error);
+        setOpenAiMessage(t("settings.llmActionFailed", { message }));
+      });
+    }, 500);
+
+    return () => window.clearTimeout(saveTimer);
+  }, [openAiSettings, hasLoadedOpenAiSettings]);
+  useEffect(() => {
+    if (!hasTauriRuntime() || !hasLoadedAnthropicSettings) return;
+
+    const saveTimer = window.setTimeout(() => {
+      void invokeCommand<RemoteLlmSettings>("save_anthropic_settings", {
+        settings: anthropicSettings
+      }).catch((error) => {
+        const message = formatAppError(error);
+        setAnthropicMessage(t("settings.llmActionFailed", { message }));
+      });
+    }, 500);
+
+    return () => window.clearTimeout(saveTimer);
+  }, [anthropicSettings, hasLoadedAnthropicSettings]);
+  useEffect(() => {
+    if (!hasTauriRuntime() || !hasLoadedGrokSettings) return;
+
+    const saveTimer = window.setTimeout(() => {
+      void invokeCommand<RemoteLlmSettings>("save_grok_settings", {
+        settings: grokSettings
+      }).catch((error) => {
+        const message = formatAppError(error);
+        setGrokMessage(t("settings.llmActionFailed", { message }));
+      });
+    }, 500);
+
+    return () => window.clearTimeout(saveTimer);
+  }, [grokSettings, hasLoadedGrokSettings]);
   useEffect(() => {
     if (!hasTauriRuntime() || !hasLoadedPythonEnvSettings) return;
 
@@ -453,6 +830,23 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
     setGeminiSettings((current) => ({ ...current, ...patch }));
   };
 
+  const patchProxySettings = (patch: Partial<ProxySettings>) => {
+    setProxySettings((current) => ({ ...current, ...patch }));
+    setProxyMessage("");
+  };
+
+  const patchOpenAiSettings = (patch: Partial<RemoteLlmSettings>) => {
+    setOpenAiSettings((current) => ({ ...current, ...patch }));
+  };
+
+  const patchAnthropicSettings = (patch: Partial<RemoteLlmSettings>) => {
+    setAnthropicSettings((current) => ({ ...current, ...patch }));
+  };
+
+  const patchGrokSettings = (patch: Partial<RemoteLlmSettings>) => {
+    setGrokSettings((current) => ({ ...current, ...patch }));
+  };
+
   const patchPythonEnvSettings = (patch: Partial<PythonEnvSettings>) => {
     setPythonEnvSettings((current) => ({ ...current, ...patch }));
     setPythonEnvProbe(undefined);
@@ -499,6 +893,203 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
     } finally {
       setIsGeminiBusy(false);
     }
+  };
+
+  const runRemoteLlmAction = async (
+    provider: "openai" | "anthropic" | "grok",
+    action: "fetch" | "test"
+  ) => {
+    const isBusy =
+      provider === "openai"
+        ? isOpenAiBusy
+        : provider === "anthropic"
+          ? isAnthropicBusy
+          : isGrokBusy;
+    if (!hasTauriRuntime() || isBusy) return;
+
+    const settings =
+      provider === "openai"
+        ? openAiSettings
+        : provider === "anthropic"
+          ? anthropicSettings
+          : grokSettings;
+    const setBusy =
+      provider === "openai"
+        ? setIsOpenAiBusy
+        : provider === "anthropic"
+          ? setIsAnthropicBusy
+          : setIsGrokBusy;
+    const setMessage =
+      provider === "openai"
+        ? setOpenAiMessage
+        : provider === "anthropic"
+          ? setAnthropicMessage
+          : setGrokMessage;
+    const setSettings =
+      provider === "openai"
+        ? setOpenAiSettings
+        : provider === "anthropic"
+          ? setAnthropicSettings
+          : setGrokSettings;
+    const commandPrefix =
+      provider === "openai" ? "openai" : provider === "anthropic" ? "anthropic" : "grok";
+
+    setBusy(true);
+    setMessage("");
+    try {
+      if (action === "fetch") {
+        const models = await invokeCommand<string[]>(`fetch_${commandPrefix}_models`, {
+          settings
+        });
+        const nextSettings = {
+          ...settings,
+          availableModels: models,
+          model: models[0] ?? settings.model
+        };
+        setSettings(nextSettings);
+        setMessage(t("settings.llmModelsFetched", { count: models.length }));
+        return;
+      }
+
+      const count = await invokeCommand<number>(`test_${commandPrefix}_connection`, {
+        settings
+      });
+      setMessage(t("settings.llmConnectionOk", { count }));
+    } catch (error) {
+      const message = formatAppError(error);
+      setMessage(t("settings.llmActionFailed", { message }));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const renderRemoteLlmSettings = (
+    provider: "openai" | "anthropic" | "grok",
+    settings: RemoteLlmSettings,
+    patchSettings: (patch: Partial<RemoteLlmSettings>) => void,
+    message: string,
+    isBusy: boolean
+  ) => {
+    const titleKey =
+      provider === "openai"
+        ? "settings.openAiApi"
+        : provider === "anthropic"
+          ? "settings.anthropicApi"
+          : "settings.grokApi";
+    const descriptionKey =
+      provider === "openai"
+        ? "settings.openAiApiDescription"
+        : provider === "anthropic"
+          ? "settings.anthropicApiDescription"
+          : "settings.grokApiDescription";
+    const placeholderKey =
+      provider === "openai"
+        ? "settings.openAiApiKeyPlaceholder"
+        : provider === "anthropic"
+          ? "settings.anthropicApiKeyPlaceholder"
+          : "settings.grokApiKeyPlaceholder";
+    return (
+      <div className="rounded-lg border border-neutral-200 bg-white">
+        <div className="flex items-center justify-between gap-3 border-b border-neutral-100 px-4 py-3">
+          <div className="min-w-0">
+            <div className="text-[13px] font-semibold text-neutral-900">
+              {t(titleKey)}
+            </div>
+            <div className="mt-0.5 text-[12px] text-neutral-500">
+              {t(descriptionKey)}
+            </div>
+          </div>
+          <button
+            type="button"
+            className="no-drag h-8 shrink-0 rounded-md border border-neutral-200 bg-white px-3 text-[13px] text-neutral-700 transition hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-50"
+            disabled={isBusy}
+            onClick={() => void runRemoteLlmAction(provider, "test")}
+          >
+            {t("settings.geminiTestConnection")}
+          </button>
+        </div>
+
+        <div className="space-y-3 px-4 py-3">
+          <label className="block">
+            <span className="mb-1 block text-[12px] font-medium text-neutral-600">
+              {t("settings.llmBaseUrl")}
+            </span>
+            <input
+              className="glass-input h-8 w-full px-2.5 text-[13px]"
+              value={settings.baseUrl}
+              placeholder={
+                provider === "openai"
+                  ? "https://api.openai.com/v1"
+                  : provider === "anthropic"
+                    ? "https://api.anthropic.com"
+                    : "https://api.x.ai/v1"
+              }
+              onChange={(event) => patchSettings({ baseUrl: event.target.value })}
+            />
+          </label>
+
+          <label className="block">
+            <span className="mb-1 block text-[12px] font-medium text-neutral-600">
+              {t("settings.geminiApiKey")}
+            </span>
+            <input
+              type="password"
+              className="glass-input h-8 w-full px-2.5 text-[13px]"
+              value={settings.apiKey}
+              placeholder={t(placeholderKey)}
+              onChange={(event) => patchSettings({ apiKey: event.target.value })}
+            />
+          </label>
+
+          <div className="grid grid-cols-[minmax(0,1fr)_110px] items-end gap-2">
+            <label className="block min-w-0">
+              <span className="mb-1 block text-[12px] font-medium text-neutral-600">
+                {t("settings.geminiModel")}
+              </span>
+              <EditableModelSelect
+                value={settings.model}
+                options={settings.availableModels}
+                onChange={(model) => patchSettings({ model })}
+              />
+            </label>
+            <button
+              type="button"
+              className="no-drag h-8 rounded-md border border-neutral-200 bg-white px-2 text-[12px] text-neutral-700 transition hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-50"
+              disabled={isBusy}
+              onClick={() => void runRemoteLlmAction(provider, "fetch")}
+            >
+              {t("settings.geminiFetchModels")}
+            </button>
+          </div>
+
+          <label className="block">
+            <span className="mb-1 block text-[12px] font-medium text-neutral-600">
+              {t("settings.rpmLimit")}
+            </span>
+            <input
+              type="number"
+              min={0}
+              className="glass-input h-8 w-full px-2.5 text-[13px]"
+              value={settings.rpmLimit}
+              onChange={(event) =>
+                patchSettings({
+                  rpmLimit: Math.max(0, Number(event.target.value) || 0)
+                })
+              }
+            />
+            <span className="mt-1 block text-[11px] text-neutral-500">
+              {t("settings.rpmLimitDescription")}
+            </span>
+          </label>
+
+          {message ? (
+            <div className="truncate text-[12px] text-neutral-500">
+              {message}
+            </div>
+          ) : null}
+        </div>
+      </div>
+    );
   };
 
   const pickPythonEnvPath = async () => {
@@ -770,21 +1361,101 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
             {sections.map((section) => {
               const Icon = section.icon;
               const isActive = section.key === activeSection;
+              const hasChildren = section.key === "network" || section.key === "localFiles";
+              const isExpanded = expandedSettingsSections.has(section.key);
+              const childItems =
+                section.key === "network"
+                  ? networkChildItems
+                  : section.key === "localFiles"
+                    ? localFilesChildItems
+                    : [];
 
               return (
-                <button
-                  key={section.key}
-                  type="button"
-                  className={cn(
-                    "sidebar-nav-button flex h-9 w-full items-center gap-2 rounded px-3 text-left text-[13px] transition",
-                    isActive && "sidebar-nav-button-active"
-                  )}
-                  aria-current={isActive ? "page" : undefined}
-                  onClick={() => setActiveSection(section.key)}
-                >
-                  <Icon size={16} className="shrink-0" />
-                  <span className="truncate">{t(section.labelKey)}</span>
-                </button>
+                <div key={section.key}>
+                  <div
+                    className={cn(
+                      "sidebar-nav-button flex h-9 w-full items-center gap-1 rounded px-1.5 text-left text-[13px] transition",
+                      isActive && "sidebar-nav-button-active"
+                    )}
+                  >
+                    <button
+                      type="button"
+                      className="no-drag flex h-full w-6 shrink-0 items-center justify-center rounded text-neutral-500 transition hover:bg-neutral-900/5 hover:text-neutral-900"
+                      aria-expanded={hasChildren ? isExpanded : undefined}
+                      aria-hidden={!hasChildren}
+                      tabIndex={hasChildren ? 0 : -1}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        if (hasChildren) toggleSettingsSection(section.key);
+                      }}
+                    >
+                      {hasChildren ? (
+                        isExpanded ? (
+                          <ChevronDown size={14} />
+                        ) : (
+                          <ChevronRight size={14} />
+                        )
+                      ) : null}
+                    </button>
+                    <button
+                      type="button"
+                      className="no-drag flex h-full min-w-0 flex-1 items-center gap-2 rounded border-0 bg-transparent px-1.5 text-left text-inherit outline-none focus-visible:ring-2 focus-visible:ring-black/20"
+                      aria-current={isActive && !hasChildren ? "page" : undefined}
+                      onClick={() => {
+                        setActiveSection(section.key);
+                        if (hasChildren && !isExpanded) {
+                          toggleSettingsSection(section.key);
+                        }
+                      }}
+                    >
+                      <Icon size={16} className="shrink-0" />
+                      <span className="truncate">{t(section.labelKey)}</span>
+                    </button>
+                  </div>
+                  {hasChildren ? (
+                    <div
+                      className={cn(
+                        "project-tree-children",
+                        isExpanded && "project-tree-children-open"
+                      )}
+                      aria-hidden={!isExpanded}
+                      inert={!isExpanded}
+                    >
+                      <div className="min-h-0 overflow-hidden">
+                        <div className="ml-8 space-y-1 py-1 pl-3 pr-1">
+                          {childItems.map((item) => {
+                            const childActive =
+                              section.key === "network"
+                                ? activeSection === "network" && item.key === activeNetworkSection
+                                : activeSection === "localFiles" && item.key === activeLocalFilesSection;
+                            return (
+                              <button
+                                key={item.key}
+                                type="button"
+                                className={cn(
+                                  "sidebar-nav-button flex h-8 w-full items-center gap-2 rounded px-3 text-left text-[12px] transition",
+                                  childActive && "sidebar-nav-button-active"
+                                )}
+                                aria-current={childActive ? "page" : undefined}
+                                onClick={() => {
+                                  setActiveSection(section.key);
+                                  if (section.key === "network") {
+                                    setActiveNetworkSection(item.key as NetworkSectionKey);
+                                  } else {
+                                    setActiveLocalFilesSection(item.key as LocalFilesSectionKey);
+                                  }
+                                }}
+                              >
+                                <SettingsTreeIcon icon={item.icon} />
+                                <span className="truncate">{item.label}</span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
               );
             })}
           </nav>
@@ -794,7 +1465,7 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
           <header className="flex h-14 shrink-0 items-center justify-between border-b border-neutral-200 px-5">
             <div className="min-w-0">
               <div className="text-[15px] font-semibold text-neutral-950">
-                {t(active.labelKey)}
+                {activeTitle}
               </div>
             </div>
             <Button
@@ -884,31 +1555,6 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
               </div>
             ) : activeSection === "localFiles" ? (
               <div className="space-y-3">
-                <div className="flex items-center gap-1 border-b border-neutral-100 px-1.5">
-                  {[
-                    { key: "environment" as const, label: t("settings.localFilesEnvironment") },
-                    { key: "models" as const, label: t("settings.localFilesModels") },
-                    { key: "tempFiles" as const, label: t("settings.localFilesTempFiles") }
-                  ].map((item) => {
-                    const isActive = activeLocalFilesSection === item.key;
-                    return (
-                      <button
-                        key={item.key}
-                        type="button"
-                        className={cn(
-                          "no-drag h-9 border-b-2 px-3 text-[13px] transition",
-                          isActive
-                            ? "border-neutral-900 text-neutral-950"
-                            : "border-transparent text-neutral-500 hover:text-neutral-900"
-                        )}
-                        onClick={() => setActiveLocalFilesSection(item.key)}
-                      >
-                        {item.label}
-                      </button>
-                    );
-                  })}
-                </div>
-
                 {activeLocalFilesSection === "environment" ? (
                   <div className="rounded-lg border border-neutral-200 bg-white">
                     <div className="flex h-11 items-center justify-between gap-3 border-b border-neutral-200 px-3">
@@ -1373,31 +2019,6 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
               </div>
             ) : activeSection === "network" ? (
               <div className="space-y-3">
-                <div className="flex items-center gap-1 border-b border-neutral-100 px-1.5">
-                  {[
-                    { key: "gemini" as const, label: t("settings.networkGemini") },
-                    { key: "proxy" as const, label: t("settings.networkProxyShort") },
-                    { key: "imageTransfer" as const, label: t("settings.networkImageTransfer") }
-                  ].map((item) => {
-                    const isActive = activeNetworkSection === item.key;
-                    return (
-                      <button
-                        key={item.key}
-                        type="button"
-                        className={cn(
-                          "no-drag h-9 border-b-2 px-3 text-[13px] transition",
-                          isActive
-                            ? "border-neutral-900 text-neutral-950"
-                            : "border-transparent text-neutral-500 hover:text-neutral-900"
-                        )}
-                        onClick={() => setActiveNetworkSection(item.key)}
-                      >
-                        {item.label}
-                      </button>
-                    );
-                  })}
-                </div>
-
                 {activeNetworkSection === "gemini" ? (
                   <div className="rounded-lg border border-neutral-200 bg-white">
                     <div className="flex items-center justify-between gap-3 border-b border-neutral-100 px-4 py-3">
@@ -1422,6 +2043,18 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
                     <div className="space-y-3 px-4 py-3">
                       <label className="block">
                         <span className="mb-1 block text-[12px] font-medium text-neutral-600">
+                          {t("settings.llmBaseUrl")}
+                        </span>
+                        <input
+                          className="glass-input h-8 w-full px-2.5 text-[13px]"
+                          value={geminiSettings.baseUrl}
+                          placeholder="https://generativelanguage.googleapis.com/v1beta"
+                          onChange={(event) => patchGeminiSettings({ baseUrl: event.target.value })}
+                        />
+                      </label>
+
+                      <label className="block">
+                        <span className="mb-1 block text-[12px] font-medium text-neutral-600">
                           {t("settings.geminiApiKey")}
                         </span>
                         <input
@@ -1438,16 +2071,10 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
                           <span className="mb-1 block text-[12px] font-medium text-neutral-600">
                             {t("settings.geminiModel")}
                           </span>
-                          <AppSelect
-                            className="w-full"
+                          <EditableModelSelect
                             value={geminiSettings.model}
-                            options={geminiSettings.availableModels.map((model) => ({
-                              value: model,
-                              label: model
-                            }))}
-                            onChange={(nextValue) =>
-                              patchGeminiSettings({ model: nextValue })
-                            }
+                            options={geminiSettings.availableModels}
+                            onChange={(model) => patchGeminiSettings({ model })}
                           />
                         </label>
                         <button
@@ -1462,7 +2089,7 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
 
                       <label className="block">
                         <span className="mb-1 block text-[12px] font-medium text-neutral-600">
-                          {t("settings.geminiRpmLimit")}
+                          {t("settings.rpmLimit")}
                         </span>
                         <input
                           type="number"
@@ -1476,7 +2103,7 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
                           }
                         />
                         <span className="mt-1 block text-[11px] text-neutral-500">
-                          {t("settings.geminiRpmLimitDescription")}
+                          {t("settings.rpmLimitDescription")}
                         </span>
                       </label>
 
@@ -1488,6 +2115,36 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
                     </div>
                   </div>
                 ) : null}
+
+                {activeNetworkSection === "openai"
+                  ? renderRemoteLlmSettings(
+                      "openai",
+                      openAiSettings,
+                      patchOpenAiSettings,
+                      openAiMessage,
+                      isOpenAiBusy
+                    )
+                  : null}
+
+                {activeNetworkSection === "anthropic"
+                  ? renderRemoteLlmSettings(
+                      "anthropic",
+                      anthropicSettings,
+                      patchAnthropicSettings,
+                      anthropicMessage,
+                      isAnthropicBusy
+                    )
+                  : null}
+
+                {activeNetworkSection === "grok"
+                  ? renderRemoteLlmSettings(
+                      "grok",
+                      grokSettings,
+                      patchGrokSettings,
+                      grokMessage,
+                      isGrokBusy
+                    )
+                  : null}
 
                 {activeNetworkSection === "proxy" ? (
                   <div className="rounded-lg border border-neutral-200 bg-white">
@@ -1502,25 +2159,30 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
                   <div className="grid grid-cols-[minmax(0,1fr)_160px] gap-4 px-4 py-3">
                     <Switch
                       className="self-start pt-1"
-                      checked={geminiSettings.useProxy}
-                      label={t("settings.geminiUseProxy")}
-                      onCheckedChange={(checked) => patchGeminiSettings({ useProxy: checked })}
+                      checked={proxySettings.useProxy}
+                      label={t("settings.proxyUseProxy")}
+                      onCheckedChange={(checked) => patchProxySettings({ useProxy: checked })}
                     />
                     <label className="block">
                       <span className="mb-1 block text-[12px] font-medium text-neutral-600">
-                        {t("settings.geminiProxyPort")}
+                        {t("settings.proxyPort")}
                       </span>
                       <input
                         className="glass-input h-8 w-full px-2.5 text-[13px]"
-                        value={geminiSettings.proxyPort}
-                        disabled={!geminiSettings.useProxy}
-                        onChange={(event) => patchGeminiSettings({ proxyPort: event.target.value })}
+                        value={proxySettings.proxyPort}
+                        disabled={!proxySettings.useProxy}
+                        onChange={(event) => patchProxySettings({ proxyPort: event.target.value })}
                       />
                       <span className="mt-1 block text-[11px] text-neutral-500">
-                        {t("settings.geminiProxyPortDescription")}
+                        {t("settings.proxyPortDescription")}
                       </span>
                     </label>
                   </div>
+                  {proxyMessage ? (
+                    <div className="px-4 pb-3 text-[12px] text-neutral-500">
+                      {proxyMessage}
+                    </div>
+                  ) : null}
                 </div>
                 ) : null}
 
@@ -1534,13 +2196,18 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
                         {t("settings.networkImageTransferDescription")}
                       </div>
                     </div>
-                    <div className="grid grid-cols-2 gap-3 px-4 py-3">
-                      <label className="block">
-                        <span className="mb-1 block text-[12px] font-medium text-neutral-600">
-                          {t("settings.geminiImageResize")}
-                        </span>
+                    <div>
+                      <div className="flex min-h-12 items-center justify-between gap-4 border-b border-neutral-100 px-4 py-3">
+                        <div className="min-w-0">
+                          <div className="text-[13px] font-medium text-neutral-900">
+                            {t("settings.geminiImageResize")}
+                          </div>
+                          <div className="mt-0.5 text-[12px] text-neutral-500">
+                            {t("settings.geminiImageResizeDescription")}
+                          </div>
+                        </div>
                         <AppSelect
-                          className="w-full"
+                          className="w-[180px] shrink-0"
                           value={geminiSettings.imageResizeMode}
                           options={resizeOptions.map((option) => ({
                             value: option.value,
@@ -1550,13 +2217,18 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
                             patchGeminiSettings({ imageResizeMode: nextValue })
                           }
                         />
-                      </label>
-                      <label className="block">
-                        <span className="mb-1 block text-[12px] font-medium text-neutral-600">
-                          {t("settings.geminiImageFormat")}
-                        </span>
+                      </div>
+                      <div className="flex min-h-12 items-center justify-between gap-4 px-4 py-3">
+                        <div className="min-w-0">
+                          <div className="text-[13px] font-medium text-neutral-900">
+                            {t("settings.geminiImageFormat")}
+                          </div>
+                          <div className="mt-0.5 text-[12px] text-neutral-500">
+                            {t("settings.geminiImageFormatDescription")}
+                          </div>
+                        </div>
                         <AppSelect
-                          className="w-full"
+                          className="w-[180px] shrink-0"
                           value={geminiSettings.imageConvertFormat}
                           options={convertFormatOptions.map((option) => ({
                             value: option.value,
@@ -1566,7 +2238,7 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
                             patchGeminiSettings({ imageConvertFormat: nextValue })
                           }
                         />
-                      </label>
+                      </div>
                     </div>
                   </div>
                 ) : null}

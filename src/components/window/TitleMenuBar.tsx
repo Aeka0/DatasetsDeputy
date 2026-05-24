@@ -219,6 +219,9 @@ function getAnnotationModeLabel(
   t: (key: string) => string
 ) {
   if (mode === "gemini") return t("annotationRun.modeGemini");
+  if (mode === "openai") return t("annotationRun.modeOpenAi");
+  if (mode === "anthropic") return t("annotationRun.modeAnthropic");
+  if (mode === "grok") return t("annotationRun.modeGrok");
   if (mode === "lmStudio") return t("annotationRun.modeLmStudio");
   if (mode === "ollama") return t("annotationRun.modeOllama");
   if (mode === "textgen") return t("annotationRun.modeTextgen");
@@ -226,6 +229,9 @@ function getAnnotationModeLabel(
 }
 
 function getVisionAnnotationCommand(mode: AnnotationExecutionMode) {
+  if (mode === "openai") return "generate_openai_annotation";
+  if (mode === "anthropic") return "generate_anthropic_annotation";
+  if (mode === "grok") return "generate_grok_annotation";
   if (mode === "lmStudio") return "generate_lm_studio_annotation";
   if (mode === "ollama") return "generate_ollama_annotation";
   if (mode === "textgen") return "generate_textgen_annotation";
@@ -233,6 +239,9 @@ function getVisionAnnotationCommand(mode: AnnotationExecutionMode) {
 }
 
 function getTextGenerationCommand(backend: LLMBackend) {
+  if (backend === "openai") return "generate_openai_text";
+  if (backend === "anthropic") return "generate_anthropic_text";
+  if (backend === "grok") return "generate_grok_text";
   if (backend === "lmStudio") return "generate_lm_studio_text";
   if (backend === "ollama") return "generate_ollama_text";
   if (backend === "textgen") return "generate_textgen_text";
