@@ -567,6 +567,7 @@ html[data-window-render-mode="acrylic"] .fluent-titlebar {
   touch-action: pan-y;
   position: relative;
   list-style: none;
+  will-change: transform;
 }
 
 .project-tree-sortable-root > .project-tree-row {
@@ -580,6 +581,10 @@ html[data-window-render-mode="acrylic"] .fluent-titlebar {
 
 .project-tree-sortable-root-dragging {
   z-index: 1;
+}
+
+.project-tree-sortable-root-shifting {
+  transition: transform 180ms var(--app-motion-ease);
 }
 
 .sidebar-nav-button {

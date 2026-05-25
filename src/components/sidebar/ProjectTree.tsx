@@ -10,8 +10,7 @@ import {
   Loader2,
   Plus
 } from "lucide-react";
-import { Reorder, type DragControls, useDragControls } from "framer-motion";
-import type { MouseEvent, PointerEvent as ReactPointerEvent, RefObject } from "react";
+import type { CSSProperties, MouseEvent, PointerEvent as ReactPointerEvent } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
@@ -26,7 +25,7 @@ import { AnimatedPortal } from "../ui/AnimatedPortal";
 
 const sidebarLabelClass = "text-[12px] leading-4";
 const rootOrderStorageKey = "datasets-deputy.project-tree-root-order";
-const rootDragHoldDelayMs = 50;
+const rootDragHoldDelayMs = 80;
 const rootDragCancelDistance = 6;
 
 type RootProjectOrder = Record<DatasetSourceKind, string[]>;
@@ -34,6 +33,9 @@ type RootProjectOrder = Record<DatasetSourceKind, string[]>;
 interface RootDragState {
   projectId: string;
   sourceKind: DatasetSourceKind;
+  offsetY: number;
+  siblingOffsets: Record<string, number>;
+  previewOrder: string[];
 }
 
 interface RootDragCandidate {
@@ -42,11 +44,18 @@ interface RootDragCandidate {
   pointerId: number;
   startX: number;
   startY: number;
-  pointerEvent: PointerEvent;
-  controls: DragControls;
+  grabOffsetY: number;
+  element: HTMLDivElement;
   timerId: number;
   active: boolean;
+  ready: boolean;
+  currentY: number;
   initialOrder: string[];
+  expandedIdsSnapshot?: Set<string>;
+  initialRects: Record<string, { top: number; height: number }>;
+  minOffsetY: number;
+  maxOffsetY: number;
+  gap: number;
 }
 
 function createEmptyRootProjectOrder(): RootProjectOrder {
@@ -94,6 +103,76 @@ function sortRootProjects(projects: DatasetProject[], order: string[]) {
     .map(({ project }) => project);
 }
 
+function parseTransitionTimeMs(value: string) {
+  const normalized = value.trim();
+  const duration = Number.parseFloat(normalized);
+
+  if (!Number.isFinite(duration)) return 0;
+
+  return normalized.endsWith("ms") ? duration : duration * 1000;
+}
+
+function getLongestTransitionMs(elements: Element[]) {
+  return elements.reduce((maximum, element) => {
+    const style = window.getComputedStyle(element);
+    const durations = style.transitionDuration.split(",").map(parseTransitionTimeMs);
+    const delays = style.transitionDelay.split(",").map(parseTransitionTimeMs);
+    const longest = durations.reduce(
+      (elementMaximum, duration, index) =>
+        Math.max(elementMaximum, duration + (delays[index % delays.length] ?? 0)),
+      0
+    );
+
+    return Math.max(maximum, longest);
+  }, 0);
+}
+
+function getRootDragPreviewOrder(
+  candidate: RootDragCandidate,
+  offsetY: number
+) {
+  const draggedRect = candidate.initialRects[candidate.projectId];
+  if (!draggedRect) return candidate.initialOrder;
+
+  const centerY = draggedRect.top + offsetY + draggedRect.height / 2;
+  const remainingIds = candidate.initialOrder.filter((id) => id !== candidate.projectId);
+  const insertionIndex = remainingIds.findIndex((id) => {
+    const rect = candidate.initialRects[id];
+    if (!rect) return false;
+
+    const itemCenterY = rect.top + rect.height / 2;
+    return offsetY < 0 ? centerY <= itemCenterY : centerY < itemCenterY;
+  });
+  const previewOrder = [...remainingIds];
+  previewOrder.splice(
+    insertionIndex < 0 ? remainingIds.length : insertionIndex,
+    0,
+    candidate.projectId
+  );
+  return previewOrder;
+}
+
+function getRootSiblingOffsets(
+  candidate: RootDragCandidate,
+  previewOrder: string[]
+) {
+  const firstRect = candidate.initialRects[candidate.initialOrder[0]];
+  if (!firstRect) return {};
+
+  let nextTop = firstRect.top;
+  const siblingOffsets: Record<string, number> = {};
+  for (const id of previewOrder) {
+    const rect = candidate.initialRects[id];
+    if (!rect) continue;
+
+    if (id !== candidate.projectId) {
+      siblingOffsets[id] = nextTop - rect.top;
+    }
+    nextTop += rect.height + candidate.gap;
+  }
+  return siblingOffsets;
+}
+
 function isRootDatasetProject(project: DatasetProject) {
   return (
     project.id.startsWith("asset-root:") ||
@@ -122,10 +201,7 @@ function ProjectNode({
   rootSortable = false,
   rootDragState,
   onRootPointerDown,
-  onRootClickCapture,
-  onRootReorder,
-  onRootDragEnd,
-  rootDragConstraints
+  onRootClickCapture
 }: {
   project: DatasetProject;
   depth?: number;
@@ -135,19 +211,10 @@ function ProjectNode({
   problemImageIds: Set<number>;
   rootSortable?: boolean;
   rootDragState?: RootDragState;
-  onRootPointerDown?: (
-    event: ReactPointerEvent<HTMLDivElement>,
-    project: DatasetProject,
-    controls: DragControls
-  ) => void;
+  onRootPointerDown?: (event: ReactPointerEvent<HTMLDivElement>, project: DatasetProject) => void;
   onRootClickCapture?: (event: MouseEvent) => void;
-  onRootReorder?: (sourceKind: DatasetSourceKind, ids: string[]) => void;
-  onRootDragEnd?: (project: DatasetProject) => void;
-  rootDragConstraints?: RefObject<HTMLDivElement | null>;
 }) {
   const { t } = useTranslation();
-  const dragControls = useDragControls();
-  const reorderGroupRef = useRef<HTMLDivElement>(null);
   const selectedProjectId = useDatasetStore((state) => state.selectedProjectId);
   const selectProject = useDatasetStore((state) => state.selectProject);
   const isSelected = selectedProjectId === project.id;
@@ -193,8 +260,20 @@ function ProjectNode({
 
   const containerClassName = cn(
     rootSortable && "project-tree-sortable-root",
-    rootDragState?.projectId === project.id && "project-tree-sortable-root-dragging"
+    rootDragState?.projectId === project.id && "project-tree-sortable-root-dragging",
+    rootSortable &&
+      rootDragState?.projectId !== project.id &&
+      rootDragState?.siblingOffsets[project.id] !== undefined &&
+      "project-tree-sortable-root-shifting"
   );
+  const dragOffsetY =
+    rootDragState?.projectId === project.id
+      ? rootDragState.offsetY
+      : rootDragState?.siblingOffsets[project.id] ?? 0;
+  const containerStyle: CSSProperties | undefined =
+    rootSortable && dragOffsetY !== 0
+      ? { transform: `translateY(${dragOffsetY}px)` }
+      : undefined;
   const content = (
     <>
       <div
@@ -211,7 +290,7 @@ function ProjectNode({
         style={{ paddingLeft: `${indentation}px` }}
         onPointerDown={
           rootSortable && onRootPointerDown
-            ? (event) => onRootPointerDown(event, project, dragControls)
+            ? (event) => onRootPointerDown(event, project)
             : undefined
         }
         onContextMenu={(event) => {
@@ -307,19 +386,8 @@ function ProjectNode({
           <div className="min-h-0 overflow-hidden">
             {isGroupNode && sortableRootCount > 1 ? (
               <>
-                <Reorder.Group
-                  as="div"
-                  axis="y"
-                  ref={reorderGroupRef}
+                <div
                   className="space-y-1 pt-1.5"
-                  values={(project.children ?? [])
-                    .filter(isRootDatasetProject)
-                    .map((child) => child.id)}
-                  onReorder={(ids) => {
-                    if (project.sourceKind) {
-                      onRootReorder?.(project.sourceKind, ids);
-                    }
-                  }}
                 >
                   {project.children
                     ?.filter(isRootDatasetProject)
@@ -336,12 +404,9 @@ function ProjectNode({
                         rootDragState={rootDragState}
                         onRootPointerDown={onRootPointerDown}
                         onRootClickCapture={onRootClickCapture}
-                        onRootReorder={onRootReorder}
-                        onRootDragEnd={onRootDragEnd}
-                        rootDragConstraints={reorderGroupRef}
                       />
                     ))}
-                </Reorder.Group>
+                </div>
                 {project.children?.some((child) => !isRootDatasetProject(child)) ? (
                   <div className="space-y-1 pt-1">
                     {project.children
@@ -374,8 +439,6 @@ function ProjectNode({
                     rootDragState={rootDragState}
                     onRootPointerDown={onRootPointerDown}
                     onRootClickCapture={onRootClickCapture}
-                    onRootReorder={onRootReorder}
-                    onRootDragEnd={onRootDragEnd}
                   />
                 ))}
               </div>
@@ -386,27 +449,15 @@ function ProjectNode({
     </>
   );
 
-  if (rootSortable) {
-    return (
-      <Reorder.Item
-        as="div"
-        value={project.id}
-        drag="y"
-        dragListener={false}
-        dragControls={dragControls}
-        dragConstraints={rootDragConstraints}
-        dragElastic={0}
-        dragMomentum={false}
-        className={containerClassName}
-        onDragEnd={() => onRootDragEnd?.(project)}
-        transition={{ layout: { duration: 0.18, ease: "easeOut" } }}
-      >
-        {content}
-      </Reorder.Item>
-    );
-  }
-
-  return <div className={containerClassName}>{content}</div>;
+  return (
+    <div
+      className={containerClassName}
+      data-sortable-root-id={rootSortable ? project.id : undefined}
+      style={containerStyle}
+    >
+      {content}
+    </div>
+  );
 }
 
 export function ProjectTree() {
@@ -461,6 +512,7 @@ export function ProjectTree() {
   const [consolidationError, setConsolidationError] = useState("");
   const [rootProjectOrder, setRootProjectOrder] = useState<RootProjectOrder>(readRootProjectOrder);
   const [rootDragState, setRootDragState] = useState<RootDragState>();
+  const [isRootDragSessionActive, setIsRootDragSessionActive] = useState(false);
   const rootProjectOrderRef = useRef(rootProjectOrder);
   const rootProjectListsRef = useRef<Record<DatasetSourceKind, DatasetProject[]>>({
     asset: [],
@@ -478,13 +530,23 @@ export function ProjectTree() {
     if (!candidate) return;
 
     window.clearTimeout(candidate.timerId);
+    if (candidate.element.hasPointerCapture(candidate.pointerId)) {
+      candidate.element.releasePointerCapture(candidate.pointerId);
+    }
     rootDragCandidateRef.current = undefined;
 
     if (!candidate.active) return;
 
     if (commit) {
-      writeRootProjectOrder(rootProjectOrderRef.current);
-    } else {
+      const next = {
+        ...rootProjectOrderRef.current,
+        [candidate.sourceKind]:
+          rootDragStateRef.current?.previewOrder ?? candidate.initialOrder
+      };
+      rootProjectOrderRef.current = next;
+      setRootProjectOrder(next);
+      writeRootProjectOrder(next);
+    } else if (rootDragStateRef.current?.previewOrder !== candidate.initialOrder) {
       const next = {
         ...rootProjectOrderRef.current,
         [candidate.sourceKind]: candidate.initialOrder
@@ -495,32 +557,132 @@ export function ProjectTree() {
 
     rootDragStateRef.current = undefined;
     setRootDragState(undefined);
+    setIsRootDragSessionActive(false);
+    if (candidate.expandedIdsSnapshot) {
+      setExpandedIds(new Set(candidate.expandedIdsSnapshot));
+    }
     suppressNextRootClickRef.current = true;
     window.setTimeout(() => {
       suppressNextRootClickRef.current = false;
     }, 0);
   }, []);
 
-  const monitorPendingRootDrag = useCallback(
+  const updateRootDragPosition = useCallback((candidate: RootDragCandidate, clientY: number) => {
+    if (!candidate.ready) return;
+
+    const draggedRect = candidate.initialRects[candidate.projectId];
+    if (!draggedRect) return;
+
+    const offsetY = Math.max(
+      candidate.minOffsetY,
+      Math.min(clientY - candidate.grabOffsetY - draggedRect.top, candidate.maxOffsetY)
+    );
+    const previewOrder = getRootDragPreviewOrder(candidate, offsetY);
+    const next = {
+      projectId: candidate.projectId,
+      sourceKind: candidate.sourceKind,
+      offsetY,
+      previewOrder,
+      siblingOffsets: getRootSiblingOffsets(candidate, previewOrder)
+    };
+    rootDragStateRef.current = next;
+    setRootDragState(next);
+  }, []);
+
+  useEffect(() => {
+    if (!isRootDragSessionActive) return;
+
+    const candidate = rootDragCandidateRef.current;
+    if (!candidate?.active || candidate.ready) return;
+
+    const measureCollapsedRoots = () => {
+      if (rootDragCandidateRef.current !== candidate || !candidate.active || candidate.ready) {
+        return;
+      }
+
+      const group = candidate.element.parentElement;
+      if (!group) {
+        finishRootDrag(false);
+        return;
+      }
+      for (const child of Array.from(group.children)) {
+        if (!(child instanceof HTMLElement)) continue;
+
+        const id = child.dataset.sortableRootId;
+        if (!id || !candidate.initialOrder.includes(id)) continue;
+
+        const rect = child.getBoundingClientRect();
+        candidate.initialRects[id] = {
+          top: rect.top,
+          height: rect.height
+        };
+      }
+      const firstRect = candidate.initialRects[candidate.initialOrder[0]];
+      const secondRect = candidate.initialRects[candidate.initialOrder[1]];
+      const lastRect = candidate.initialRects[candidate.initialOrder.at(-1) ?? ""];
+      const draggedRect = candidate.initialRects[candidate.projectId];
+      if (!firstRect || !lastRect || !draggedRect) {
+        finishRootDrag(false);
+        return;
+      }
+      candidate.minOffsetY = firstRect.top - draggedRect.top;
+      candidate.maxOffsetY =
+        lastRect.top + lastRect.height - draggedRect.top - draggedRect.height;
+      candidate.gap = secondRect
+        ? Math.max(0, secondRect.top - firstRect.top - firstRect.height)
+        : 0;
+      candidate.ready = true;
+      updateRootDragPosition(candidate, candidate.currentY);
+    };
+
+    const collapsedRootWasExpanded = Object.values(rootProjectListsRef.current)
+      .flat()
+      .some((project) => candidate.expandedIdsSnapshot?.has(project.id));
+    const sidebar = candidate.element.closest(".fluent-sidebar");
+    const collapseDurationMs =
+      collapsedRootWasExpanded && sidebar
+        ? getLongestTransitionMs(Array.from(sidebar.querySelectorAll(".project-tree-children")))
+        : 0;
+    let animationFrameId: number | undefined;
+    const timeoutId = window.setTimeout(() => {
+      animationFrameId = window.requestAnimationFrame(measureCollapsedRoots);
+    }, collapseDurationMs);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+      if (animationFrameId !== undefined) {
+        window.cancelAnimationFrame(animationFrameId);
+      }
+    };
+  }, [finishRootDrag, isRootDragSessionActive, updateRootDragPosition]);
+
+  const moveRootDrag = useCallback(
     (event: globalThis.PointerEvent) => {
       const candidate = rootDragCandidateRef.current;
-      if (!candidate || candidate.active || candidate.pointerId !== event.pointerId) return;
+      if (!candidate || candidate.pointerId !== event.pointerId) return;
 
-      if (
-        Math.hypot(event.clientX - candidate.startX, event.clientY - candidate.startY) >
-        rootDragCancelDistance
-      ) {
-        finishRootDrag(false);
+      if (!candidate.active) {
+        if (
+          Math.hypot(event.clientX - candidate.startX, event.clientY - candidate.startY) >
+          rootDragCancelDistance
+        ) {
+          finishRootDrag(false);
+        }
+        return;
       }
+
+      event.preventDefault();
+      candidate.currentY = event.clientY;
+      updateRootDragPosition(candidate, candidate.currentY);
     },
-    [finishRootDrag]
+    [finishRootDrag, updateRootDragPosition]
   );
 
   useEffect(() => {
     const releaseRootDrag = (event: globalThis.PointerEvent) => {
       const candidate = rootDragCandidateRef.current;
-      if (candidate?.pointerId === event.pointerId && !candidate.active) {
-        finishRootDrag(false);
+      if (candidate?.pointerId === event.pointerId) {
+        finishRootDrag(candidate.active);
       }
     };
     const cancelRootDrag = (event: globalThis.PointerEvent) => {
@@ -529,12 +691,12 @@ export function ProjectTree() {
       }
     };
 
-    window.addEventListener("pointermove", monitorPendingRootDrag, { capture: true });
+    window.addEventListener("pointermove", moveRootDrag, { capture: true });
     window.addEventListener("pointerup", releaseRootDrag, { capture: true });
     window.addEventListener("pointercancel", cancelRootDrag, { capture: true });
 
     return () => {
-      window.removeEventListener("pointermove", monitorPendingRootDrag, { capture: true });
+      window.removeEventListener("pointermove", moveRootDrag, { capture: true });
       window.removeEventListener("pointerup", releaseRootDrag, { capture: true });
       window.removeEventListener("pointercancel", cancelRootDrag, { capture: true });
       const candidate = rootDragCandidateRef.current;
@@ -542,12 +704,11 @@ export function ProjectTree() {
         window.clearTimeout(candidate.timerId);
       }
     };
-  }, [finishRootDrag, monitorPendingRootDrag]);
+  }, [finishRootDrag, moveRootDrag]);
 
   const startRootDrag = (
     event: ReactPointerEvent<HTMLDivElement>,
-    project: DatasetProject,
-    controls: DragControls
+    project: DatasetProject
   ) => {
     const sourceKind = project.sourceKind;
     if (
@@ -561,51 +722,47 @@ export function ProjectTree() {
     }
 
     finishRootDrag(false);
+    const element = event.currentTarget.parentElement;
+    if (!(element instanceof HTMLDivElement)) return;
+    const initialRect = element.getBoundingClientRect();
+
     const candidate: RootDragCandidate = {
       projectId: project.id,
       sourceKind,
       pointerId: event.pointerId,
       startX: event.clientX,
       startY: event.clientY,
-      pointerEvent: event.nativeEvent,
-      controls,
+      grabOffsetY: event.clientY - initialRect.top,
+      element,
       timerId: 0,
       active: false,
-      initialOrder: rootProjectListsRef.current[sourceKind].map((root) => root.id)
+      ready: false,
+      currentY: event.clientY,
+      initialOrder: rootProjectListsRef.current[sourceKind].map((root) => root.id),
+      initialRects: {},
+      minOffsetY: 0,
+      maxOffsetY: 0,
+      gap: 0
     };
     candidate.timerId = window.setTimeout(() => {
       if (rootDragCandidateRef.current !== candidate) return;
 
       candidate.active = true;
+      candidate.element.setPointerCapture(candidate.pointerId);
       setContextMenu(undefined);
-      const next = {
-        projectId: candidate.projectId,
-        sourceKind: candidate.sourceKind
-      };
-      rootDragStateRef.current = next;
-      setRootDragState(next);
-      candidate.controls.start(candidate.pointerEvent);
+      setExpandedIds((current) => {
+        candidate.expandedIdsSnapshot = new Set(current);
+        const next = new Set(current);
+        for (const roots of Object.values(rootProjectListsRef.current)) {
+          for (const root of roots) {
+            next.delete(root.id);
+          }
+        }
+        return next;
+      });
+      setIsRootDragSessionActive(true);
     }, rootDragHoldDelayMs);
     rootDragCandidateRef.current = candidate;
-  };
-
-  const reorderRootProjects = (sourceKind: DatasetSourceKind, ids: string[]) => {
-    if (rootDragStateRef.current?.sourceKind !== sourceKind) return;
-
-    setRootProjectOrder((current) => {
-      const next = {
-        ...current,
-        [sourceKind]: ids
-      };
-      rootProjectOrderRef.current = next;
-      return next;
-    });
-  };
-
-  const endRootDrag = (project: DatasetProject) => {
-    if (rootDragCandidateRef.current?.projectId === project.id) {
-      finishRootDrag();
-    }
   };
 
   const blockRootClickAfterDrag = (event: MouseEvent) => {
@@ -901,8 +1058,6 @@ export function ProjectTree() {
             rootDragState={rootDragState}
             onRootPointerDown={startRootDrag}
             onRootClickCapture={blockRootClickAfterDrag}
-            onRootReorder={reorderRootProjects}
-            onRootDragEnd={endRootDrag}
           />
           <ProjectNode
             project={databaseGroup}
@@ -913,8 +1068,6 @@ export function ProjectTree() {
             rootDragState={rootDragState}
             onRootPointerDown={startRootDrag}
             onRootClickCapture={blockRootClickAfterDrag}
-            onRootReorder={reorderRootProjects}
-            onRootDragEnd={endRootDrag}
           />
           <ProjectNode
             project={workspaceFolderGroup}
@@ -925,8 +1078,6 @@ export function ProjectTree() {
             rootDragState={rootDragState}
             onRootPointerDown={startRootDrag}
             onRootClickCapture={blockRootClickAfterDrag}
-            onRootReorder={reorderRootProjects}
-            onRootDragEnd={endRootDrag}
           />
         </div>
       </div>
