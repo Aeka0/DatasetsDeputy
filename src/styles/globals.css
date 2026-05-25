@@ -563,6 +563,25 @@ html[data-window-render-mode="acrylic"] .fluent-titlebar {
   opacity: 1;
 }
 
+.project-tree-sortable-root {
+  touch-action: pan-y;
+  position: relative;
+  list-style: none;
+}
+
+.project-tree-sortable-root > .project-tree-row {
+  cursor: grab;
+}
+
+.project-tree-sortable-root-dragging > .project-tree-row {
+  cursor: grabbing;
+  box-shadow: 0 5px 15px rgba(28, 28, 28, 0.14);
+}
+
+.project-tree-sortable-root-dragging {
+  z-index: 1;
+}
+
 .sidebar-nav-button {
   border: 0;
   background: transparent;

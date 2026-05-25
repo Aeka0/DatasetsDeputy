@@ -10,8 +10,9 @@ import {
   Loader2,
   Plus
 } from "lucide-react";
-import type { MouseEvent } from "react";
-import { useEffect, useMemo, useState } from "react";
+import { Reorder, type DragControls, useDragControls } from "framer-motion";
+import type { MouseEvent, PointerEvent as ReactPointerEvent, RefObject } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import { useShallow } from "zustand/react/shallow";
@@ -20,10 +21,86 @@ import { cn } from "../../lib/cn";
 import { formatAppError } from "../../lib/errors";
 import { formatDialogMenuLabel } from "../../lib/menuLabels";
 import { useDatasetStore } from "../../stores/datasetStore";
-import type { DatasetProject } from "../../types";
+import type { DatasetProject, DatasetSourceKind } from "../../types";
 import { AnimatedPortal } from "../ui/AnimatedPortal";
 
 const sidebarLabelClass = "text-[12px] leading-4";
+const rootOrderStorageKey = "datasets-deputy.project-tree-root-order";
+const rootDragHoldDelayMs = 50;
+const rootDragCancelDistance = 6;
+
+type RootProjectOrder = Record<DatasetSourceKind, string[]>;
+
+interface RootDragState {
+  projectId: string;
+  sourceKind: DatasetSourceKind;
+}
+
+interface RootDragCandidate {
+  projectId: string;
+  sourceKind: DatasetSourceKind;
+  pointerId: number;
+  startX: number;
+  startY: number;
+  pointerEvent: PointerEvent;
+  controls: DragControls;
+  timerId: number;
+  active: boolean;
+  initialOrder: string[];
+}
+
+function createEmptyRootProjectOrder(): RootProjectOrder {
+  return {
+    asset: [],
+    database: [],
+    folder: []
+  };
+}
+
+function readRootProjectOrder(): RootProjectOrder {
+  const fallback = createEmptyRootProjectOrder();
+  if (typeof localStorage === "undefined") return fallback;
+
+  try {
+    const parsed = JSON.parse(localStorage.getItem(rootOrderStorageKey) ?? "{}") as Partial<RootProjectOrder>;
+    return {
+      asset: Array.isArray(parsed.asset) ? parsed.asset.filter((id): id is string => typeof id === "string") : [],
+      database: Array.isArray(parsed.database) ? parsed.database.filter((id): id is string => typeof id === "string") : [],
+      folder: Array.isArray(parsed.folder) ? parsed.folder.filter((id): id is string => typeof id === "string") : []
+    };
+  } catch {
+    return fallback;
+  }
+}
+
+function writeRootProjectOrder(order: RootProjectOrder) {
+  if (typeof localStorage !== "undefined") {
+    localStorage.setItem(rootOrderStorageKey, JSON.stringify(order));
+  }
+}
+
+function sortRootProjects(projects: DatasetProject[], order: string[]) {
+  const rank = new Map(order.map((id, index) => [id, index]));
+  return projects
+    .map((project, index) => ({ project, index }))
+    .sort((left, right) => {
+      const leftRank = rank.get(left.project.id);
+      const rightRank = rank.get(right.project.id);
+      if (leftRank === undefined && rightRank === undefined) return left.index - right.index;
+      if (leftRank === undefined) return 1;
+      if (rightRank === undefined) return -1;
+      return leftRank - rightRank;
+    })
+    .map(({ project }) => project);
+}
+
+function isRootDatasetProject(project: DatasetProject) {
+  return (
+    project.id.startsWith("asset-root:") ||
+    project.id.startsWith("dataset-root:") ||
+    project.id.startsWith("folder-root:")
+  );
+}
 
 function getEditedAnnotationTypeCount(images: Array<{ annotations: Array<{ profileId: number; content: string; instruction: string }> }>) {
   return new Set(
@@ -41,7 +118,14 @@ function ProjectNode({
   expandedIds,
   toggleExpanded,
   openContextMenu,
-  problemImageIds
+  problemImageIds,
+  rootSortable = false,
+  rootDragState,
+  onRootPointerDown,
+  onRootClickCapture,
+  onRootReorder,
+  onRootDragEnd,
+  rootDragConstraints
 }: {
   project: DatasetProject;
   depth?: number;
@@ -49,8 +133,21 @@ function ProjectNode({
   toggleExpanded: (project: DatasetProject) => void;
   openContextMenu: (event: MouseEvent, project: DatasetProject) => void;
   problemImageIds: Set<number>;
+  rootSortable?: boolean;
+  rootDragState?: RootDragState;
+  onRootPointerDown?: (
+    event: ReactPointerEvent<HTMLDivElement>,
+    project: DatasetProject,
+    controls: DragControls
+  ) => void;
+  onRootClickCapture?: (event: MouseEvent) => void;
+  onRootReorder?: (sourceKind: DatasetSourceKind, ids: string[]) => void;
+  onRootDragEnd?: (project: DatasetProject) => void;
+  rootDragConstraints?: RefObject<HTMLDivElement | null>;
 }) {
   const { t } = useTranslation();
+  const dragControls = useDragControls();
+  const reorderGroupRef = useRef<HTMLDivElement>(null);
   const selectedProjectId = useDatasetStore((state) => state.selectedProjectId);
   const selectProject = useDatasetStore((state) => state.selectProject);
   const isSelected = selectedProjectId === project.id;
@@ -73,6 +170,9 @@ function ProjectNode({
   const displayCount = isGroupNode ? datasetCount : imageCount;
   const canOpenContextMenu = !isImportingNode;
   const indentation = isGroupNode ? 4 : 8 + depth * 10;
+  const sortableRootCount = isGroupNode
+    ? project.children?.filter(isRootDatasetProject).length ?? 0
+    : 0;
 
   const handleRowActivate = () => {
     if (isImportingNode) return;
@@ -91,8 +191,12 @@ function ProjectNode({
     toggleExpanded(project);
   };
 
-  return (
-    <div>
+  const containerClassName = cn(
+    rootSortable && "project-tree-sortable-root",
+    rootDragState?.projectId === project.id && "project-tree-sortable-root-dragging"
+  );
+  const content = (
+    <>
       <div
         className={cn(
           "project-tree-row no-drag flex h-8 w-full items-stretch gap-1 pr-2.5 text-left transition",
@@ -105,6 +209,11 @@ function ProjectNode({
             : "text-black hover:bg-neutral-900/[0.045]"
         )}
         style={{ paddingLeft: `${indentation}px` }}
+        onPointerDown={
+          rootSortable && onRootPointerDown
+            ? (event) => onRootPointerDown(event, project, dragControls)
+            : undefined
+        }
         onContextMenu={(event) => {
           if (canOpenContextMenu) {
             openContextMenu(event, project);
@@ -114,6 +223,7 @@ function ProjectNode({
         {hasChildren ? (
           <button
             type="button"
+            data-project-tree-disclosure="true"
             className="no-drag group flex w-[22px] shrink-0 items-center justify-center rounded border-0 bg-transparent p-0 text-inherit outline-none focus-visible:ring-2 focus-visible:ring-black/20"
             aria-expanded={isExpanded}
             aria-label={isExpanded ? t("aria.collapseSubfolders") : t("aria.expandSubfolders")}
@@ -140,6 +250,7 @@ function ProjectNode({
         <button
           type="button"
           className="no-drag flex min-w-0 flex-1 items-center gap-2 rounded border-0 bg-transparent p-0 text-left text-inherit outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-black/20"
+          onClickCapture={rootSortable ? onRootClickCapture : undefined}
           onClick={handleRowActivate}
         >
           {isImportingNode ? (
@@ -194,24 +305,108 @@ function ProjectNode({
           inert={!isExpanded}
         >
           <div className="min-h-0 overflow-hidden">
-            <div className="space-y-1 pt-1.5">
-              {project.children?.map((child) => (
-                <ProjectNode
-                  key={child.id}
-                  project={child}
-                  depth={depth + 1}
-                  expandedIds={expandedIds}
-                  toggleExpanded={toggleExpanded}
-                  openContextMenu={openContextMenu}
-                  problemImageIds={problemImageIds}
-                />
-              ))}
-            </div>
+            {isGroupNode && sortableRootCount > 1 ? (
+              <>
+                <Reorder.Group
+                  as="div"
+                  axis="y"
+                  ref={reorderGroupRef}
+                  className="space-y-1 pt-1.5"
+                  values={(project.children ?? [])
+                    .filter(isRootDatasetProject)
+                    .map((child) => child.id)}
+                  onReorder={(ids) => {
+                    if (project.sourceKind) {
+                      onRootReorder?.(project.sourceKind, ids);
+                    }
+                  }}
+                >
+                  {project.children
+                    ?.filter(isRootDatasetProject)
+                    .map((child) => (
+                      <ProjectNode
+                        key={child.id}
+                        project={child}
+                        depth={depth + 1}
+                        expandedIds={expandedIds}
+                        toggleExpanded={toggleExpanded}
+                        openContextMenu={openContextMenu}
+                        problemImageIds={problemImageIds}
+                        rootSortable
+                        rootDragState={rootDragState}
+                        onRootPointerDown={onRootPointerDown}
+                        onRootClickCapture={onRootClickCapture}
+                        onRootReorder={onRootReorder}
+                        onRootDragEnd={onRootDragEnd}
+                        rootDragConstraints={reorderGroupRef}
+                      />
+                    ))}
+                </Reorder.Group>
+                {project.children?.some((child) => !isRootDatasetProject(child)) ? (
+                  <div className="space-y-1 pt-1">
+                    {project.children
+                      .filter((child) => !isRootDatasetProject(child))
+                      .map((child) => (
+                        <ProjectNode
+                          key={child.id}
+                          project={child}
+                          depth={depth + 1}
+                          expandedIds={expandedIds}
+                          toggleExpanded={toggleExpanded}
+                          openContextMenu={openContextMenu}
+                          problemImageIds={problemImageIds}
+                        />
+                      ))}
+                  </div>
+                ) : null}
+              </>
+            ) : (
+              <div className="space-y-1 pt-1.5">
+                {project.children?.map((child) => (
+                  <ProjectNode
+                    key={child.id}
+                    project={child}
+                    depth={depth + 1}
+                    expandedIds={expandedIds}
+                    toggleExpanded={toggleExpanded}
+                    openContextMenu={openContextMenu}
+                    problemImageIds={problemImageIds}
+                    rootDragState={rootDragState}
+                    onRootPointerDown={onRootPointerDown}
+                    onRootClickCapture={onRootClickCapture}
+                    onRootReorder={onRootReorder}
+                    onRootDragEnd={onRootDragEnd}
+                  />
+                ))}
+              </div>
+            )}
           </div>
         </div>
       ) : null}
-    </div>
+    </>
   );
+
+  if (rootSortable) {
+    return (
+      <Reorder.Item
+        as="div"
+        value={project.id}
+        drag="y"
+        dragListener={false}
+        dragControls={dragControls}
+        dragConstraints={rootDragConstraints}
+        dragElastic={0}
+        dragMomentum={false}
+        className={containerClassName}
+        onDragEnd={() => onRootDragEnd?.(project)}
+        transition={{ layout: { duration: 0.18, ease: "easeOut" } }}
+      >
+        {content}
+      </Reorder.Item>
+    );
+  }
+
+  return <div className={containerClassName}>{content}</div>;
 }
 
 export function ProjectTree() {
@@ -264,6 +459,161 @@ export function ProjectTree() {
   const [newChildError, setNewChildError] = useState("");
   const [consolidationName, setConsolidationName] = useState("");
   const [consolidationError, setConsolidationError] = useState("");
+  const [rootProjectOrder, setRootProjectOrder] = useState<RootProjectOrder>(readRootProjectOrder);
+  const [rootDragState, setRootDragState] = useState<RootDragState>();
+  const rootProjectOrderRef = useRef(rootProjectOrder);
+  const rootProjectListsRef = useRef<Record<DatasetSourceKind, DatasetProject[]>>({
+    asset: [],
+    database: [],
+    folder: []
+  });
+  const rootDragStateRef = useRef<RootDragState | undefined>(undefined);
+  const rootDragCandidateRef = useRef<RootDragCandidate | undefined>(undefined);
+  const suppressNextRootClickRef = useRef(false);
+
+  rootProjectOrderRef.current = rootProjectOrder;
+
+  const finishRootDrag = useCallback((commit = true) => {
+    const candidate = rootDragCandidateRef.current;
+    if (!candidate) return;
+
+    window.clearTimeout(candidate.timerId);
+    rootDragCandidateRef.current = undefined;
+
+    if (!candidate.active) return;
+
+    if (commit) {
+      writeRootProjectOrder(rootProjectOrderRef.current);
+    } else {
+      const next = {
+        ...rootProjectOrderRef.current,
+        [candidate.sourceKind]: candidate.initialOrder
+      };
+      rootProjectOrderRef.current = next;
+      setRootProjectOrder(next);
+    }
+
+    rootDragStateRef.current = undefined;
+    setRootDragState(undefined);
+    suppressNextRootClickRef.current = true;
+    window.setTimeout(() => {
+      suppressNextRootClickRef.current = false;
+    }, 0);
+  }, []);
+
+  const monitorPendingRootDrag = useCallback(
+    (event: globalThis.PointerEvent) => {
+      const candidate = rootDragCandidateRef.current;
+      if (!candidate || candidate.active || candidate.pointerId !== event.pointerId) return;
+
+      if (
+        Math.hypot(event.clientX - candidate.startX, event.clientY - candidate.startY) >
+        rootDragCancelDistance
+      ) {
+        finishRootDrag(false);
+      }
+    },
+    [finishRootDrag]
+  );
+
+  useEffect(() => {
+    const releaseRootDrag = (event: globalThis.PointerEvent) => {
+      const candidate = rootDragCandidateRef.current;
+      if (candidate?.pointerId === event.pointerId && !candidate.active) {
+        finishRootDrag(false);
+      }
+    };
+    const cancelRootDrag = (event: globalThis.PointerEvent) => {
+      if (rootDragCandidateRef.current?.pointerId === event.pointerId) {
+        finishRootDrag(false);
+      }
+    };
+
+    window.addEventListener("pointermove", monitorPendingRootDrag, { capture: true });
+    window.addEventListener("pointerup", releaseRootDrag, { capture: true });
+    window.addEventListener("pointercancel", cancelRootDrag, { capture: true });
+
+    return () => {
+      window.removeEventListener("pointermove", monitorPendingRootDrag, { capture: true });
+      window.removeEventListener("pointerup", releaseRootDrag, { capture: true });
+      window.removeEventListener("pointercancel", cancelRootDrag, { capture: true });
+      const candidate = rootDragCandidateRef.current;
+      if (candidate) {
+        window.clearTimeout(candidate.timerId);
+      }
+    };
+  }, [finishRootDrag, monitorPendingRootDrag]);
+
+  const startRootDrag = (
+    event: ReactPointerEvent<HTMLDivElement>,
+    project: DatasetProject,
+    controls: DragControls
+  ) => {
+    const sourceKind = project.sourceKind;
+    if (
+      event.button !== 0 ||
+      (event.target instanceof Element &&
+        Boolean(event.target.closest("[data-project-tree-disclosure='true']"))) ||
+      !sourceKind ||
+      rootProjectListsRef.current[sourceKind].length < 2
+    ) {
+      return;
+    }
+
+    finishRootDrag(false);
+    const candidate: RootDragCandidate = {
+      projectId: project.id,
+      sourceKind,
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      pointerEvent: event.nativeEvent,
+      controls,
+      timerId: 0,
+      active: false,
+      initialOrder: rootProjectListsRef.current[sourceKind].map((root) => root.id)
+    };
+    candidate.timerId = window.setTimeout(() => {
+      if (rootDragCandidateRef.current !== candidate) return;
+
+      candidate.active = true;
+      setContextMenu(undefined);
+      const next = {
+        projectId: candidate.projectId,
+        sourceKind: candidate.sourceKind
+      };
+      rootDragStateRef.current = next;
+      setRootDragState(next);
+      candidate.controls.start(candidate.pointerEvent);
+    }, rootDragHoldDelayMs);
+    rootDragCandidateRef.current = candidate;
+  };
+
+  const reorderRootProjects = (sourceKind: DatasetSourceKind, ids: string[]) => {
+    if (rootDragStateRef.current?.sourceKind !== sourceKind) return;
+
+    setRootProjectOrder((current) => {
+      const next = {
+        ...current,
+        [sourceKind]: ids
+      };
+      rootProjectOrderRef.current = next;
+      return next;
+    });
+  };
+
+  const endRootDrag = (project: DatasetProject) => {
+    if (rootDragCandidateRef.current?.projectId === project.id) {
+      finishRootDrag();
+    }
+  };
+
+  const blockRootClickAfterDrag = (event: MouseEvent) => {
+    if (!suppressNextRootClickRef.current && !rootDragCandidateRef.current?.active) return;
+
+    event.preventDefault();
+    event.stopPropagation();
+  };
 
   useEffect(() => {
     if (!contextMenu) return;
@@ -382,10 +732,7 @@ export function ProjectTree() {
     project.id === "asset-database-group" ||
     project.id === "database-group" ||
     project.id === "workspace-folder-group";
-  const isDatasetRoot = (project: DatasetProject) =>
-    project.id.startsWith("asset-root:") ||
-    project.id.startsWith("dataset-root:") ||
-    project.id.startsWith("folder-root:");
+  const isDatasetRoot = isRootDatasetProject;
   const isLooseFilesProject = (project: DatasetProject | undefined) =>
     project?.treeNodeKind === "loose-files";
   const isWorkspaceFolderChild = (project: DatasetProject) =>
@@ -411,11 +758,23 @@ export function ProjectTree() {
     await checkProblemItems(project);
   };
 
-  const assetProjects = projects.filter((project) => project.sourceKind === "asset");
-  const databaseProjects = projects.filter(
-    (project) => project.sourceKind !== "asset" && project.sourceKind !== "folder"
+  const assetProjects = sortRootProjects(
+    projects.filter((project) => project.sourceKind === "asset"),
+    rootProjectOrder.asset
   );
-  const folderProjects = projects.filter((project) => project.sourceKind === "folder");
+  const databaseProjects = sortRootProjects(
+    projects.filter((project) => project.sourceKind !== "asset" && project.sourceKind !== "folder"),
+    rootProjectOrder.database
+  );
+  const folderProjects = sortRootProjects(
+    projects.filter((project) => project.sourceKind === "folder"),
+    rootProjectOrder.folder
+  );
+  rootProjectListsRef.current = {
+    asset: assetProjects,
+    database: databaseProjects,
+    folder: folderProjects
+  };
   const problemImageIds = useMemo(
     () => new Set(images.filter((image) => image.sourceMissing).map((image) => image.id)),
     [images]
@@ -539,6 +898,11 @@ export function ProjectTree() {
             toggleExpanded={toggleExpanded}
             openContextMenu={openContextMenu}
             problemImageIds={problemImageIds}
+            rootDragState={rootDragState}
+            onRootPointerDown={startRootDrag}
+            onRootClickCapture={blockRootClickAfterDrag}
+            onRootReorder={reorderRootProjects}
+            onRootDragEnd={endRootDrag}
           />
           <ProjectNode
             project={databaseGroup}
@@ -546,6 +910,11 @@ export function ProjectTree() {
             toggleExpanded={toggleExpanded}
             openContextMenu={openContextMenu}
             problemImageIds={problemImageIds}
+            rootDragState={rootDragState}
+            onRootPointerDown={startRootDrag}
+            onRootClickCapture={blockRootClickAfterDrag}
+            onRootReorder={reorderRootProjects}
+            onRootDragEnd={endRootDrag}
           />
           <ProjectNode
             project={workspaceFolderGroup}
@@ -553,6 +922,11 @@ export function ProjectTree() {
             toggleExpanded={toggleExpanded}
             openContextMenu={openContextMenu}
             problemImageIds={problemImageIds}
+            rootDragState={rootDragState}
+            onRootPointerDown={startRootDrag}
+            onRootClickCapture={blockRootClickAfterDrag}
+            onRootReorder={reorderRootProjects}
+            onRootDragEnd={endRootDrag}
           />
         </div>
       </div>
