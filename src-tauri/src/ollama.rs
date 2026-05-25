@@ -3,9 +3,11 @@ use std::{fs, path::Path, time::Duration};
 use base64::{engine::general_purpose, Engine as _};
 use serde::{Deserialize, Serialize};
 
-use crate::errors::{AppError, AppResult};
+use crate::{
+    errors::{AppError, AppResult},
+    llm_loader_settings::{self, LlmLoaderSettings},
+};
 
-const OLLAMA_BASE_URL: &str = "http://127.0.0.1:11434";
 const DEFAULT_MODEL: &str = "gemma3";
 
 #[derive(Debug, Deserialize)]
@@ -85,9 +87,9 @@ fn first_model_id(payload: TagsResponse) -> Option<String> {
         .filter(|model| !model.trim().is_empty())
 }
 
-async fn discover_model(client: &reqwest::Client) -> Option<String> {
+async fn discover_model(client: &reqwest::Client, base_url: &str) -> Option<String> {
     let response = client
-        .get(format!("{OLLAMA_BASE_URL}/api/tags"))
+        .get(format!("{base_url}/api/tags"))
         .send()
         .await
         .ok()?;
@@ -101,15 +103,23 @@ async fn discover_model(client: &reqwest::Client) -> Option<String> {
         .and_then(first_model_id)
 }
 
-pub async fn generate_annotation(image_path: &Path, prompt: &str) -> AppResult<String> {
-    generate(prompt, Some(image_path)).await
+pub async fn generate_annotation(
+    settings: &LlmLoaderSettings,
+    image_path: &Path,
+    prompt: &str,
+) -> AppResult<String> {
+    generate(settings, prompt, Some(image_path)).await
 }
 
-pub async fn generate_text(prompt: &str) -> AppResult<String> {
-    generate(prompt, None).await
+pub async fn generate_text(settings: &LlmLoaderSettings, prompt: &str) -> AppResult<String> {
+    generate(settings, prompt, None).await
 }
 
-async fn generate(prompt: &str, image_path: Option<&Path>) -> AppResult<String> {
+async fn generate(
+    settings: &LlmLoaderSettings,
+    prompt: &str,
+    image_path: Option<&Path>,
+) -> AppResult<String> {
     if prompt.trim().is_empty() {
         return Err(AppError::InvalidInput(
             "Annotation prompt is empty".to_owned(),
@@ -117,6 +127,7 @@ async fn generate(prompt: &str, image_path: Option<&Path>) -> AppResult<String> 
     }
 
     let client = http_client(120)?;
+    let base_url = llm_loader_settings::ollama_base_url(settings);
     let images = match image_path {
         Some(image_path) => {
             mime_type_for_path(image_path)?;
@@ -125,7 +136,7 @@ async fn generate(prompt: &str, image_path: Option<&Path>) -> AppResult<String> 
         None => Vec::new(),
     };
     let request = ChatRequest {
-        model: discover_model(&client)
+        model: discover_model(&client, &base_url)
             .await
             .unwrap_or_else(|| DEFAULT_MODEL.to_owned()),
         messages: vec![ChatMessage {
@@ -142,7 +153,7 @@ async fn generate(prompt: &str, image_path: Option<&Path>) -> AppResult<String> 
     };
 
     let response = client
-        .post(format!("{OLLAMA_BASE_URL}/api/chat"))
+        .post(format!("{base_url}/api/chat"))
         .json(&request)
         .send()
         .await

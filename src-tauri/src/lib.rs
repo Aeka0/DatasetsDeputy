@@ -8,6 +8,7 @@ mod files;
 mod folders;
 mod gemini;
 mod grok;
+mod llm_loader_settings;
 mod lm_studio;
 mod model_settings;
 mod ollama;
@@ -179,6 +180,8 @@ pub fn run() {
             commands::test_grok_connection,
             commands::generate_grok_annotation,
             commands::generate_grok_text,
+            commands::get_llm_loader_settings,
+            commands::save_llm_loader_settings,
             commands::generate_lm_studio_annotation,
             commands::generate_lm_studio_text,
             commands::generate_ollama_annotation,

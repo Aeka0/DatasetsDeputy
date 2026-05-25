@@ -24,6 +24,7 @@ use crate::{
     folders,
     gemini::{self, GeminiSettings},
     grok::{self, GrokSettings},
+    llm_loader_settings::{self, LlmLoaderSettings},
     lm_studio,
     model_settings::{self, ModelSettings},
     ollama,
@@ -1920,36 +1921,70 @@ pub async fn generate_grok_text(state: State<'_, AppState>, prompt: String) -> A
 }
 
 #[tauri::command]
-pub async fn generate_textgen_annotation(image_path: String, prompt: String) -> AppResult<String> {
-    textgen::generate_annotation(&PathBuf::from(image_path), &prompt).await
+pub fn get_llm_loader_settings(state: State<'_, AppState>) -> AppResult<LlmLoaderSettings> {
+    llm_loader_settings::load_settings(&state.dirs)
 }
 
 #[tauri::command]
-pub async fn generate_textgen_text(prompt: String) -> AppResult<String> {
-    textgen::generate_text(&prompt).await
+pub fn save_llm_loader_settings(
+    state: State<'_, AppState>,
+    settings: LlmLoaderSettings,
+) -> AppResult<LlmLoaderSettings> {
+    llm_loader_settings::save_settings(&state.dirs, settings)
+}
+
+#[tauri::command]
+pub async fn generate_textgen_annotation(
+    state: State<'_, AppState>,
+    image_path: String,
+    prompt: String,
+) -> AppResult<String> {
+    let settings = llm_loader_settings::load_settings(&state.dirs)?;
+    textgen::generate_annotation(&settings, &PathBuf::from(image_path), &prompt).await
+}
+
+#[tauri::command]
+pub async fn generate_textgen_text(
+    state: State<'_, AppState>,
+    prompt: String,
+) -> AppResult<String> {
+    let settings = llm_loader_settings::load_settings(&state.dirs)?;
+    textgen::generate_text(&settings, &prompt).await
 }
 
 #[tauri::command]
 pub async fn generate_lm_studio_annotation(
+    state: State<'_, AppState>,
     image_path: String,
     prompt: String,
 ) -> AppResult<String> {
-    lm_studio::generate_annotation(&PathBuf::from(image_path), &prompt).await
+    let settings = llm_loader_settings::load_settings(&state.dirs)?;
+    lm_studio::generate_annotation(&settings, &PathBuf::from(image_path), &prompt).await
 }
 
 #[tauri::command]
-pub async fn generate_lm_studio_text(prompt: String) -> AppResult<String> {
-    lm_studio::generate_text(&prompt).await
+pub async fn generate_lm_studio_text(
+    state: State<'_, AppState>,
+    prompt: String,
+) -> AppResult<String> {
+    let settings = llm_loader_settings::load_settings(&state.dirs)?;
+    lm_studio::generate_text(&settings, &prompt).await
 }
 
 #[tauri::command]
-pub async fn generate_ollama_annotation(image_path: String, prompt: String) -> AppResult<String> {
-    ollama::generate_annotation(&PathBuf::from(image_path), &prompt).await
+pub async fn generate_ollama_annotation(
+    state: State<'_, AppState>,
+    image_path: String,
+    prompt: String,
+) -> AppResult<String> {
+    let settings = llm_loader_settings::load_settings(&state.dirs)?;
+    ollama::generate_annotation(&settings, &PathBuf::from(image_path), &prompt).await
 }
 
 #[tauri::command]
-pub async fn generate_ollama_text(prompt: String) -> AppResult<String> {
-    ollama::generate_text(&prompt).await
+pub async fn generate_ollama_text(state: State<'_, AppState>, prompt: String) -> AppResult<String> {
+    let settings = llm_loader_settings::load_settings(&state.dirs)?;
+    ollama::generate_text(&settings, &prompt).await
 }
 
 #[tauri::command]

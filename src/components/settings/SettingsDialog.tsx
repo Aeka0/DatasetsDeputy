@@ -9,6 +9,7 @@ import {
   Languages,
   MonitorCog,
   Network,
+  Server,
   Settings2,
   Trash2,
   Waypoints,
@@ -56,6 +57,7 @@ type NetworkSectionKey =
   | "openai"
   | "anthropic"
   | "grok"
+  | "llmLoader"
   | "proxy"
   | "imageTransfer";
 type LocalFilesSectionKey = "environment" | "models" | "tempFiles";
@@ -129,6 +131,16 @@ interface RemoteLlmSettings {
 interface ProxySettings {
   useProxy: boolean;
   proxyPort: string;
+}
+
+interface LlmLoaderEndpointSettings {
+  baseUrl: string;
+}
+
+interface LlmLoaderSettings {
+  lmStudio: LlmLoaderEndpointSettings;
+  textgen: LlmLoaderEndpointSettings;
+  ollama: LlmLoaderEndpointSettings;
 }
 
 type PythonEnvMode = "externalVenv" | "managedVenv";
@@ -253,6 +265,18 @@ const defaultGrokSettings: RemoteLlmSettings = {
 const defaultProxySettings: ProxySettings = {
   useProxy: false,
   proxyPort: "7890"
+};
+
+const defaultLlmLoaderSettings: LlmLoaderSettings = {
+  lmStudio: { baseUrl: "" },
+  textgen: { baseUrl: "" },
+  ollama: { baseUrl: "" }
+};
+
+const llmLoaderDefaults = {
+  lmStudio: { label: "LM Studio", port: "1234" },
+  textgen: { label: "Textgen", port: "5005" },
+  ollama: { label: "Ollama", port: "11434" }
 };
 
 const defaultPythonEnvSettings: PythonEnvSettings = {
@@ -465,6 +489,10 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
     useState<ProxySettings>(defaultProxySettings);
   const [proxyMessage, setProxyMessage] = useState("");
   const [hasLoadedProxySettings, setHasLoadedProxySettings] = useState(false);
+  const [llmLoaderSettings, setLlmLoaderSettings] =
+    useState<LlmLoaderSettings>(defaultLlmLoaderSettings);
+  const [llmLoaderMessage, setLlmLoaderMessage] = useState("");
+  const [hasLoadedLlmLoaderSettings, setHasLoadedLlmLoaderSettings] = useState(false);
   const [openAiSettings, setOpenAiSettings] =
     useState<RemoteLlmSettings>(defaultOpenAiSettings);
   const [openAiMessage, setOpenAiMessage] = useState("");
@@ -543,6 +571,11 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
       icon: { kind: "svg", src: providerIcons.grok, alt: "Grok" }
     },
     {
+      key: "llmLoader",
+      label: t("settings.networkLlmLoader"),
+      icon: { kind: "lucide", icon: Server }
+    },
+    {
       key: "proxy",
       label: t("settings.networkProxyShort"),
       icon: { kind: "lucide", icon: Network }
@@ -611,6 +644,16 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
         setHasLoadedProxySettings(true);
       })
       .catch((error) => setProxyMessage(formatAppError(error)));
+  }, []);
+  useEffect(() => {
+    if (!hasTauriRuntime()) return;
+
+    void invokeCommand<LlmLoaderSettings>("get_llm_loader_settings")
+      .then((settings) => {
+        setLlmLoaderSettings(settings);
+        setHasLoadedLlmLoaderSettings(true);
+      })
+      .catch((error) => setLlmLoaderMessage(formatAppError(error)));
   }, []);
   useEffect(() => {
     if (!hasTauriRuntime()) return;
@@ -700,6 +743,26 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
 
     return () => window.clearTimeout(saveTimer);
   }, [proxySettings, hasLoadedProxySettings]);
+  useEffect(() => {
+    if (!hasTauriRuntime() || !hasLoadedLlmLoaderSettings) return;
+
+    const saveTimer = window.setTimeout(() => {
+      void invokeCommand<LlmLoaderSettings>("save_llm_loader_settings", {
+        settings: llmLoaderSettings
+      })
+        .then((savedSettings) => {
+          if (JSON.stringify(savedSettings) !== JSON.stringify(llmLoaderSettings)) {
+            setLlmLoaderSettings(savedSettings);
+          }
+        })
+        .catch((error) => {
+          const message = formatAppError(error);
+          setLlmLoaderMessage(t("settings.llmLoaderActionFailed", { message }));
+        });
+    }, 500);
+
+    return () => window.clearTimeout(saveTimer);
+  }, [llmLoaderSettings, hasLoadedLlmLoaderSettings]);
   useEffect(() => {
     if (!hasTauriRuntime() || !hasLoadedOpenAiSettings) return;
 
@@ -835,6 +898,20 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
     setProxyMessage("");
   };
 
+  const patchLlmLoaderEndpoint = (
+    key: keyof LlmLoaderSettings,
+    patch: Partial<LlmLoaderEndpointSettings>
+  ) => {
+    setLlmLoaderSettings((current) => ({
+      ...current,
+      [key]: {
+        ...current[key],
+        ...patch
+      }
+    }));
+    setLlmLoaderMessage("");
+  };
+
   const patchOpenAiSettings = (patch: Partial<RemoteLlmSettings>) => {
     setOpenAiSettings((current) => ({ ...current, ...patch }));
   };
@@ -961,6 +1038,64 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
     } finally {
       setBusy(false);
     }
+  };
+
+  const renderLlmLoaderSettings = () => {
+    const entries: Array<keyof LlmLoaderSettings> = ["lmStudio", "textgen", "ollama"];
+
+    return (
+      <div className="rounded-lg border border-neutral-200 bg-white">
+        <div className="border-b border-neutral-100 px-4 py-3">
+          <div className="text-[13px] font-semibold text-neutral-900">
+            {t("settings.llmLoaderTitle")}
+          </div>
+          <div className="mt-0.5 text-[12px] text-neutral-500">
+            {t("settings.llmLoaderDescription")}
+          </div>
+        </div>
+
+        <div>
+          {entries.map((key) => {
+            const defaults = llmLoaderDefaults[key];
+            const settings = llmLoaderSettings[key];
+            return (
+              <div
+                key={key}
+                className="grid gap-3 border-b border-neutral-100 px-4 py-3 last:border-b-0 md:grid-cols-[130px_minmax(0,1fr)]"
+              >
+                <div className="min-w-0 self-center">
+                  <div className="text-[13px] font-medium text-neutral-900">
+                    {defaults.label}
+                  </div>
+                  <div className="mt-0.5 text-[11px] text-neutral-500">
+                    {t("settings.llmLoaderDefaultPort", { port: defaults.port })}
+                  </div>
+                </div>
+                <label className="block min-w-0">
+                  <span className="mb-1 block text-[12px] font-medium text-neutral-600">
+                    {t("settings.llmLoaderBaseUrl")}
+                  </span>
+                  <input
+                    className="glass-input h-8 w-full px-2.5 text-[13px]"
+                    value={settings.baseUrl}
+                    placeholder={`http://127.0.0.1:${defaults.port}`}
+                    onChange={(event) =>
+                      patchLlmLoaderEndpoint(key, { baseUrl: event.target.value })
+                    }
+                  />
+                </label>
+              </div>
+            );
+          })}
+        </div>
+
+        {llmLoaderMessage ? (
+          <div className="border-t border-neutral-100 px-4 py-3 text-[12px] text-neutral-500">
+            {llmLoaderMessage}
+          </div>
+        ) : null}
+      </div>
+    );
   };
 
   const renderRemoteLlmSettings = (
@@ -2145,6 +2280,8 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
                       isGrokBusy
                     )
                   : null}
+
+                {activeNetworkSection === "llmLoader" ? renderLlmLoaderSettings() : null}
 
                 {activeNetworkSection === "proxy" ? (
                   <div className="rounded-lg border border-neutral-200 bg-white">

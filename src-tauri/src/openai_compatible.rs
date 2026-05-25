@@ -5,13 +5,6 @@ use serde::{Deserialize, Serialize};
 
 use crate::errors::{AppError, AppResult};
 
-#[derive(Clone, Copy)]
-pub struct OpenAiCompatibleBackend {
-    pub label: &'static str,
-    pub base_url: &'static str,
-    pub disable_thinking: bool,
-}
-
 #[derive(Clone, Debug)]
 pub struct OpenAiCompatibleSettings {
     pub label: String,
@@ -96,20 +89,6 @@ enum ChatResponseContent {
 #[derive(Debug, Deserialize)]
 struct ChatResponsePart {
     text: Option<String>,
-}
-
-impl From<OpenAiCompatibleBackend> for OpenAiCompatibleSettings {
-    fn from(backend: OpenAiCompatibleBackend) -> Self {
-        Self {
-            label: backend.label.to_owned(),
-            base_url: backend.base_url.to_owned(),
-            api_key: String::new(),
-            model: String::new(),
-            use_proxy: false,
-            proxy_port: String::new(),
-            disable_thinking: backend.disable_thinking,
-        }
-    }
 }
 
 fn normalize_base_url(base_url: &str) -> String {
@@ -288,10 +267,6 @@ async fn generate_chat(
     Ok(text)
 }
 
-pub async fn generate_text(backend: OpenAiCompatibleBackend, prompt: &str) -> AppResult<String> {
-    generate_text_with_settings(&OpenAiCompatibleSettings::from(backend), prompt).await
-}
-
 pub async fn generate_text_with_settings(
     settings: &OpenAiCompatibleSettings,
     prompt: &str,
@@ -311,15 +286,6 @@ pub async fn generate_text_with_settings(
         }],
     )
     .await
-}
-
-pub async fn generate_annotation(
-    backend: OpenAiCompatibleBackend,
-    image_path: &Path,
-    prompt: &str,
-) -> AppResult<String> {
-    generate_annotation_with_settings(&OpenAiCompatibleSettings::from(backend), image_path, prompt)
-        .await
 }
 
 pub async fn generate_annotation_with_settings(
