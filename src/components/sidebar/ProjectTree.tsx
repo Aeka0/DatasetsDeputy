@@ -25,7 +25,7 @@ import { AnimatedPortal } from "../ui/AnimatedPortal";
 
 const sidebarLabelClass = "text-[12px] leading-4";
 const rootOrderStorageKey = "datasets-deputy.project-tree-root-order";
-const rootDragHoldDelayMs = 80;
+const rootDragHoldDelayMs = 50;
 const rootDragCancelDistance = 6;
 
 type RootProjectOrder = Record<DatasetSourceKind, string[]>;
@@ -47,6 +47,7 @@ interface RootDragCandidate {
   grabOffsetY: number;
   element: HTMLDivElement;
   timerId: number;
+  armed: boolean;
   active: boolean;
   ready: boolean;
   currentY: number;
@@ -656,26 +657,54 @@ export function ProjectTree() {
     };
   }, [finishRootDrag, isRootDragSessionActive, updateRootDragPosition]);
 
+  const activateRootDrag = useCallback((candidate: RootDragCandidate) => {
+    if (rootDragCandidateRef.current !== candidate || candidate.active) return;
+
+    candidate.active = true;
+    candidate.element.setPointerCapture(candidate.pointerId);
+    setContextMenu(undefined);
+    setExpandedIds((current) => {
+      candidate.expandedIdsSnapshot = new Set(current);
+      const next = new Set(current);
+      for (const roots of Object.values(rootProjectListsRef.current)) {
+        for (const root of roots) {
+          next.delete(root.id);
+        }
+      }
+      return next;
+    });
+    setIsRootDragSessionActive(true);
+  }, []);
+
   const moveRootDrag = useCallback(
     (event: globalThis.PointerEvent) => {
       const candidate = rootDragCandidateRef.current;
       if (!candidate || candidate.pointerId !== event.pointerId) return;
 
       if (!candidate.active) {
-        if (
-          Math.hypot(event.clientX - candidate.startX, event.clientY - candidate.startY) >
-          rootDragCancelDistance
-        ) {
+        const deltaX = event.clientX - candidate.startX;
+        const deltaY = event.clientY - candidate.startY;
+        const distance = Math.hypot(deltaX, deltaY);
+        if (!candidate.armed && distance > rootDragCancelDistance) {
           finishRootDrag(false);
+          return;
         }
-        return;
+        if (
+          !candidate.armed ||
+          Math.abs(deltaY) <= rootDragCancelDistance ||
+          Math.abs(deltaY) < Math.abs(deltaX)
+        ) {
+          return;
+        }
+
+        activateRootDrag(candidate);
       }
 
       event.preventDefault();
       candidate.currentY = event.clientY;
       updateRootDragPosition(candidate, candidate.currentY);
     },
-    [finishRootDrag, updateRootDragPosition]
+    [activateRootDrag, finishRootDrag, updateRootDragPosition]
   );
 
   useEffect(() => {
@@ -735,6 +764,7 @@ export function ProjectTree() {
       grabOffsetY: event.clientY - initialRect.top,
       element,
       timerId: 0,
+      armed: false,
       active: false,
       ready: false,
       currentY: event.clientY,
@@ -747,20 +777,7 @@ export function ProjectTree() {
     candidate.timerId = window.setTimeout(() => {
       if (rootDragCandidateRef.current !== candidate) return;
 
-      candidate.active = true;
-      candidate.element.setPointerCapture(candidate.pointerId);
-      setContextMenu(undefined);
-      setExpandedIds((current) => {
-        candidate.expandedIdsSnapshot = new Set(current);
-        const next = new Set(current);
-        for (const roots of Object.values(rootProjectListsRef.current)) {
-          for (const root of roots) {
-            next.delete(root.id);
-          }
-        }
-        return next;
-      });
-      setIsRootDragSessionActive(true);
+      candidate.armed = true;
     }, rootDragHoldDelayMs);
     rootDragCandidateRef.current = candidate;
   };
