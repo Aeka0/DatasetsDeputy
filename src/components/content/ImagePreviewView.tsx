@@ -349,13 +349,13 @@ export function ImagePreviewView() {
     <div className="flex h-full min-h-0 flex-col">
       <div className="mb-3 flex h-10 items-center gap-3 border-b border-neutral-100 pb-3">
         <button
-          className="no-drag inline-flex h-8 items-center gap-2 rounded-md border border-neutral-200 bg-white px-3 text-[13px] text-neutral-700 transition hover:bg-neutral-50"
+          className="no-drag inline-flex h-8 w-[76px] shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-md border border-neutral-200 bg-white text-[13px] text-neutral-700 transition hover:bg-neutral-50"
           onClick={closeImagePreview}
         >
-          <ArrowLeft size={16} />
+          <ArrowLeft size={16} className="shrink-0" />
           {t("actions.back")}
         </button>
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <h2 className="m-0 flex min-w-0 items-center gap-2 text-[14px] font-semibold text-neutral-900">
             <span className="min-w-0 truncate">{selectedImage.fileName}</span>
             <span className="shrink-0 rounded-full bg-neutral-100 px-2 py-0.5 text-[11px] font-normal text-neutral-500">
