@@ -1515,7 +1515,7 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
                   >
                     <button
                       type="button"
-                      className="no-drag flex h-full w-6 shrink-0 items-center justify-center rounded text-neutral-500 transition hover:bg-neutral-900/5 hover:text-neutral-900"
+                      className="no-drag flex h-full w-6 shrink-0 items-center justify-center text-neutral-500 transition hover:text-neutral-900"
                       aria-expanded={hasChildren ? isExpanded : undefined}
                       aria-hidden={!hasChildren}
                       tabIndex={hasChildren ? 0 : -1}
