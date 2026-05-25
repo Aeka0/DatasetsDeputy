@@ -1,6 +1,4 @@
 import {
-  ChevronDown,
-  ChevronRight,
   Database,
   DatabaseZap,
   Folder,
@@ -22,6 +20,7 @@ import { formatDialogMenuLabel } from "../../lib/menuLabels";
 import { useDatasetStore } from "../../stores/datasetStore";
 import type { DatasetProject, DatasetSourceKind } from "../../types";
 import { AnimatedPortal } from "../ui/AnimatedPortal";
+import { HierarchyDisclosureButton } from "../ui/HierarchyDisclosureButton";
 
 const sidebarLabelClass = "text-[12px] leading-4";
 const rootOrderStorageKey = "datasets-deputy.project-tree-root-order";
@@ -301,29 +300,17 @@ function ProjectNode({
         }}
       >
         {hasChildren ? (
-          <button
-            type="button"
+          <HierarchyDisclosureButton
             data-project-tree-disclosure="true"
-            className="no-drag group flex w-[22px] shrink-0 items-center justify-center rounded border-0 bg-transparent p-0 text-inherit outline-none focus-visible:ring-2 focus-visible:ring-black/20"
-            aria-expanded={isExpanded}
+            className="w-[22px]"
+            expanded={isExpanded}
+            iconSize={15}
             aria-label={isExpanded ? t("aria.collapseSubfolders") : t("aria.expandSubfolders")}
             onClick={(event) => {
               event.stopPropagation();
               toggleExpanded(project);
             }}
-          >
-            {isExpanded ? (
-              <ChevronDown
-                size={15}
-                className="shrink-0 text-black/50 transition-[color,opacity] duration-150 ease-out group-hover:text-black"
-              />
-            ) : (
-              <ChevronRight
-                size={15}
-                className="shrink-0 text-black/50 transition-[color,opacity] duration-150 ease-out group-hover:text-black"
-              />
-            )}
-          </button>
+          />
         ) : (
           <span className="w-[22px] shrink-0" aria-hidden />
         )}

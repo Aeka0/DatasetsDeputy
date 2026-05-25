@@ -603,6 +603,18 @@ html[data-window-render-mode="acrylic"] .fluent-titlebar {
   color: #1c1c1c;
 }
 
+.hierarchy-disclosure-button {
+  color: var(--app-text-muted);
+}
+
+.hierarchy-disclosure-icon {
+  transition: color var(--app-motion-duration-fast) var(--app-motion-ease);
+}
+
+.hierarchy-disclosure-button:hover .hierarchy-disclosure-icon {
+  color: var(--app-text);
+}
+
 .fluent-control-button {
   transition:
     background-color 120ms ease,
@@ -1070,10 +1082,6 @@ html[data-theme="dark"] .sidebar-nav-button:hover {
 html[data-theme="dark"] .sidebar-nav-button-active {
   background: rgba(255, 255, 255, 0.085);
   color: rgba(245, 245, 245, 0.96);
-}
-
-html[data-theme="dark"] .fluent-sidebar [aria-expanded] svg {
-  color: rgba(232, 232, 232, 0.72);
 }
 
 html[data-theme="dark"] .project-tree-import-button {

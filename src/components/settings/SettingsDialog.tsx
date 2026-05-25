@@ -1,7 +1,6 @@
 import {
   Check,
   ChevronDown,
-  ChevronRight,
   Boxes,
   Globe2,
   HardDrive,
@@ -44,6 +43,7 @@ import { useDatasetStore } from "../../stores/datasetStore";
 import { AnimatedPortal, useAnimatedPortalClose } from "../ui/AnimatedPortal";
 import { AppSelect } from "../ui/AppSelect";
 import { Button } from "../ui/Button";
+import { HierarchyDisclosureButton } from "../ui/HierarchyDisclosureButton";
 import { Switch } from "../ui/Switch";
 
 type SettingsSectionKey =
@@ -1513,25 +1513,18 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
                       isActive && "sidebar-nav-button-active"
                     )}
                   >
-                    <button
-                      type="button"
-                      className="no-drag flex h-full w-6 shrink-0 items-center justify-center text-neutral-500 transition hover:text-neutral-900"
-                      aria-expanded={hasChildren ? isExpanded : undefined}
-                      aria-hidden={!hasChildren}
-                      tabIndex={hasChildren ? 0 : -1}
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        if (hasChildren) toggleSettingsSection(section.key);
-                      }}
-                    >
-                      {hasChildren ? (
-                        isExpanded ? (
-                          <ChevronDown size={14} />
-                        ) : (
-                          <ChevronRight size={14} />
-                        )
-                      ) : null}
-                    </button>
+                    {hasChildren ? (
+                      <HierarchyDisclosureButton
+                        expanded={isExpanded}
+                        aria-label={isExpanded ? t("tree.collapse") : t("tree.expand")}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          toggleSettingsSection(section.key);
+                        }}
+                      />
+                    ) : (
+                      <span className="w-6 shrink-0" aria-hidden />
+                    )}
                     <button
                       type="button"
                       className="no-drag flex h-full min-w-0 flex-1 items-center gap-2 rounded border-0 bg-transparent px-1.5 text-left text-inherit outline-none focus-visible:ring-2 focus-visible:ring-black/20"
