@@ -5,7 +5,7 @@ import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import { useShallow } from "zustand/react/shallow";
 
-import { getAnnotationForProfile } from "../../lib/annotations";
+import { getAnnotationForProfile, joinAnnotationSegments } from "../../lib/annotations";
 import {
   generateAnnotationPrompt,
   type AnnotationPromptSettings
@@ -27,6 +27,7 @@ import { cn } from "../../lib/cn";
 import { formatAppError } from "../../lib/errors";
 import { formatDialogMenuLabel } from "../../lib/menuLabels";
 import { findProject, formatProjectPath, getProjectDisplayName } from "../../lib/projects";
+import { getUnsavedTableDraftState } from "../../lib/tableDrafts";
 import { hasTauriRuntime, invokeCommand } from "../../lib/tauri";
 import { useDatasetStore, type ViewFilterMode } from "../../stores/datasetStore";
 import type { AnnotationChange, DatasetImage, DatasetProject } from "../../types";
@@ -108,6 +109,7 @@ interface BatchAddOptions {
   position: BatchAddPosition;
   scope: BatchEditScope;
   target: BatchEditTarget;
+  smartSeparator: boolean;
 }
 
 interface BatchReplaceOptions {
@@ -327,6 +329,7 @@ function BatchAddDialog({
   const [position, setPosition] = useState<BatchAddPosition>("prefix");
   const [scope, setScope] = useState<BatchEditScope>(hasSelection ? "selected" : "all");
   const [target, setTarget] = useState<BatchEditTarget>("annotation");
+  const [smartSeparator, setSmartSeparator] = useState(false);
 
   return (
     <AnimatedPortal open>
@@ -336,7 +339,7 @@ function BatchAddDialog({
           onSubmit={(event) => {
             event.preventDefault();
             if (!text) return;
-            onConfirm({ text, position, scope, target });
+            onConfirm({ text, position, scope, target, smartSeparator });
           }}
         >
           <DialogTitleWithDataset
@@ -382,6 +385,18 @@ function BatchAddDialog({
             ]}
             onChange={(value) => setScope(value as BatchEditScope)}
           />
+          <fieldset className="mt-4 rounded-lg border border-neutral-200 px-3 py-2.5">
+            <legend className="px-1 text-[12px] font-medium text-neutral-500">
+              {t("batchEdit.options")}
+            </legend>
+            <Switch
+              className="batch-edit-switch min-h-8"
+              checked={smartSeparator}
+              label={t("batchEdit.smartSeparator")}
+              description={t("batchEdit.smartSeparatorDescription")}
+              onCheckedChange={setSmartSeparator}
+            />
+          </fieldset>
           <div className="mt-5 flex justify-end gap-2">
             <button
               type="button"
@@ -614,6 +629,8 @@ export function TitleMenuBar({
     tableDraftProfileId,
     tableAnnotationDrafts,
     tableInstructionDrafts,
+    tableProfileAnnotationDrafts,
+    tableProfileInstructionDrafts,
     isLoading,
     autoSaveAfterAnnotation,
     autoSaveAfterBatch,
@@ -645,6 +662,8 @@ export function TitleMenuBar({
       tableDraftProfileId: state.tableDraftProfileId,
       tableAnnotationDrafts: state.tableAnnotationDrafts,
       tableInstructionDrafts: state.tableInstructionDrafts,
+      tableProfileAnnotationDrafts: state.tableProfileAnnotationDrafts,
+      tableProfileInstructionDrafts: state.tableProfileInstructionDrafts,
       isLoading: state.isLoading,
       autoSaveAfterAnnotation: state.autoSaveAfterAnnotation,
       autoSaveAfterBatch: state.autoSaveAfterBatch,
@@ -671,6 +690,7 @@ export function TitleMenuBar({
   const [dialog, setDialog] = useState<DialogKey | undefined>("about");
   const [isAnnotationRunning, setIsAnnotationRunning] = useState(false);
   const [isBatchActionRunning, setIsBatchActionRunning] = useState(false);
+  const [isSavingChanges, setIsSavingChanges] = useState(false);
   const [menuPosition, setMenuPosition] = useState<MenuPosition>();
   const containerRef = useRef<HTMLDivElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -697,6 +717,21 @@ export function TitleMenuBar({
     selectedProfileId !== undefined &&
     selectedProjectImageIds.size > 0 &&
     isProfileInProject(selectedProject, selectedProfileId, profiles);
+  const getUnsavedChangesForImages = (targetImages: DatasetImage[]) =>
+    getUnsavedTableDraftState({
+      images: targetImages,
+      tableDraftProfileId,
+      tableAnnotationDrafts,
+      tableInstructionDrafts,
+      tableProfileAnnotationDrafts,
+      tableProfileInstructionDrafts
+    }).changes;
+  const allUnsavedChanges = getUnsavedChangesForImages(images);
+  const selectedDatasetUnsavedChanges = selectedProject
+    ? getUnsavedChangesForImages(
+        images.filter((image) => selectedProjectImageIds.has(image.id))
+      )
+    : [];
 
   useEffect(() => {
     const close = (event: MouseEvent) => {
@@ -845,16 +880,26 @@ export function TitleMenuBar({
 
         if (options.target === "annotation" || options.target === "both") {
           const current = getCurrentAnnotationDraft(image, selectedProfileId);
-          const next =
-            options.position === "prefix" ? `${options.text}${current}` : `${current}${options.text}`;
+          const next = options.smartSeparator
+            ? options.position === "prefix"
+              ? joinAnnotationSegments(options.text, current)
+              : joinAnnotationSegments(current, options.text)
+            : options.position === "prefix"
+              ? `${options.text}${current}`
+              : `${current}${options.text}`;
           if (next !== current) {
             draft.content = next;
           }
         }
         if (options.target === "instruction" || options.target === "both") {
           const current = getCurrentInstructionDraft(image, selectedProfileId);
-          const next =
-            options.position === "prefix" ? `${options.text}${current}` : `${current}${options.text}`;
+          const next = options.smartSeparator
+            ? options.position === "prefix"
+              ? joinAnnotationSegments(options.text, current)
+              : joinAnnotationSegments(current, options.text)
+            : options.position === "prefix"
+              ? `${options.text}${current}`
+              : `${current}${options.text}`;
           if (next !== current) {
             draft.instruction = next;
           }
@@ -875,6 +920,23 @@ export function TitleMenuBar({
       }
     } finally {
       finishBatchAction(runId);
+    }
+  };
+
+  const saveDraftChanges = async (
+    changes: AnnotationChange[],
+    completedMessageKey: "allChangesSaved" | "datasetChangesSaved"
+  ) => {
+    if (changes.length === 0 || isSavingChanges) return;
+
+    setIsSavingChanges(true);
+    try {
+      await saveAnnotationChanges(changes);
+      addAppLog(t(`appLog.${completedMessageKey}`, { count: changes.length }));
+    } catch (error) {
+      addAppLog(t("appLog.menuActionFailed", { message: formatAppError(error) }), "error");
+    } finally {
+      setIsSavingChanges(false);
     }
   };
 
@@ -1181,6 +1243,17 @@ export function TitleMenuBar({
 
   const menus: Record<MenuKey, MenuEntry[]> = {
     file: [
+      {
+        label: t("menu.saveAllCurrentChanges"),
+        disabled: allUnsavedChanges.length === 0 || isSavingChanges,
+        onSelect: () => saveDraftChanges(allUnsavedChanges, "allChangesSaved")
+      },
+      {
+        label: t("menu.saveCurrentDatasetChanges"),
+        disabled: selectedDatasetUnsavedChanges.length === 0 || isSavingChanges,
+        onSelect: () => saveDraftChanges(selectedDatasetUnsavedChanges, "datasetChangesSaved")
+      },
+      { type: "separator" },
       {
         label: t("menu.importDataset"),
         disabled: isLoading,

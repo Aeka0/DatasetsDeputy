@@ -38,6 +38,8 @@
     "wd14Settings": "WD14 annotation parameters",
     "executeAnnotation": "Run annotation",
     "stopAnnotation": "Stop annotation",
+    "saveAllCurrentChanges": "Save all current changes",
+    "saveCurrentDatasetChanges": "Save current dataset changes",
     "importDataset": "Import dataset",
     "exportTxt": "Export dataset",
     "importDatabase": "Import database",
@@ -95,7 +97,9 @@
     "selectedRows": "Selected rows",
     "caseSensitive": "Case sensitive",
     "wholeWord": "Whole word",
-    "spaceUnderscore": "Space/underscore interchange"
+    "spaceUnderscore": "Space/underscore interchange",
+    "smartSeparator": "Smart separator",
+    "smartSeparatorDescription": "Complete a comma and space at the join only when needed"
   },
   "annotationFormatConversion": {
     "title": "Annotation format conversion",
@@ -604,6 +608,8 @@
     "databaseImportFailed": "Database import failed: {{message}}",
     "folderAnnotationSaveFailed": "Could not save folder annotation ({{fileName}}): {{message}}",
     "folderAnnotationSaveFailures": "{{count}} folder annotation save(s) failed. Check the logs.",
+    "allChangesSaved": "Saved all current changes: {{count}} item(s).",
+    "datasetChangesSaved": "Saved current dataset changes: {{count}} item(s).",
     "annotationStopped": "Annotation task stopped by user.",
     "batchActionStopped": "Current batch action stopped. Later returned results will be discarded.",
     "savedMarksCleared": "Saved markers cleared.",

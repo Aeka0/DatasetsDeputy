@@ -2,6 +2,7 @@ import type {
   AnnotationFormatConverter,
   QualityWordPlacement
 } from "../types";
+import { joinAnnotationSegments } from "../../annotations";
 import { animaQualityWords } from "./animaQualityWords";
 
 function normalizeBooruTag(value: string) {
@@ -32,13 +33,7 @@ export function convertBooruTagToAnima(
   }
 
   if (qualityWordPlacement === "suffix") {
-    if (!withStylePrefixes) {
-      return animaQualityWords;
-    }
-
-    const separator =
-      withStylePrefixes.endsWith(", ") || withStylePrefixes.endsWith(". ") ? "" : ". ";
-    return `${withStylePrefixes}${separator}${animaQualityWords}`;
+    return joinAnnotationSegments(withStylePrefixes, animaQualityWords, ". ");
   }
 
   return withStylePrefixes;
