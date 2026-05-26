@@ -8,6 +8,7 @@ mod files;
 mod folders;
 mod gemini;
 mod grok;
+mod history;
 mod llm_loader_settings;
 mod lm_studio;
 mod model_settings;
@@ -25,6 +26,8 @@ mod wd14_tagger;
 mod window_region;
 mod window_rendering;
 
+use std::sync::Mutex;
+
 use tauri::{Manager, WebviewWindowBuilder, WindowEvent};
 #[cfg(target_os = "windows")]
 use tauri::{PhysicalSize, Size};
@@ -37,6 +40,13 @@ const MAIN_PAGE_READY_DELAY_MILLISECONDS: u64 = 250;
 
 pub struct AppState {
     pub dirs: app_dirs::AppDirs,
+    pub history: Mutex<history::HistoryManager>,
+}
+
+impl Drop for AppState {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(self.dirs.temp.join("undo-history"));
+    }
 }
 
 pub fn run() {
@@ -75,7 +85,10 @@ pub fn run() {
             app_dirs::init_logging(&dirs)?;
             tracing::info!("应用目录初始化完成。");
 
-            app.manage(AppState { dirs: dirs.clone() });
+            app.manage(AppState {
+                dirs: dirs.clone(),
+                history: Mutex::new(history::HistoryManager::default()),
+            });
 
             #[cfg(target_os = "windows")]
             {
@@ -207,6 +220,7 @@ pub fn run() {
             commands::prepare_import_folder,
             commands::start_import_folder,
             commands::mount_folder_dataset,
+            commands::add_folder_dataset_path,
             commands::prepare_folder_image_import,
             commands::import_images_to_folder,
             commands::get_thumbnail_cache_info,
@@ -224,23 +238,34 @@ pub fn run() {
             commands::rename_annotation_profile,
             commands::duplicate_annotation_profile,
             commands::delete_annotation_profile,
+            commands::restore_annotation_profile,
             commands::clear_annotation,
             commands::remove_training_set,
             commands::remove_dataset_folder,
             commands::remove_folder_dataset,
             commands::rename_dataset_folder,
             commands::create_dataset_subfolder,
+            commands::remove_empty_dataset_subfolder,
             commands::consolidate_loose_files,
+            commands::restore_consolidated_loose_files,
             commands::delete_loose_files,
             commands::delete_workspace_subfolder,
             commands::start_export_database,
             commands::import_database,
+            commands::stage_imported_database,
+            commands::restore_imported_database,
             commands::prepare_export_dataset,
             commands::start_export_dataset,
             commands::scan_training_cache,
             commands::remove_training_cache,
             commands::start_format_mismatch_scan,
-            commands::fix_format_mismatches
+            commands::fix_format_mismatches,
+            commands::get_history_state,
+            commands::initialize_history_session,
+            commands::record_history_operation,
+            commands::take_history_undo,
+            commands::take_history_redo,
+            commands::invalidate_history_resources
         ])
         .run(tauri::generate_context!())
         .expect("failed to run Datasets Deputy");

@@ -28,6 +28,8 @@
     "select": "选择"
   },
   "menu": {
+    "undo": "撤销",
+    "redo": "重做",
     "file": "文件",
     "edit": "编辑",
     "annotation": "标注",

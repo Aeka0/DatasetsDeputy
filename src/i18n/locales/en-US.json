@@ -28,6 +28,8 @@
     "select": "Select"
   },
   "menu": {
+    "undo": "Undo",
+    "redo": "Redo",
     "file": "File",
     "edit": "Edit",
     "annotation": "Annotation",

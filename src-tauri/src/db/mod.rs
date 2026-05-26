@@ -673,6 +673,55 @@ impl Database {
         Ok(images.len())
     }
 
+    pub fn restore_images_from_child_folder(
+        &mut self,
+        image_ids: &[i64],
+        folder_path: &str,
+        child_folder_name: &str,
+    ) -> AppResult<usize> {
+        let folder_path = normalize_dataset_path(folder_path);
+        let child_folder_path = normalize_dataset_path(
+            &PathBuf::from(&folder_path)
+                .join(child_folder_name)
+                .to_string_lossy(),
+        );
+        let image_id_set = image_ids
+            .iter()
+            .copied()
+            .collect::<std::collections::HashSet<_>>();
+        let images = self
+            .list_images()?
+            .into_iter()
+            .filter(|image| image_id_set.contains(&image.id))
+            .map(|image| {
+                let current_path = normalize_dataset_path(
+                    image.dataset_path.as_deref().unwrap_or(&image.file_name),
+                );
+                let current_parent = Path::new(&current_path)
+                    .parent()
+                    .map(|path| normalize_dataset_path(&path.to_string_lossy()))
+                    .unwrap_or_default();
+                if current_parent != child_folder_path {
+                    return Err(crate::errors::AppError::InvalidInput(format!(
+                        "Image was changed after consolidation: {}",
+                        image.id
+                    )));
+                }
+                Ok((image.id, format!("{folder_path}/{}", image.file_name)))
+            })
+            .collect::<AppResult<Vec<_>>>()?;
+        let now = Utc::now().to_rfc3339();
+        let tx = self.conn.transaction()?;
+        for (image_id, path) in &images {
+            tx.execute(
+                "UPDATE images SET dataset_path = ?1, updated_at = ?2 WHERE id = ?3",
+                params![path, now, image_id],
+            )?;
+        }
+        tx.commit()?;
+        Ok(images.len())
+    }
+
     pub fn get_image_storage_path(&self, image_id: i64) -> AppResult<Option<String>> {
         Ok(self
             .conn
@@ -915,6 +964,31 @@ impl Database {
             "DELETE FROM annotation_profiles WHERE id = ?1",
             params![profile_id],
         )?;
+        Ok(())
+    }
+
+    pub fn restore_annotation_profile(
+        &mut self,
+        profile_id: i64,
+        name: String,
+        annotations: Vec<(i64, String, String)>,
+    ) -> AppResult<()> {
+        let tx = self.conn.transaction()?;
+        tx.execute(
+            "INSERT INTO annotation_profiles (id, name) VALUES (?1, ?2)",
+            params![profile_id, name],
+        )?;
+        let now = Utc::now().to_rfc3339();
+        {
+            let mut statement = tx.prepare(
+                "INSERT INTO annotations (image_id, profile_id, content, instruction, created_at, updated_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?5)",
+            )?;
+            for (image_id, content, instruction) in annotations {
+                statement.execute(params![image_id, profile_id, content, instruction, now])?;
+            }
+        }
+        tx.commit()?;
         Ok(())
     }
 

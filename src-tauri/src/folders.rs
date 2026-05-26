@@ -251,7 +251,7 @@ fn write_sidecar(path: PathBuf, content: &str) -> AppResult<()> {
     Ok(())
 }
 
-pub fn add_folder_dataset(dirs: &AppDirs, folder: &Path) -> AppResult<()> {
+pub fn add_folder_dataset(dirs: &AppDirs, folder: &Path) -> AppResult<bool> {
     if !folder.is_dir() {
         return Err(AppError::InvalidInput(format!(
             "Folder does not exist: {}",
@@ -271,9 +271,10 @@ pub fn add_folder_dataset(dirs: &AppDirs, folder: &Path) -> AppResult<()> {
             .folders
             .sort_by_key(|path| path.to_ascii_lowercase());
         write_registry(dirs, &registry)?;
+        return Ok(true);
     }
 
-    Ok(())
+    Ok(false)
 }
 
 pub fn remove_folder_dataset(dirs: &AppDirs, folder_path: &str) -> AppResult<usize> {
@@ -558,6 +559,20 @@ fn validate_child_folder_name(name: &str) -> AppResult<&str> {
     Ok(name)
 }
 
+fn execute_file_moves(moves: &[(PathBuf, PathBuf)]) -> AppResult<()> {
+    let mut completed: Vec<(&PathBuf, &PathBuf)> = Vec::new();
+    for (source, target) in moves {
+        if let Err(error) = fs::rename(source, target) {
+            for (completed_source, completed_target) in completed.into_iter().rev() {
+                let _ = fs::rename(completed_target, completed_source);
+            }
+            return Err(error.into());
+        }
+        completed.push((source, target));
+    }
+    Ok(())
+}
+
 pub fn consolidate_folder_loose_files(
     dirs: &AppDirs,
     folder_path: &str,
@@ -582,7 +597,8 @@ pub fn consolidate_folder_loose_files(
     }
 
     let normalized_parent = normalize_path(&parent);
-    let mut moves = Vec::new();
+    let mut file_moves = Vec::new();
+    let mut moved_images = 0;
     for image_path in image_paths {
         let source = PathBuf::from(image_path);
         if source.parent().map(normalize_path).unwrap_or_default() != normalized_parent {
@@ -594,6 +610,11 @@ pub fn consolidate_folder_loose_files(
         let Some(file_name) = source.file_name() else {
             continue;
         };
+        if !source.is_file() {
+            return Err(AppError::InvalidInput(format!(
+                "Loose image no longer exists: {image_path}"
+            )));
+        }
         let target = target_folder.join(file_name);
         let annotation_source = annotation_path(&source);
         let instruction_source = instruction_path(&source);
@@ -609,40 +630,73 @@ pub fn consolidate_folder_loose_files(
             }
         }
 
-        moves.push((
-            source,
-            target,
-            annotation_source,
-            annotation_target,
-            instruction_source,
-            instruction_target,
-        ));
+        file_moves.push((source, target));
+        moved_images += 1;
+        if annotation_source.is_file() {
+            file_moves.push((annotation_source, annotation_target));
+        }
+        if instruction_source.is_file() {
+            file_moves.push((instruction_source, instruction_target));
+        }
     }
 
     fs::create_dir_all(&target_folder)?;
-    let mut moved = 0;
-    for (
-        source,
-        target,
-        annotation_source,
-        annotation_target,
-        instruction_source,
-        instruction_target,
-    ) in moves
-    {
-        if source.is_file() {
-            fs::rename(&source, &target)?;
-            moved += 1;
+    if let Err(error) = execute_file_moves(&file_moves) {
+        if fs::read_dir(&target_folder).is_ok_and(|mut entries| entries.next().is_none()) {
+            let _ = fs::remove_dir(&target_folder);
         }
-        if annotation_source.is_file() {
-            fs::rename(annotation_source, annotation_target)?;
-        }
-        if instruction_source.is_file() {
-            fs::rename(instruction_source, instruction_target)?;
-        }
+        return Err(error);
     }
 
-    Ok(moved)
+    Ok(moved_images)
+}
+
+pub fn restore_consolidated_folder_loose_files(
+    dirs: &AppDirs,
+    folder_path: &str,
+    folder_name: &str,
+    image_paths: &[String],
+) -> AppResult<usize> {
+    let folder_name = validate_child_folder_name(folder_name)?;
+    let parent = PathBuf::from(folder_path);
+    require_path_within_registered_folder(dirs, &parent)?;
+    let target_folder = parent.join(folder_name);
+    let mut file_moves = Vec::new();
+    let mut restored_images = 0;
+    for original_path in image_paths {
+        let original = PathBuf::from(original_path);
+        let file_name = original.file_name().ok_or_else(|| {
+            AppError::InvalidInput(format!("Image path has no file name: {original_path}"))
+        })?;
+        let current = target_folder.join(file_name);
+        let annotation_current = annotation_path(&current);
+        let annotation_original = annotation_path(&original);
+        let instruction_current = instruction_path(&current);
+        let instruction_original = instruction_path(&original);
+        if !current.is_file()
+            || original.exists()
+            || annotation_original.exists()
+            || instruction_original.exists()
+        {
+            return Err(AppError::InvalidInput(format!(
+                "Consolidated image has been changed: {}",
+                current.to_string_lossy()
+            )));
+        }
+        file_moves.push((current, original));
+        restored_images += 1;
+        if annotation_current.is_file() {
+            file_moves.push((annotation_current, annotation_original));
+        }
+        if instruction_current.is_file() {
+            file_moves.push((instruction_current, instruction_original));
+        }
+    }
+    execute_file_moves(&file_moves)?;
+    if target_folder.is_dir() && fs::read_dir(&target_folder)?.next().is_none() {
+        fs::remove_dir(target_folder)?;
+    }
+    Ok(restored_images)
 }
 
 pub fn delete_folder_images(image_paths: &[String]) -> AppResult<usize> {

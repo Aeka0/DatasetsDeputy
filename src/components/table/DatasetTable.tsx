@@ -119,7 +119,8 @@ export function DatasetTable({
     updateTableInstructionDraft,
     markTableCellSaved,
     createAnnotationProfile,
-    saveAnnotationChanges
+    saveAnnotationChanges,
+    recordTableDraftBlur
   } = useDatasetStore(
     useShallow((state) => ({
       activeProfileId: state.activeProfileId,
@@ -148,7 +149,8 @@ export function DatasetTable({
       updateTableInstructionDraft: state.updateTableInstructionDraft,
       markTableCellSaved: state.markTableCellSaved,
       createAnnotationProfile: state.createAnnotationProfile,
-      saveAnnotationChanges: state.saveAnnotationChanges
+      saveAnnotationChanges: state.saveAnnotationChanges,
+      recordTableDraftBlur: state.recordTableDraftBlur
     }))
   );
   const parentRef = useRef<HTMLDivElement>(null);
@@ -156,6 +158,7 @@ export function DatasetTable({
   const profileButtonRef = useRef<HTMLButtonElement>(null);
   const profileMenuRef = useRef<HTMLDivElement>(null);
   const cellTextareaRefs = useRef(new Map<string, HTMLTextAreaElement>());
+  const cellFocusValuesRef = useRef(new Map<string, string>());
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const [profileMenuPosition, setProfileMenuPosition] = useState({ left: 0, top: 0 });
   const [isCreatingProfile, setIsCreatingProfile] = useState(false);
@@ -820,6 +823,19 @@ export function DatasetTable({
                     }}
                     value={selectedProfileId ? (annotationDrafts[image.id] ?? "") : ""}
                     onChange={(event) => updateTableAnnotationDraft(image.id, event.target.value)}
+                    onFocus={() => {
+                      cellFocusValuesRef.current.set(
+                        createCellKey(image.id, "annotation"),
+                        annotationDrafts[image.id] ?? ""
+                      );
+                    }}
+                    onBlur={() => {
+                      if (!selectedProfileId) return;
+                      const key = createCellKey(image.id, "annotation");
+                      void recordTableDraftBlur(selectedProfileId, image.id, {
+                        content: cellFocusValuesRef.current.get(key) ?? ""
+                      });
+                    }}
                     onKeyDown={(event) => moveFocusToAdjacentRow(image.id, "annotation", event)}
                     className={cn(
                       "rich-textarea-input glass-input h-[100px] w-full resize-none rounded-md p-2 text-[13px] leading-5 disabled:cursor-wait disabled:opacity-80",
@@ -850,6 +866,19 @@ export function DatasetTable({
                     }}
                     value={selectedProfileId ? (instructionDrafts[image.id] ?? "") : ""}
                     onChange={(event) => updateTableInstructionDraft(image.id, event.target.value)}
+                    onFocus={() => {
+                      cellFocusValuesRef.current.set(
+                        createCellKey(image.id, "instruction"),
+                        instructionDrafts[image.id] ?? ""
+                      );
+                    }}
+                    onBlur={() => {
+                      if (!selectedProfileId) return;
+                      const key = createCellKey(image.id, "instruction");
+                      void recordTableDraftBlur(selectedProfileId, image.id, {
+                        instruction: cellFocusValuesRef.current.get(key) ?? ""
+                      });
+                    }}
                     onKeyDown={(event) => moveFocusToAdjacentRow(image.id, "instruction", event)}
                     className={cn(
                       "rich-textarea-input glass-input h-[100px] w-full resize-none rounded-md p-2 text-[13px] leading-5",

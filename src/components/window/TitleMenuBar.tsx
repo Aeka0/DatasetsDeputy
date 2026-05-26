@@ -634,6 +634,9 @@ export function TitleMenuBar({
     isLoading,
     autoSaveAfterAnnotation,
     autoSaveAfterBatch,
+    historyState,
+    undo,
+    redo,
     setAppView,
     setWorkspaceTab,
     addAppLog,
@@ -646,6 +649,7 @@ export function TitleMenuBar({
     load,
     applyGeneratedAnnotationDraft,
     applyBatchTableDrafts,
+    recordDraftHistory,
     saveAnnotationChanges,
     markImageAnnotating,
     markTableCellFailed,
@@ -667,6 +671,9 @@ export function TitleMenuBar({
       isLoading: state.isLoading,
       autoSaveAfterAnnotation: state.autoSaveAfterAnnotation,
       autoSaveAfterBatch: state.autoSaveAfterBatch,
+      historyState: state.historyState,
+      undo: state.undo,
+      redo: state.redo,
       setAppView: state.setAppView,
       setWorkspaceTab: state.setWorkspaceTab,
       addAppLog: state.addAppLog,
@@ -679,6 +686,7 @@ export function TitleMenuBar({
       load: state.load,
       applyGeneratedAnnotationDraft: state.applyGeneratedAnnotationDraft,
       applyBatchTableDrafts: state.applyBatchTableDrafts,
+      recordDraftHistory: state.recordDraftHistory,
       saveAnnotationChanges: state.saveAnnotationChanges,
       markImageAnnotating: state.markImageAnnotating,
       markTableCellFailed: state.markTableCellFailed,
@@ -845,10 +853,15 @@ export function TitleMenuBar({
   };
 
   const finalizeBatchChanges = async (
-    changes: Array<{ imageId: number; content?: string; instruction?: string }>
+    changes: Array<{ imageId: number; content?: string; instruction?: string }>,
+    historyLabel: string
   ) => {
     if (selectedProfileId === undefined || changes.length === 0) return;
-    applyBatchTableDrafts(selectedProfileId, changes);
+    applyBatchTableDrafts(
+      selectedProfileId,
+      changes,
+      autoSaveAfterBatch ? undefined : historyLabel
+    );
     if (!autoSaveAfterBatch) return;
     try {
       await saveAnnotationChanges(
@@ -913,7 +926,7 @@ export function TitleMenuBar({
 
     try {
       if (isBatchActionActive(runId) && changes.length > 0) {
-        await finalizeBatchChanges(changes);
+        await finalizeBatchChanges(changes, "Batch add");
       }
       if (isBatchActionActive(runId)) {
         addAppLog(t("appLog.batchAddComplete", { count: changes.length }));
@@ -985,7 +998,7 @@ export function TitleMenuBar({
 
     try {
       if (isBatchActionActive(runId) && changes.length > 0) {
-        await finalizeBatchChanges(changes);
+        await finalizeBatchChanges(changes, "Batch replace");
       }
       if (isBatchActionActive(runId)) {
         addAppLog(t("appLog.batchReplaceComplete", { count: changes.length }));
@@ -1045,7 +1058,7 @@ export function TitleMenuBar({
         .filter((draft): draft is { imageId: number; content: string } => Boolean(draft));
 
       if (isBatchActionActive(runId) && changes.length > 0) {
-        await finalizeBatchChanges(changes);
+        await finalizeBatchChanges(changes, "Convert annotation format");
       }
       if (isBatchActionActive(runId)) {
         addAppLog(t("appLog.annotationFormatConversionComplete", { count: changes.length }));
@@ -1098,6 +1111,7 @@ export function TitleMenuBar({
     const batches = options.xmlBatchEnabled
       ? chunkArray(targets, batchSize)
       : targets.map((target) => [target]);
+    const completedChanges: Array<{ imageId: number; content: string }> = [];
     let changedCount = 0;
     let processedCount = 0;
     let failedCount = 0;
@@ -1168,7 +1182,7 @@ export function TitleMenuBar({
         processedCount += batch.length;
         changedCount += changes.length;
         if (isBatchActionActive(runId) && changes.length > 0) {
-          await finalizeBatchChanges(changes);
+          completedChanges.push(...changes);
         }
         if (isBatchActionActive(runId)) {
           addAppLog(
@@ -1197,6 +1211,18 @@ export function TitleMenuBar({
     }
 
     if (isBatchActionActive(runId)) {
+      if (completedChanges.length > 0) {
+        applyBatchTableDrafts(
+          selectedProfileId,
+          completedChanges,
+          autoSaveAfterBatch ? undefined : "Rewrite annotations"
+        );
+        if (autoSaveAfterBatch) {
+          await saveAnnotationChanges(
+            completedChanges.map((change) => ({ ...change, profileId: selectedProfileId }))
+          );
+        }
+      }
       addAppLog(
         `Natural language rewrite completed: ${processedCount} row(s) processed, ${changedCount} changed, ${failedCount} failed.`
       );
@@ -1231,7 +1257,7 @@ export function TitleMenuBar({
 
     try {
       if (isBatchActionActive(runId) && changes.length > 0) {
-        await finalizeBatchChanges(changes);
+        await finalizeBatchChanges(changes, "Normalize annotations");
       }
       if (isBatchActionActive(runId)) {
         addAppLog(t("appLog.batchAnnotationNormalizationComplete", { count: changes.length }));
@@ -1291,6 +1317,17 @@ export function TitleMenuBar({
       }
     ],
     edit: [
+      {
+        label: historyState.undoLabel ? `${t("menu.undo")}: ${historyState.undoLabel}` : t("menu.undo"),
+        disabled: !historyState.canUndo,
+        onSelect: () => void undo()
+      },
+      {
+        label: historyState.redoLabel ? `${t("menu.redo")}: ${historyState.redoLabel}` : t("menu.redo"),
+        disabled: !historyState.canRedo,
+        onSelect: () => void redo()
+      },
+      { type: "separator" },
       {
         label: t("menu.batchAdd"),
         disabled: !canBatchEdit || isBatchActionRunning,
@@ -1595,6 +1632,9 @@ export function TitleMenuBar({
     addAppLog(`Filtered annotation targets: ${targets.length}`);
     const generatedChanges: AnnotationChange[] = [];
     const failedAnnotationImageIds = new Set<number>();
+    const initialContentByImageId = new Map(
+      targets.map((image) => [image.id, getCurrentAnnotationDraft(image, selectedProfileId)])
+    );
 
     const applyGeneratedContent = (image: DatasetImage, content: string) => {
       clearTableCellFailure(`${image.id}:annotation`);
@@ -1607,12 +1647,22 @@ export function TitleMenuBar({
     };
 
     const saveGeneratedChanges = async () => {
-      if (!autoSaveAfterAnnotation) return;
-
       const successfulChanges = generatedChanges.filter(
         (change) => !failedAnnotationImageIds.has(change.imageId)
       );
       if (successfulChanges.length === 0) return;
+      if (!autoSaveAfterAnnotation) {
+        await recordDraftHistory(
+          "Generate annotations",
+          successfulChanges.map((change) => ({
+            imageId: change.imageId,
+            profileId: selectedProfileId,
+            content: initialContentByImageId.get(change.imageId) ?? ""
+          })),
+          successfulChanges
+        );
+        return;
+      }
       if (successfulChanges.length !== generatedChanges.length) {
         addAppLog(
           `Auto-save skipped ${generatedChanges.length - successfulChanges.length} failed annotations.`,
@@ -1761,6 +1811,11 @@ export function TitleMenuBar({
       await saveGeneratedChanges();
     } catch (error) {
       const message = formatAppError(error);
+      try {
+        await saveGeneratedChanges();
+      } catch (saveError) {
+        addAppLog(`Saving completed annotations failed: ${formatAppError(saveError)}`, "error");
+      }
       if (message === annotationCancelledError) {
         return;
       }

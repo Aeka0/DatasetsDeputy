@@ -24,6 +24,7 @@ use crate::{
     folders,
     gemini::{self, GeminiSettings},
     grok::{self, GrokSettings},
+    history::{HistoryOperation, HistoryRecordResult, HistoryState, NewHistoryOperation},
     llm_loader_settings::{self, LlmLoaderSettings},
     lm_studio,
     model_settings::{self, ModelSettings},
@@ -31,9 +32,7 @@ use crate::{
     openai::{self, OpenAiSettings},
     proxy_settings::{self, ProxySettings},
     python_env::{self, PythonEnvInstallResult, PythonEnvProbeReport, PythonEnvSettings},
-    tag_sheet,
-    textgen,
-    thumbnail,
+    tag_sheet, textgen, thumbnail,
     thumbnail_settings::{self, ThumbnailSettings},
     wd14_tagger,
     window_rendering::{self, WindowRenderingSettings},
@@ -59,6 +58,11 @@ pub struct ImportWarning {
 pub struct ImportReport {
     pub root_name: Option<String>,
     pub root_path: Option<String>,
+    pub source_kind: Option<String>,
+    pub database_path: Option<String>,
+    pub dataset_id: Option<String>,
+    pub created_database: Option<bool>,
+    pub history_size_bytes: Option<u64>,
     pub success_without_annotations: usize,
     pub success_with_annotations: usize,
     pub failed: usize,
@@ -120,6 +124,8 @@ pub struct DatabaseImportResult {
     pub database_path: String,
     pub image_count: usize,
     pub copied_image_count: usize,
+    pub created_file_paths: Vec<String>,
+    pub history_size_bytes: u64,
     pub root_name: Option<String>,
     pub root_path: Option<String>,
 }
@@ -200,6 +206,112 @@ pub struct SaveAnnotationChange {
     pub profile_id: i64,
     pub content: Option<String>,
     pub instruction: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RestoreProfileAnnotation {
+    pub image_id: i64,
+    pub content: String,
+    pub instruction: String,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HistoryTakeResult {
+    pub operation: Option<HistoryOperation>,
+    pub state: HistoryState,
+}
+
+#[tauri::command]
+pub fn get_history_state(state: State<'_, AppState>) -> AppResult<HistoryState> {
+    let history = state
+        .history
+        .lock()
+        .map_err(|_| AppError::InvalidInput("History service lock was poisoned".to_owned()))?;
+    Ok(history.state())
+}
+
+#[tauri::command]
+pub fn initialize_history_session(state: State<'_, AppState>) -> AppResult<HistoryState> {
+    let staging_dir = state.dirs.temp.join("undo-history");
+    if staging_dir.exists() {
+        fs::remove_dir_all(&staging_dir)?;
+    }
+    let history = state
+        .history
+        .lock()
+        .map_err(|_| AppError::InvalidInput("History service lock was poisoned".to_owned()))?;
+    Ok(history.state())
+}
+
+#[tauri::command]
+pub fn record_history_operation(
+    state: State<'_, AppState>,
+    operation: NewHistoryOperation,
+) -> AppResult<HistoryRecordResult> {
+    let mut history = state
+        .history
+        .lock()
+        .map_err(|_| AppError::InvalidInput("History service lock was poisoned".to_owned()))?;
+    let discarded_redo = history.discard_redo();
+    let result = history.record(operation);
+    drop(history);
+    discard_history_artifacts(&state.dirs, &discarded_redo);
+    Ok(result)
+}
+
+#[tauri::command]
+pub fn take_history_undo(state: State<'_, AppState>) -> AppResult<HistoryTakeResult> {
+    let mut history = state
+        .history
+        .lock()
+        .map_err(|_| AppError::InvalidInput("History service lock was poisoned".to_owned()))?;
+    let taken = history.undo();
+    Ok(match taken {
+        Some((operation, next_state)) => HistoryTakeResult {
+            operation: Some(operation),
+            state: next_state,
+        },
+        None => HistoryTakeResult {
+            operation: None,
+            state: history.state(),
+        },
+    })
+}
+
+#[tauri::command]
+pub fn take_history_redo(state: State<'_, AppState>) -> AppResult<HistoryTakeResult> {
+    let mut history = state
+        .history
+        .lock()
+        .map_err(|_| AppError::InvalidInput("History service lock was poisoned".to_owned()))?;
+    let taken = history.redo();
+    Ok(match taken {
+        Some((operation, next_state)) => HistoryTakeResult {
+            operation: Some(operation),
+            state: next_state,
+        },
+        None => HistoryTakeResult {
+            operation: None,
+            state: history.state(),
+        },
+    })
+}
+
+#[tauri::command]
+pub fn invalidate_history_resources(
+    state: State<'_, AppState>,
+    resources: Vec<String>,
+) -> AppResult<HistoryState> {
+    let mut history = state
+        .history
+        .lock()
+        .map_err(|_| AppError::InvalidInput("History service lock was poisoned".to_owned()))?;
+    let (history_state, discarded) = history.invalidate_resources(&resources);
+    drop(history);
+    discard_history_artifacts(&state.dirs, &discarded);
+    Ok(history_state)
 }
 
 #[tauri::command]
@@ -494,8 +606,236 @@ fn remove_sqlite_files(path: &Path) -> AppResult<()> {
     Ok(())
 }
 
+fn imported_history_size(database_path: &Path, artifact_paths: &[String]) -> u64 {
+    sqlite_sidecar_paths(database_path)
+        .iter()
+        .map(PathBuf::as_path)
+        .chain(artifact_paths.iter().map(Path::new))
+        .filter_map(|path| fs::metadata(path).ok())
+        .map(|metadata| metadata.len())
+        .sum()
+}
+
+fn history_staged_database_path(
+    dirs: &app_dirs::AppDirs,
+    database_path: &Path,
+) -> AppResult<PathBuf> {
+    let file_name = database_path.file_name().ok_or_else(|| {
+        AppError::InvalidInput("Imported database path has no file name".to_owned())
+    })?;
+    Ok(dirs.temp.join("undo-history").join(file_name))
+}
+
+fn history_staged_artifact_path(
+    dirs: &app_dirs::AppDirs,
+    database_path: &Path,
+    index: usize,
+    artifact_path: &Path,
+) -> AppResult<PathBuf> {
+    let database_name = database_path.file_name().ok_or_else(|| {
+        AppError::InvalidInput("Imported database path has no file name".to_owned())
+    })?;
+    let artifact_name = artifact_path.file_name().ok_or_else(|| {
+        AppError::InvalidInput("Imported artifact path has no file name".to_owned())
+    })?;
+    Ok(dirs
+        .temp
+        .join("undo-history")
+        .join(format!("{}.artifacts", database_name.to_string_lossy()))
+        .join(format!("{index}-{}", artifact_name.to_string_lossy())))
+}
+
+fn discard_history_artifacts(dirs: &app_dirs::AppDirs, operations: &[HistoryOperation]) {
+    for operation in operations {
+        let Some(database_path) = operation
+            .payload
+            .pointer("/undo")
+            .filter(|undo| {
+                undo.get("command").and_then(|value| value.as_str())
+                    == Some("stage_imported_database")
+            })
+            .and_then(|undo| undo.pointer("/args/databasePath"))
+            .and_then(|value| value.as_str())
+        else {
+            continue;
+        };
+        let Ok(staged_database) = history_staged_database_path(dirs, Path::new(database_path))
+        else {
+            continue;
+        };
+        let _ = remove_sqlite_files(&staged_database);
+        let artifact_dir = staged_database.with_file_name(format!(
+            "{}.artifacts",
+            staged_database
+                .file_name()
+                .unwrap_or_default()
+                .to_string_lossy()
+        ));
+        let _ = fs::remove_dir_all(artifact_dir);
+    }
+}
+
+fn move_history_file(from: &Path, to: &Path) -> io::Result<()> {
+    match fs::rename(from, to) {
+        Ok(()) => Ok(()),
+        Err(rename_error) => {
+            if let Err(copy_error) = fs::copy(from, to) {
+                return Err(io::Error::new(
+                    copy_error.kind(),
+                    format!("{rename_error}; copy fallback failed: {copy_error}"),
+                ));
+            }
+            if let Err(remove_error) = fs::remove_file(from) {
+                let _ = fs::remove_file(to);
+                return Err(remove_error);
+            }
+            Ok(())
+        }
+    }
+}
+
+fn move_history_files(pairs: Vec<(PathBuf, PathBuf)>) -> AppResult<()> {
+    for (from, to) in &pairs {
+        if !from.is_file() {
+            return Err(AppError::InvalidInput(format!(
+                "Expected undo artifact is missing: {}",
+                from.to_string_lossy()
+            )));
+        }
+        if to.exists() {
+            return Err(AppError::InvalidInput(format!(
+                "Undo artifact target already exists: {}",
+                to.to_string_lossy()
+            )));
+        }
+    }
+
+    let mut moved: Vec<(PathBuf, PathBuf)> = Vec::new();
+    for (from, to) in pairs {
+        if let Some(parent) = to.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        if let Err(error) = move_history_file(&from, &to) {
+            for (moved_from, moved_to) in moved.into_iter().rev() {
+                let _ = move_history_file(&moved_to, &moved_from);
+            }
+            return Err(error.into());
+        }
+        moved.push((from, to));
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub fn stage_imported_database(
+    state: State<'_, AppState>,
+    database_path: String,
+    artifact_paths: Option<Vec<String>>,
+) -> AppResult<()> {
+    let source = PathBuf::from(&database_path);
+    if !source.starts_with(&state.dirs.dataset_databases) {
+        return Err(AppError::InvalidInput(
+            "Only application-managed imported databases may be undone".to_owned(),
+        ));
+    }
+    let staged = history_staged_database_path(&state.dirs, &source)?;
+    if let Some(parent) = staged.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    if sqlite_files_exist(&staged) {
+        return Err(AppError::InvalidInput(
+            "Undo staging target already exists".to_owned(),
+        ));
+    }
+
+    let artifact_paths = artifact_paths.unwrap_or_default();
+    if !artifact_paths.is_empty() {
+        let db = open_database(&source)?;
+        let source_kind = db.dataset_source_kind()?;
+        let known_sources = db
+            .list_images()?
+            .into_iter()
+            .map(|image| {
+                image_source_path(&image, &source_kind)
+                    .to_string_lossy()
+                    .to_string()
+            })
+            .collect::<HashSet<_>>();
+        if artifact_paths
+            .iter()
+            .any(|artifact| !known_sources.contains(artifact))
+        {
+            return Err(AppError::InvalidInput(
+                "Imported artifact does not belong to the imported database".to_owned(),
+            ));
+        }
+    }
+
+    let mut pairs = artifact_paths
+        .iter()
+        .enumerate()
+        .map(|(index, path)| {
+            let path = PathBuf::from(path);
+            Ok((
+                path.clone(),
+                history_staged_artifact_path(&state.dirs, &source, index, &path)?,
+            ))
+        })
+        .collect::<AppResult<Vec<_>>>()?;
+    pairs.extend(
+        sqlite_sidecar_paths(&source)
+            .into_iter()
+            .zip(sqlite_sidecar_paths(&staged))
+            .filter(|(from, _)| from.is_file()),
+    );
+    move_history_files(pairs)?;
+    Ok(())
+}
+
+#[tauri::command]
+pub fn restore_imported_database(
+    state: State<'_, AppState>,
+    database_path: String,
+    artifact_paths: Option<Vec<String>>,
+) -> AppResult<()> {
+    let target = PathBuf::from(&database_path);
+    let staged = history_staged_database_path(&state.dirs, &target)?;
+    if sqlite_files_exist(&target) {
+        return Err(AppError::InvalidInput(
+            "Imported database target already exists".to_owned(),
+        ));
+    }
+
+    let mut pairs = artifact_paths
+        .unwrap_or_default()
+        .iter()
+        .enumerate()
+        .map(|(index, path)| {
+            let path = PathBuf::from(path);
+            Ok((
+                history_staged_artifact_path(&state.dirs, &target, index, &path)?,
+                path,
+            ))
+        })
+        .collect::<AppResult<Vec<_>>>()?;
+    pairs.extend(
+        sqlite_sidecar_paths(&staged)
+            .into_iter()
+            .zip(sqlite_sidecar_paths(&target))
+            .filter(|(from, _)| from.is_file()),
+    );
+    move_history_files(pairs)?;
+    Ok(())
+}
+
+/*
+ * Imported database undo stages only files owned by the import operation.
+ * Ordinary user deletion and removal continue to bypass this mechanism.
+ */
 fn sqlite_files_exist(path: &Path) -> bool {
-    sqlite_sidecar_paths(path).into_iter().any(|file| file.exists())
+    sqlite_sidecar_paths(path)
+        .into_iter()
+        .any(|path| path.exists())
 }
 
 fn unique_sqlite_path(path: &Path) -> PathBuf {
@@ -556,7 +896,11 @@ fn database_ref_for_dataset_id(
     Ok((source_kind.to_owned(), db_ref))
 }
 
-fn database_id_for_path(dirs: &app_dirs::AppDirs, path: &Path, source_kind: &str) -> AppResult<String> {
+fn database_id_for_path(
+    dirs: &app_dirs::AppDirs,
+    path: &Path,
+    source_kind: &str,
+) -> AppResult<String> {
     let canonical_target = dunce::canonicalize(path).ok();
     let db_ref = dataset_database_refs(dirs)?
         .into_iter()
@@ -564,7 +908,11 @@ fn database_id_for_path(dirs: &app_dirs::AppDirs, path: &Path, source_kind: &str
             db_ref.path == path
                 || canonical_target
                     .as_ref()
-                    .and_then(|target| dunce::canonicalize(&db_ref.path).ok().map(|current| current == *target))
+                    .and_then(|target| {
+                        dunce::canonicalize(&db_ref.path)
+                            .ok()
+                            .map(|current| current == *target)
+                    })
                     .unwrap_or(false)
         })
         .ok_or_else(|| {
@@ -807,7 +1155,11 @@ fn export_database_request(
             }
             Err(error) => {
                 failed += 1;
-                tracing::warn!("数据库图片打包失败：{}：{}", source.to_string_lossy(), error);
+                tracing::warn!(
+                    "数据库图片打包失败：{}：{}",
+                    source.to_string_lossy(),
+                    error
+                );
             }
         }
 
@@ -853,13 +1205,13 @@ fn extract_database_zip(
     source_path: &Path,
     image_target_dir: &Path,
     temp_dir: &Path,
-) -> AppResult<(PathBuf, usize)> {
+) -> AppResult<(PathBuf, Vec<String>)> {
     fs::create_dir_all(temp_dir)?;
     fs::create_dir_all(image_target_dir)?;
     let mut archive = ZipArchive::new(File::open(source_path)?)?;
     let temp_database_path = temp_dir.join("database.sqlite");
     let mut found_database = false;
-    let mut copied_images = 0;
+    let mut copied_image_paths = Vec::new();
 
     for index in 0..archive.len() {
         let mut entry = archive.by_index(index)?;
@@ -893,9 +1245,9 @@ fn extract_database_zip(
         if let Some(parent) = target.parent() {
             fs::create_dir_all(parent)?;
         }
-        let mut output = File::create(target)?;
+        let mut output = File::create(&target)?;
         io::copy(&mut entry, &mut output)?;
-        copied_images += 1;
+        copied_image_paths.push(target.to_string_lossy().to_string());
     }
 
     if !found_database {
@@ -904,7 +1256,7 @@ fn extract_database_zip(
         ));
     }
 
-    Ok((temp_database_path, copied_images))
+    Ok((temp_database_path, copied_image_paths))
 }
 
 fn update_imported_zip_database(
@@ -921,7 +1273,8 @@ fn update_imported_zip_database(
         .to_owned();
     let root_path = image_target_dir.to_string_lossy().to_string();
     let images = {
-        let mut stmt = conn.prepare("SELECT id, dataset_path, file_name FROM images ORDER BY id")?;
+        let mut stmt =
+            conn.prepare("SELECT id, dataset_path, file_name FROM images ORDER BY id")?;
         let rows = stmt.query_map([], |row| {
             Ok((
                 row.get::<_, i64>(0)?,
@@ -998,6 +1351,8 @@ fn import_sqlite_database(
         database_path: target_path.to_string_lossy().to_string(),
         image_count: metadata.image_count,
         copied_image_count: 0,
+        created_file_paths: Vec::new(),
+        history_size_bytes: imported_history_size(&target_path, &[]),
         root_name: metadata.root_name,
         root_path: metadata.root_path,
     })
@@ -1011,8 +1366,9 @@ fn import_zipped_database(
     let temp_dir = dirs
         .temp
         .join(format!("database-import-{}", timestamp_millis()));
-    let (temp_database_path, copied_image_count) =
+    let (temp_database_path, created_file_paths) =
         extract_database_zip(source_path, image_target_dir, &temp_dir)?;
+    let copied_image_count = created_file_paths.len();
     let metadata = validate_database_file(&temp_database_path)?;
     let metadata =
         update_imported_zip_database(&temp_database_path, image_target_dir, &metadata.source_kind)?;
@@ -1027,11 +1383,14 @@ fn import_zipped_database(
         target_path.to_string_lossy(),
         copied_image_count
     );
+    let history_size_bytes = imported_history_size(&target_path, &created_file_paths);
     Ok(DatabaseImportResult {
         dataset_id,
         database_path: target_path.to_string_lossy().to_string(),
         image_count: metadata.image_count,
         copied_image_count,
+        created_file_paths,
+        history_size_bytes,
         root_name: metadata.root_name,
         root_path: metadata.root_path,
     })
@@ -1344,7 +1703,8 @@ fn repair_database_image_thumbnail(
         .as_deref()
         .map(Path::new)
         .is_some_and(thumbnail::is_valid_thumbnail);
-    let source_hash = if verify_source_hash || (!has_cached_thumbnail && image.file_hash.is_none()) {
+    let source_hash = if verify_source_hash || (!has_cached_thumbnail && image.file_hash.is_none())
+    {
         Some(files::hash_file(&source_path)?)
     } else {
         None
@@ -2209,7 +2569,7 @@ pub async fn prepare_import_folder(app: AppHandle) -> AppResult<ImportPreview> {
 }
 
 #[tauri::command]
-pub async fn mount_folder_dataset(app: AppHandle, state: State<'_, AppState>) -> AppResult<()> {
+pub async fn mount_folder_dataset(app: AppHandle, state: State<'_, AppState>) -> AppResult<String> {
     let dirs = state.dirs.clone();
     let (sender, receiver) = std::sync::mpsc::channel();
     app.dialog().file().pick_folder(move |folder| {
@@ -2227,7 +2587,17 @@ pub async fn mount_folder_dataset(app: AppHandle, state: State<'_, AppState>) ->
         .into_path()
         .map_err(|_| AppError::InvalidInput("Selected folder is not a local path".to_owned()))?;
 
-    folders::add_folder_dataset(&dirs, &folder)
+    if !folders::add_folder_dataset(&dirs, &folder)? {
+        return Err(AppError::InvalidInput(
+            "Selected folder is already mounted".to_owned(),
+        ));
+    }
+    Ok(folder.to_string_lossy().to_string())
+}
+
+#[tauri::command]
+pub fn add_folder_dataset_path(state: State<'_, AppState>, folder_path: String) -> AppResult<()> {
+    folders::add_folder_dataset(&state.dirs, Path::new(&folder_path)).map(|_| ())
 }
 
 #[tauri::command]
@@ -2506,6 +2876,7 @@ pub fn start_import_folder(
     let source_kind = normalize_database_source_kind(import_mode)?;
     let asset_dir = dirs.datasets.join("assets");
     let database_path = app_dirs::dataset_database_path_for_kind(&dirs, &folder, &source_kind);
+    let created_database = !sqlite_files_exist(&database_path);
     let app_for_thread = app.clone();
     let root_name = folder
         .file_name()
@@ -2560,6 +2931,11 @@ pub fn start_import_folder(
                     report: Some(ImportReport {
                         root_name: Some(root_name.clone()),
                         root_path: Some(root_path.clone()),
+                        source_kind: Some(source_kind.clone()),
+                        database_path: None,
+                        dataset_id: None,
+                        created_database: Some(created_database),
+                        history_size_bytes: None,
                         success_without_annotations: 0,
                         success_with_annotations: 0,
                         failed: 1,
@@ -2678,6 +3054,8 @@ pub fn start_import_folder(
             summary.failed
         );
 
+        drop(db);
+        let imported_dataset_id = database_id_for_path(&dirs, &database_path, &source_kind).ok();
         emit_progress(ImportProgress {
             phase: "done".to_owned(),
             processed: total,
@@ -2692,6 +3070,11 @@ pub fn start_import_folder(
             report: Some(ImportReport {
                 root_name: Some(root_name),
                 root_path: Some(root_path),
+                source_kind: Some(source_kind),
+                database_path: Some(database_path.to_string_lossy().to_string()),
+                dataset_id: imported_dataset_id,
+                created_database: Some(created_database),
+                history_size_bytes: Some(imported_history_size(&database_path, &[])),
                 success_without_annotations,
                 success_with_annotations,
                 failed: summary.failed,
@@ -2928,6 +3311,30 @@ pub fn delete_annotation_profile(state: State<'_, AppState>, profile_id: i64) ->
 }
 
 #[tauri::command]
+pub fn restore_annotation_profile(
+    state: State<'_, AppState>,
+    profile_id: i64,
+    name: String,
+    annotations: Vec<RestoreProfileAnnotation>,
+) -> AppResult<()> {
+    let (prefix, local_profile_id) = split_public_id(profile_id)?;
+    let local_annotations = annotations
+        .into_iter()
+        .map(|annotation| {
+            let (image_prefix, local_image_id) = split_public_id(annotation.image_id)?;
+            if image_prefix != prefix {
+                return Err(AppError::InvalidInput(
+                    "Restored annotation image belongs to another dataset".to_owned(),
+                ));
+            }
+            Ok((local_image_id, annotation.content, annotation.instruction))
+        })
+        .collect::<AppResult<Vec<_>>>()?;
+    let (mut db, _) = open_database_by_prefix(&state.dirs, prefix)?;
+    db.restore_annotation_profile(local_profile_id, name, local_annotations)
+}
+
+#[tauri::command]
 pub fn clear_annotation(state: State<'_, AppState>, annotation_id: i64) -> AppResult<()> {
     let (prefix, local_annotation_id) = split_public_id(annotation_id)?;
     let (mut db, _) = open_database_by_prefix(&state.dirs, prefix)?;
@@ -3151,6 +3558,27 @@ pub fn create_dataset_subfolder(
 }
 
 #[tauri::command]
+pub fn remove_empty_dataset_subfolder(
+    state: State<'_, AppState>,
+    folder_path: String,
+) -> AppResult<()> {
+    let path = PathBuf::from(&folder_path);
+    folders::require_subfolder_of_registered(&state.dirs, &path)?;
+    if !path.is_dir() {
+        return Err(AppError::InvalidInput(format!(
+            "Created folder no longer exists: {folder_path}"
+        )));
+    }
+    if fs::read_dir(&path)?.next().is_some() {
+        return Err(AppError::InvalidInput(format!(
+            "Created folder is no longer empty: {folder_path}"
+        )));
+    }
+    fs::remove_dir(&path)?;
+    Ok(())
+}
+
+#[tauri::command]
 pub fn consolidate_loose_files(
     state: State<'_, AppState>,
     folder_path: String,
@@ -3202,6 +3630,51 @@ pub fn consolidate_loose_files(
     }
 
     db.move_images_to_child_folder(&local_ids, &folder_path, &folder_name)
+}
+
+#[tauri::command]
+pub fn restore_consolidated_loose_files(
+    state: State<'_, AppState>,
+    folder_path: String,
+    folder_name: String,
+    image_ids: Vec<i64>,
+    image_paths: Vec<String>,
+    source_kind: Option<String>,
+    dataset_id: Option<String>,
+) -> AppResult<usize> {
+    if source_kind.as_deref() == Some("folder")
+        || dataset_id
+            .as_deref()
+            .is_some_and(|id| id.starts_with("folder:"))
+    {
+        return folders::restore_consolidated_folder_loose_files(
+            &state.dirs,
+            &folder_path,
+            &folder_name,
+            &image_paths,
+        );
+    }
+    let dataset_id = dataset_id.ok_or_else(|| {
+        AppError::InvalidInput("Consolidation undo requires a dataset id".to_owned())
+    })?;
+    let prefix = dataset_id
+        .split_once(':')
+        .and_then(|(_, value)| value.parse::<i64>().ok())
+        .ok_or_else(|| AppError::InvalidInput(format!("Invalid dataset id: {dataset_id}")))?;
+    let local_ids = image_ids
+        .into_iter()
+        .map(|id| {
+            let (image_prefix, local_id) = split_public_id(id)?;
+            if image_prefix != prefix {
+                return Err(AppError::InvalidInput(format!(
+                    "Image id does not belong to dataset {dataset_id}: {id}"
+                )));
+            }
+            Ok(local_id)
+        })
+        .collect::<AppResult<Vec<_>>>()?;
+    let (mut db, _) = open_database_by_prefix(&state.dirs, prefix)?;
+    db.restore_images_from_child_folder(&local_ids, &folder_path, &folder_name)
 }
 
 #[tauri::command]

@@ -23,6 +23,59 @@ export interface AnnotationChange {
   instruction?: string;
 }
 
+export interface HistoryState {
+  canUndo: boolean;
+  canRedo: boolean;
+  undoLabel?: string;
+  redoLabel?: string;
+  operationCount: number;
+  sizeBytes: number;
+  maxOperations: number;
+  maxBytes: number;
+}
+
+export interface HistoryTextPayload {
+  kind: "text";
+  before: AnnotationChange[];
+  after: AnnotationChange[];
+  persisted: boolean;
+}
+
+export interface HistoryInvokeAction {
+  command: string;
+  args: Record<string, unknown>;
+}
+
+export interface HistoryInvokePayload {
+  kind: "invoke";
+  undo: HistoryInvokeAction;
+  redo: HistoryInvokeAction;
+  refresh: "images" | "imagesAndProfiles";
+}
+
+export type HistoryPayload = HistoryTextPayload | HistoryInvokePayload;
+
+export interface HistoryOperation {
+  id: number;
+  label: string;
+  resources: string[];
+  sizeBytes: number;
+  payload: HistoryPayload;
+  persisted: boolean;
+}
+
+export interface HistoryRecordResult {
+  state: HistoryState;
+  recorded: boolean;
+  oversized: boolean;
+  trimmed: number;
+}
+
+export interface HistoryTakeResult {
+  operation?: HistoryOperation;
+  state: HistoryState;
+}
+
 export interface DatasetImage {
   id: number;
   path: string;
@@ -84,6 +137,11 @@ export interface ImportWarning {
 export interface ImportReport {
   rootName?: string;
   rootPath?: string;
+  sourceKind?: DatasetSourceKind;
+  databasePath?: string;
+  datasetId?: string;
+  createdDatabase?: boolean;
+  historySizeBytes?: number;
   successWithoutAnnotations: number;
   successWithAnnotations: number;
   failed: number;
@@ -183,6 +241,8 @@ export interface DatabaseImportResult {
   databasePath: string;
   imageCount: number;
   copiedImageCount: number;
+  createdFilePaths: string[];
+  historySizeBytes: number;
   rootName?: string;
   rootPath?: string;
 }

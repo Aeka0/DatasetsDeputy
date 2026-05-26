@@ -53,10 +53,10 @@ export function ImagePreviewView() {
     thumbnailCacheKey,
     closeImagePreview,
     setActiveProfile,
-    saveAnnotation,
-    saveInstruction,
+    saveAnnotationChanges,
     createAnnotationProfile,
     applyTableDraft,
+    recordTableDraftBlur,
     addAppLog
   } = useDatasetStore(
     useShallow((state) => ({
@@ -73,10 +73,10 @@ export function ImagePreviewView() {
       thumbnailCacheKey: state.thumbnailCacheKey,
       closeImagePreview: state.closeImagePreview,
       setActiveProfile: state.setActiveProfile,
-      saveAnnotation: state.saveAnnotation,
-      saveInstruction: state.saveInstruction,
+      saveAnnotationChanges: state.saveAnnotationChanges,
       createAnnotationProfile: state.createAnnotationProfile,
       applyTableDraft: state.applyTableDraft,
+      recordTableDraftBlur: state.recordTableDraftBlur,
       addAppLog: state.addAppLog
     }))
   );
@@ -95,6 +95,8 @@ export function ImagePreviewView() {
   const [loadedDimensions, setLoadedDimensions] = useState<ImageDimensions>();
   const [copiedDraftTab, setCopiedDraftTab] = useState<DraftTab>();
   const clearCopyFeedbackTimerRef = useRef<number | undefined>(undefined);
+  const contentFocusValueRef = useRef("");
+  const instructionFocusValueRef = useRef("");
 
   const availableProfiles = useMemo(() => {
     if (!selectedImage?.datasetId) return [];
@@ -286,11 +288,15 @@ export function ImagePreviewView() {
 
   const saveCurrentAnnotation = () => {
     if (isAnnotating || selectedProfileId === undefined) return;
-    saveAnnotation(selectedImage.id, selectedProfileId, content).catch((error) => {
+    saveAnnotationChanges([
+      {
+        imageId: selectedImage.id,
+        profileId: selectedProfileId,
+        content,
+        instruction
+      }
+    ]).catch((error) => {
       addAppLog(t("appLog.saveAnnotationFailed", { message: formatAppError(error) }), "error");
-    });
-    saveInstruction(selectedImage.id, selectedProfileId, instruction).catch((error) => {
-      addAppLog(t("appLog.saveInstructionFailed", { message: formatAppError(error) }), "error");
     });
   };
 
@@ -534,6 +540,16 @@ export function ImagePreviewView() {
                 <textarea
                   value={content}
                   onChange={(event) => updateContent(event.target.value)}
+                  onFocus={() => {
+                    contentFocusValueRef.current = content;
+                  }}
+                  onBlur={() => {
+                    if (selectedProfileId !== undefined) {
+                      void recordTableDraftBlur(selectedProfileId, selectedImage.id, {
+                        content: contentFocusValueRef.current
+                      });
+                    }
+                  }}
                   onKeyDown={saveWithKeyboard}
                   className="glass-input h-full w-full resize-none p-2 text-[13px] disabled:cursor-wait disabled:opacity-80"
                   disabled={isAnnotating}
@@ -542,6 +558,16 @@ export function ImagePreviewView() {
                 <textarea
                   value={instruction}
                   onChange={(event) => updateInstruction(event.target.value)}
+                  onFocus={() => {
+                    instructionFocusValueRef.current = instruction;
+                  }}
+                  onBlur={() => {
+                    if (selectedProfileId !== undefined) {
+                      void recordTableDraftBlur(selectedProfileId, selectedImage.id, {
+                        instruction: instructionFocusValueRef.current
+                      });
+                    }
+                  }}
                   onKeyDown={saveWithKeyboard}
                   className="glass-input h-full w-full resize-none p-2 text-[13px]"
                 />

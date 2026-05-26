@@ -21,6 +21,11 @@ import type {
   ExportPreset,
   ExportPreview,
   ExportProgress,
+  HistoryInvokePayload,
+  HistoryPayload,
+  HistoryRecordResult,
+  HistoryState,
+  HistoryTakeResult,
   ImportPreview,
   ImportProgress,
   ImportReport,
@@ -431,6 +436,15 @@ export type ViewFilterMode = "all" | "unannotated" | "unsaved";
 const highlightCellStateStorageKey = "datasets-deputy.highlight-cell-state";
 const autoSaveAfterAnnotationStorageKey = "datasets-deputy.auto-save-after-annotation";
 const autoSaveAfterBatchStorageKey = "datasets-deputy.auto-save-after-batch";
+const emptyHistoryState: HistoryState = {
+  canUndo: false,
+  canRedo: false,
+  operationCount: 0,
+  sizeBytes: 0,
+  maxOperations: 100,
+  maxBytes: 1024 * 1024 * 1024
+};
+let isApplyingHistory = false;
 
 export interface AppLogEntry {
   id: number;
@@ -469,6 +483,7 @@ interface DatasetState {
   highlightCellState: boolean;
   autoSaveAfterAnnotation: boolean;
   autoSaveAfterBatch: boolean;
+  historyState: HistoryState;
   activeProfileId?: number;
   isLoading: boolean;
   isCheckingProblemItems: boolean;
@@ -554,7 +569,8 @@ interface DatasetState {
   ) => void;
   applyBatchTableDrafts: (
     profileId: number,
-    drafts: Array<{ imageId: number; content?: string; instruction?: string }>
+    drafts: Array<{ imageId: number; content?: string; instruction?: string }>,
+    historyLabel?: string
   ) => void;
   updateTableAnnotationDraft: (imageId: number, value: string) => void;
   updateTableInstructionDraft: (imageId: number, value: string) => void;
@@ -566,6 +582,19 @@ interface DatasetState {
   setHighlightCellState: (enabled: boolean) => void;
   setAutoSaveAfterAnnotation: (enabled: boolean) => void;
   setAutoSaveAfterBatch: (enabled: boolean) => void;
+  initHistory: () => Promise<void>;
+  undo: () => Promise<void>;
+  redo: () => Promise<void>;
+  recordTableDraftBlur: (
+    profileId: number,
+    imageId: number,
+    before: { content?: string; instruction?: string }
+  ) => Promise<void>;
+  recordDraftHistory: (
+    label: string,
+    before: AnnotationChange[],
+    after: AnnotationChange[]
+  ) => Promise<void>;
   markImageAnnotating: (imageId: number, annotating: boolean) => void;
   setActiveProfile: (id?: number) => void;
   saveAnnotation: (
@@ -705,6 +734,85 @@ function applyAnnotationChanges(images: DatasetImage[], changes: AnnotationChang
   });
 }
 
+function buildTextHistoryChanges(images: DatasetImage[], changes: AnnotationChange[]) {
+  const before: AnnotationChange[] = [];
+  const after: AnnotationChange[] = [];
+  for (const change of changes) {
+    const image = images.find((item) => item.id === change.imageId);
+    if (!image) continue;
+    const annotation = image.annotations.find((item) => item.profileId === change.profileId);
+    before.push({
+      imageId: change.imageId,
+      profileId: change.profileId,
+      ...(change.content !== undefined ? { content: annotation?.content ?? "" } : {}),
+      ...(change.instruction !== undefined ? { instruction: annotation?.instruction ?? "" } : {})
+    });
+    after.push({ ...change });
+  }
+  return { before, after };
+}
+
+function getDraftValue(
+  state: Pick<DatasetState, "tableDraftProfileId" | "tableAnnotationDrafts" | "tableInstructionDrafts" | "tableProfileAnnotationDrafts" | "tableProfileInstructionDrafts">,
+  profileId: number,
+  imageId: number,
+  field: "content" | "instruction"
+) {
+  const active = state.tableDraftProfileId === profileId;
+  if (field === "content") {
+    return active
+      ? state.tableAnnotationDrafts[imageId]
+      : state.tableProfileAnnotationDrafts[profileId]?.[imageId];
+  }
+  return active
+    ? state.tableInstructionDrafts[imageId]
+    : state.tableProfileInstructionDrafts[profileId]?.[imageId];
+}
+
+function textHistoryResources(changes: AnnotationChange[]) {
+  const resources = new Set<string>();
+  for (const change of changes) {
+    resources.add(`image:${change.imageId}`);
+    resources.add(`profile:${change.profileId}`);
+    if (change.content !== undefined) {
+      resources.add(`cell:${change.imageId}:${change.profileId}:annotation`);
+    }
+    if (change.instruction !== undefined) {
+      resources.add(`cell:${change.imageId}:${change.profileId}:instruction`);
+    }
+  }
+  return Array.from(resources);
+}
+
+async function invalidateHistoryResources(resources: string[]) {
+  if (!hasTauriRuntime() || resources.length === 0) return undefined;
+  return invokeCommand<HistoryState>("invalidate_history_resources", { resources });
+}
+
+async function recordHistoryOperation(
+  label: string,
+  resources: string[],
+  payload: HistoryPayload,
+  persisted: boolean,
+  replaceDraftResources: string[] = [],
+  historySizeBytes?: number
+) {
+  if (!hasTauriRuntime() || isApplyingHistory || resources.length === 0) {
+    return undefined;
+  }
+  const sizeBytes = Math.max(new Blob([JSON.stringify(payload)]).size, historySizeBytes ?? 0);
+  return invokeCommand<HistoryRecordResult>("record_history_operation", {
+    operation: {
+      label,
+      resources,
+      sizeBytes,
+      payload,
+      persisted,
+      replaceDraftResources
+    }
+  });
+}
+
 export const useDatasetStore = create<DatasetState>((set, get) => ({
   images: sampleImages,
   projects: sampleProjects,
@@ -748,6 +856,7 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
   highlightCellState: getStoredHighlightCellState(),
   autoSaveAfterAnnotation: getStoredAutoSaveAfterAnnotation(),
   autoSaveAfterBatch: getStoredAutoSaveAfterBatch(),
+  historyState: emptyHistoryState,
   activeProfileId: sampleProfiles[0]?.id,
   isLoading: false,
   isCheckingProblemItems: false,
@@ -765,6 +874,139 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
   showExportDialog: false,
   showExportDatabaseDialog: false,
   showImportDatabaseDialog: false,
+  initHistory: async () => {
+    if (!hasTauriRuntime()) return;
+    const historyState = await invokeCommand<HistoryState>("initialize_history_session");
+    set({ historyState });
+  },
+  undo: async () => {
+    if (!hasTauriRuntime() || isApplyingHistory) return;
+    const result = await invokeCommand<HistoryTakeResult>("take_history_undo");
+    set({ historyState: result.state });
+    if (!result.operation) return;
+    const operation = result.operation;
+    try {
+      isApplyingHistory = true;
+      const payload = operation.payload;
+      if (payload.kind === "text") {
+        if (payload.persisted) {
+          await get().saveAnnotationChanges(payload.before);
+        }
+        const byProfile = new Map<number, AnnotationChange[]>();
+        for (const change of payload.before) {
+          const profileChanges = byProfile.get(change.profileId) ?? [];
+          profileChanges.push(change);
+          byProfile.set(change.profileId, profileChanges);
+        }
+        for (const [profileId, changes] of byProfile) {
+          get().applyBatchTableDrafts(profileId, changes);
+        }
+      } else {
+        await invokeCommand(payload.undo.command, payload.undo.args);
+        if (payload.refresh === "imagesAndProfiles") {
+          const [images, profiles] = await Promise.all([
+            invokeCommand<DatasetImage[]>("list_images"),
+            invokeCommand<AnnotationProfile[]>("list_annotation_profiles")
+          ]);
+          set({ images, profiles, projects: createProjectTree(images) });
+        } else {
+          await get().refreshImages();
+        }
+      }
+      get().addAppLog(`Undid: ${operation.label}`);
+    } catch (error) {
+      const restored = await invokeCommand<HistoryTakeResult>("take_history_redo");
+      set({ historyState: restored.state });
+      get().addAppLog(`Undo failed: ${formatAppError(error)}`, "error");
+      throw error;
+    } finally {
+      isApplyingHistory = false;
+    }
+  },
+  redo: async () => {
+    if (!hasTauriRuntime() || isApplyingHistory) return;
+    const result = await invokeCommand<HistoryTakeResult>("take_history_redo");
+    set({ historyState: result.state });
+    if (!result.operation) return;
+    const operation = result.operation;
+    try {
+      isApplyingHistory = true;
+      const payload = operation.payload;
+      if (payload.kind === "text") {
+        if (payload.persisted) {
+          await get().saveAnnotationChanges(payload.after);
+        }
+        const byProfile = new Map<number, AnnotationChange[]>();
+        for (const change of payload.after) {
+          const profileChanges = byProfile.get(change.profileId) ?? [];
+          profileChanges.push(change);
+          byProfile.set(change.profileId, profileChanges);
+        }
+        for (const [profileId, changes] of byProfile) {
+          get().applyBatchTableDrafts(profileId, changes);
+        }
+      } else {
+        await invokeCommand(payload.redo.command, payload.redo.args);
+        if (payload.refresh === "imagesAndProfiles") {
+          const [images, profiles] = await Promise.all([
+            invokeCommand<DatasetImage[]>("list_images"),
+            invokeCommand<AnnotationProfile[]>("list_annotation_profiles")
+          ]);
+          set({ images, profiles, projects: createProjectTree(images) });
+        } else {
+          await get().refreshImages();
+        }
+      }
+      get().addAppLog(`Redid: ${operation.label}`);
+    } catch (error) {
+      const restored = await invokeCommand<HistoryTakeResult>("take_history_undo");
+      set({ historyState: restored.state });
+      get().addAppLog(`Redo failed: ${formatAppError(error)}`, "error");
+      throw error;
+    } finally {
+      isApplyingHistory = false;
+    }
+  },
+  recordTableDraftBlur: async (profileId, imageId, before) => {
+    const state = get();
+    const after: AnnotationChange = { imageId, profileId };
+    const prior: AnnotationChange = { imageId, profileId };
+    if (before.content !== undefined) {
+      const content = getDraftValue(state, profileId, imageId, "content") ?? "";
+      if (content !== before.content) {
+        prior.content = before.content;
+        after.content = content;
+      }
+    }
+    if (before.instruction !== undefined) {
+      const instruction = getDraftValue(state, profileId, imageId, "instruction") ?? "";
+      if (instruction !== before.instruction) {
+        prior.instruction = before.instruction;
+        after.instruction = instruction;
+      }
+    }
+    if (after.content === undefined && after.instruction === undefined) return;
+    const resources = textHistoryResources([after]);
+    const result = await recordHistoryOperation(
+      "Edit annotation draft",
+      resources,
+      { kind: "text", before: [prior], after: [after], persisted: false },
+      false
+    );
+    if (result) {
+      set({ historyState: result.state });
+    }
+  },
+  recordDraftHistory: async (label, before, after) => {
+    if (after.length === 0) return;
+    const result = await recordHistoryOperation(
+      label,
+      textHistoryResources(after),
+      { kind: "text", before, after, persisted: false },
+      false
+    );
+    if (result) set({ historyState: result.state });
+  },
   initImportEvents: async () => {
     if (!hasTauriRuntime() || unlistenImportProgress) {
       return;
@@ -815,6 +1057,49 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
           ...createImageSelection([]),
           previewImageId: undefined
         });
+        if (
+          progress.report.sourceKind === "database" &&
+          progress.report.databasePath &&
+          progress.report.datasetId &&
+          progress.report.createdDatabase
+        ) {
+          const payload: HistoryInvokePayload = {
+            kind: "invoke",
+            undo: {
+              command: "stage_imported_database",
+              args: { databasePath: progress.report.databasePath, artifactPaths: [] }
+            },
+            redo: {
+              command: "restore_imported_database",
+              args: { databasePath: progress.report.databasePath, artifactPaths: [] }
+            },
+            refresh: "imagesAndProfiles"
+          };
+          const history = await recordHistoryOperation(
+            "Import dataset",
+            [
+              `dataset:${progress.report.datasetId}`,
+              ...images
+                .filter((image) => getImageDatasetId(image) === progress.report?.datasetId)
+                .map((image) => `image:${image.id}`)
+            ],
+            payload,
+            true,
+            [],
+            progress.report.historySizeBytes
+          );
+          if (history) set({ historyState: history.state });
+        } else if (progress.report.sourceKind === "database" && progress.imported > 0) {
+          get().addAppLog(
+            "Appending images into an existing database is not yet eligible for undo.",
+            "warning"
+          );
+        } else if (progress.report.sourceKind === "asset" && progress.imported > 0) {
+          get().addAppLog(
+            "Asset imports that copied managed files are not yet eligible for undo.",
+            "warning"
+          );
+        }
       }
     });
   },
@@ -1180,7 +1465,7 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
     });
     get().addAppLog(i18next.t("appLog.folderMountStarting"));
     try {
-      await invokeCommand<void>("mount_folder_dataset");
+      const mountedPath = await invokeCommand<string>("mount_folder_dataset");
       set({
         showImportWizard: false,
         importProgress: {
@@ -1216,6 +1501,19 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
           ? profiles.find((profile) => profile.datasetId === firstFolder.datasetId)?.id
           : profiles[0]?.id
       });
+      const payload: HistoryInvokePayload = {
+        kind: "invoke",
+        undo: { command: "remove_folder_dataset", args: { folderPath: mountedPath } },
+        redo: { command: "add_folder_dataset_path", args: { folderPath: mountedPath } },
+        refresh: "imagesAndProfiles"
+      };
+      const history = await recordHistoryOperation(
+        "Mount folder",
+        [`folder:${mountedPath}`],
+        payload,
+        true
+      );
+      if (history) set({ historyState: history.state });
     } catch (error) {
       const payload = error as { code?: string };
       set({ importProgress: undefined, pendingImportKind: undefined });
@@ -1371,6 +1669,12 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
           importReport: undefined,
           pendingImportKind: undefined
         });
+        const historyState = await invalidateHistoryResources([
+          `dataset:${project.datasetId ?? project.id}`,
+          `folder:${project.path}`,
+          ...project.imageIds.map((id) => `image:${id}`)
+        ]);
+        if (historyState) set({ historyState });
       } catch (refreshError) {
         get().addAppLog(
           i18next.t("appLog.removeRefreshFailed", { message: formatAppError(refreshError) }),
@@ -1451,6 +1755,35 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
         previewImageId: state.previewImageId,
         activeProfileId: state.activeProfileId
       }));
+      const payload: HistoryInvokePayload = {
+        kind: "invoke",
+        undo: {
+          command: "rename_dataset_folder",
+          args: {
+            folderPath: newPath,
+            newName: project.name,
+            sourceKind: getProjectSourceKind(project),
+            datasetId: project.datasetId
+          }
+        },
+        redo: {
+          command: "rename_dataset_folder",
+          args: {
+            folderPath: project.path,
+            newName: trimmedName,
+            sourceKind: getProjectSourceKind(project),
+            datasetId: project.datasetId
+          }
+        },
+        refresh: "imagesAndProfiles"
+      };
+      const history = await recordHistoryOperation(
+        "Rename folder",
+        [`folder:${project.path}`, `folder:${newPath}`],
+        payload,
+        true
+      );
+      if (history) set({ historyState: history.state });
       return;
     }
 
@@ -1478,7 +1811,7 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
     }
 
     if (hasTauriRuntime()) {
-      await invokeCommand<string>("create_dataset_subfolder", {
+      const createdPath = await invokeCommand<string>("create_dataset_subfolder", {
         folderPath: project.path,
         name: trimmedName,
         sourceKind: getProjectSourceKind(project),
@@ -1486,6 +1819,29 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
       });
       get().addAppLog(i18next.t("appLog.subfolderCreated", { name: trimmedName }));
       await get().refreshImages();
+      if (getProjectSourceKind(project) === "folder") {
+        const payload: HistoryInvokePayload = {
+          kind: "invoke",
+          undo: { command: "remove_empty_dataset_subfolder", args: { folderPath: createdPath } },
+          redo: {
+            command: "create_dataset_subfolder",
+            args: {
+              folderPath: project.path,
+              name: trimmedName,
+              sourceKind: "folder",
+              datasetId: project.datasetId
+            }
+          },
+          refresh: "images"
+        };
+        const history = await recordHistoryOperation(
+          "Create folder",
+          [`folder:${createdPath}`],
+          payload,
+          true
+        );
+        if (history) set({ historyState: history.state });
+      }
       return;
     }
   },
@@ -1504,17 +1860,34 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
     const targetProjectId = getChildProjectId(project, trimmedName);
 
     if (hasTauriRuntime()) {
-      await invokeCommand<number>("consolidate_loose_files", {
+      const commandArgs = {
         folderPath: project.path,
         folderName: trimmedName,
         imageIds: project.imageIds,
         imagePaths: looseImages.map((image) => image.path),
         sourceKind: getProjectSourceKind(project),
         datasetId: project.datasetId
-      });
+      };
+      await invokeCommand<number>("consolidate_loose_files", commandArgs);
       await get().refreshImages();
       set({ selectedProjectId: targetProjectId });
       get().addAppLog(i18next.t("appLog.looseFilesConsolidated", { name: trimmedName }));
+      const payload: HistoryInvokePayload = {
+        kind: "invoke",
+        undo: { command: "restore_consolidated_loose_files", args: commandArgs },
+        redo: { command: "consolidate_loose_files", args: commandArgs },
+        refresh: "images"
+      };
+      const history = await recordHistoryOperation(
+        "Consolidate loose files",
+        [
+          `folder:${project.path}`,
+          ...project.imageIds.map((imageId) => `image:${imageId}`)
+        ],
+        payload,
+        true
+      );
+      if (history) set({ historyState: history.state });
       return;
     }
 
@@ -1563,6 +1936,10 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
           current.selectedProjectId === project.id ? undefined : current.selectedProjectId
       }));
       get().addAppLog(i18next.t("appLog.looseFilesDeleted", { count: project.imageIds.length }));
+      const historyState = await invalidateHistoryResources(
+        project.imageIds.map((id) => `image:${id}`)
+      );
+      if (historyState) set({ historyState });
       return;
     }
 
@@ -1599,6 +1976,35 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
         newName: nextFileName
       });
       await get().refreshImages();
+      const payload: HistoryInvokePayload = {
+        kind: "invoke",
+        undo: {
+          command: "rename_dataset_image",
+          args: {
+            imageId: image.id,
+            imagePath: image.sourceKind === "folder" ? nextPath : image.path,
+            sourceKind: image.sourceKind,
+            newName: image.fileName
+          }
+        },
+        redo: {
+          command: "rename_dataset_image",
+          args: {
+            imageId: image.id,
+            imagePath: image.path,
+            sourceKind: image.sourceKind,
+            newName: nextFileName
+          }
+        },
+        refresh: "images"
+      };
+      const history = await recordHistoryOperation(
+        "Rename image",
+        [`image:${image.id}`],
+        payload,
+        true
+      );
+      if (history) set({ historyState: history.state });
       return;
     }
 
@@ -1645,6 +2051,8 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
           "error"
         );
       }
+      const historyState = await invalidateHistoryResources([`image:${image.id}`]);
+      if (historyState) set({ historyState });
       return;
     }
 
@@ -1825,6 +2233,32 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
           copiedImageCount: result.copiedImageCount
         })
       );
+      const payload: HistoryInvokePayload = {
+        kind: "invoke",
+        undo: {
+          command: "stage_imported_database",
+          args: { databasePath: result.databasePath, artifactPaths: result.createdFilePaths }
+        },
+        redo: {
+          command: "restore_imported_database",
+          args: { databasePath: result.databasePath, artifactPaths: result.createdFilePaths }
+        },
+        refresh: "imagesAndProfiles"
+      };
+      const history = await recordHistoryOperation(
+        "Import database",
+        [
+          `dataset:${result.datasetId}`,
+          ...images
+            .filter((image) => getImageDatasetId(image) === result.datasetId)
+            .map((image) => `image:${image.id}`)
+        ],
+        payload,
+        true,
+        [],
+        result.historySizeBytes
+      );
+      if (history) set({ historyState: history.state });
       return result;
     } catch (error) {
       get().addAppLog(
@@ -2103,7 +2537,30 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
         }
       };
     }),
-  applyBatchTableDrafts: (profileId, drafts) =>
+  applyBatchTableDrafts: (profileId, drafts, historyLabel) => {
+    const current = get();
+    const before = drafts.map((draft) => {
+      const image = current.images.find((item) => item.id === draft.imageId);
+      return {
+        imageId: draft.imageId,
+        profileId,
+        ...(draft.content !== undefined
+          ? {
+              content:
+                getDraftValue(current, profileId, draft.imageId, "content") ??
+                (image ? getAnnotationContentForProfile(image, profileId) : "")
+            }
+          : {}),
+        ...(draft.instruction !== undefined
+          ? {
+              instruction:
+                getDraftValue(current, profileId, draft.imageId, "instruction") ??
+                (image ? getInstructionForProfile(image, profileId) : "")
+            }
+          : {})
+      };
+    });
+    const after = drafts.map((draft) => ({ ...draft, profileId }));
     set((state) => {
       const imageIds = new Set(state.images.map((image) => image.id));
       const cachedAnnotationDrafts = filterTableDraftsForImageIds(
@@ -2186,7 +2643,21 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
           ...Object.fromEntries(Array.from(changedCellKeys, (key) => [key, "dirty" as const]))
         }
       };
-    }),
+    });
+    if (historyLabel && !isApplyingHistory) {
+      const resources = textHistoryResources(after);
+      void recordHistoryOperation(
+        historyLabel,
+        resources,
+        { kind: "text", before, after, persisted: false },
+        false
+      ).then((result) => {
+        if (result) {
+          set({ historyState: result.state });
+        }
+      });
+    }
+  },
   updateTableAnnotationDraft: (imageId, value) =>
     set((state) => ({
       tableAnnotationDrafts: {
@@ -2317,126 +2788,24 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
   saveAnnotation: async (imageId, profileId, content) => {
     const image = get().images.find((image) => image.id === imageId);
     assertProfileForDatabaseImage(image, profileId);
-
-    if (hasTauriRuntime()) {
-      if (image?.sourceKind === "folder") {
-        await invokeCommand("save_folder_annotation", {
-          imagePath: image.path,
-          content
-        });
-      } else {
-        await invokeCommand("save_annotation", {
-          imageId,
-          profileId: requireWritableProfileId(profileId),
-          content
-        });
+    await get().saveAnnotationChanges([
+      {
+        imageId,
+        profileId: requireWritableProfileId(profileId),
+        content
       }
-      const images = await invokeCommand<DatasetImage[]>("list_images");
-      set((state) => ({
-        images,
-        projects: createProjectTree(images),
-        selectedImageId: state.selectedImageId,
-        previewImageId: state.previewImageId,
-        selectedProjectId: state.selectedProjectId
-      }));
-      return;
-    }
-
-    const updatedAt = new Date().toISOString();
-    set((state) => ({
-      images: state.images.map((image) => {
-        if (image.id !== imageId) return image;
-
-        if (!hasWritableProfileId(profileId)) return image;
-        const existing = image.annotations.find((annotation) => annotation.profileId === profileId);
-        const annotations = existing
-          ? image.annotations.map((annotation) =>
-              annotation.profileId === profileId
-                ? { ...annotation, content, updatedAt }
-                : annotation
-            )
-          : [
-              ...image.annotations,
-              {
-                id: Date.now(),
-                imageId,
-                profileId,
-                content,
-                instruction: "",
-                createdAt: updatedAt,
-                updatedAt
-              }
-            ];
-
-        return {
-          ...image,
-          annotations,
-          updatedAt
-        };
-      })
-    }));
+    ]);
   },
   saveInstruction: async (imageId, profileId, instruction) => {
     const image = get().images.find((image) => image.id === imageId);
     assertProfileForDatabaseImage(image, profileId);
-
-    if (hasTauriRuntime()) {
-      if (image?.sourceKind === "folder") {
-        await invokeCommand("save_folder_instruction", {
-          imagePath: image.path,
-          instruction
-        });
-      } else {
-        await invokeCommand("save_instruction", {
-          imageId,
-          profileId: requireWritableProfileId(profileId),
-          instruction
-        });
+    await get().saveAnnotationChanges([
+      {
+        imageId,
+        profileId: requireWritableProfileId(profileId),
+        instruction
       }
-      const images = await invokeCommand<DatasetImage[]>("list_images");
-      set((state) => ({
-        images,
-        projects: createProjectTree(images),
-        selectedImageId: state.selectedImageId,
-        previewImageId: state.previewImageId,
-        selectedProjectId: state.selectedProjectId
-      }));
-      return;
-    }
-
-    const updatedAt = new Date().toISOString();
-    set((state) => ({
-      images: state.images.map((image) => {
-        if (image.id !== imageId) return image;
-
-        if (!hasWritableProfileId(profileId)) return image;
-        const existing = image.annotations.find((annotation) => annotation.profileId === profileId);
-        const annotations = existing
-          ? image.annotations.map((annotation) =>
-              annotation.profileId === profileId
-                ? { ...annotation, instruction, updatedAt }
-                : annotation
-            )
-          : [
-              ...image.annotations,
-              {
-                id: Date.now(),
-                imageId,
-                profileId,
-                content: "",
-                instruction,
-                createdAt: updatedAt,
-                updatedAt
-              }
-            ];
-
-        return {
-          ...image,
-          annotations,
-          updatedAt
-        };
-      })
-    }));
+    ]);
   },
   saveAnnotationChanges: async (changes) => {
     const effectiveChanges = changes.filter(
@@ -2448,6 +2817,7 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
 
     if (hasTauriRuntime()) {
       const state = get();
+      const historyChanges = buildTextHistoryChanges(state.images, effectiveChanges);
       const imageById = new Map(state.images.map((image) => [image.id, image]));
       const assetChanges: AnnotationChange[] = [];
       const databaseChanges: AnnotationChange[] = [];
@@ -2515,6 +2885,27 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
           i18next.t("appLog.folderAnnotationSaveFailures", { count: folderSaveFailures })
         );
       }
+      if (!isApplyingHistory) {
+        const resources = textHistoryResources(effectiveChanges);
+        const result = await recordHistoryOperation(
+          effectiveChanges.length > 1 ? "Save annotation changes" : "Save annotation",
+          resources,
+          {
+            kind: "text",
+            before: historyChanges.before,
+            after: historyChanges.after,
+            persisted: true
+          },
+          true,
+          resources
+        );
+        if (result) {
+          set({ historyState: result.state });
+          if (result.trimmed > 0) {
+            get().addAppLog(`Undo history trimmed by ${result.trimmed} operation(s).`, "warning");
+          }
+        }
+      }
       return;
     }
 
@@ -2575,6 +2966,41 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
         previewImageId: current.previewImageId,
         selectedProjectId: current.selectedProjectId
       }));
+      const payload: HistoryInvokePayload = {
+        kind: "invoke",
+        undo: { command: "delete_annotation_profile", args: { profileId } },
+        redo: {
+          command: "restore_annotation_profile",
+          args: {
+            profileId,
+            name: trimmedName,
+            annotations: images.flatMap((image) =>
+              image.annotations
+                .filter((annotation) => annotation.profileId === profileId)
+                .map((annotation) => ({
+                  imageId: image.id,
+                  content: annotation.content,
+                  instruction: annotation.instruction
+                }))
+            )
+          }
+        },
+        refresh: "imagesAndProfiles"
+      };
+      const history = await recordHistoryOperation(
+        "Create annotation type",
+        [
+          `profile:${profileId}`,
+          ...images
+            .filter((image) =>
+              image.annotations.some((annotation) => annotation.profileId === profileId)
+            )
+            .map((image) => `image:${image.id}`)
+        ],
+        payload,
+        true
+      );
+      if (history) set({ historyState: history.state });
       return profileId;
     }
 
@@ -2613,9 +3039,31 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
   },
   renameAnnotationProfile: async (profileId, newName) => {
     if (hasTauriRuntime()) {
+      const previousName = get().profiles.find((profile) => profile.id === profileId)?.name;
       await invokeCommand("rename_annotation_profile", { profileId, newName });
       const profiles = await invokeCommand<AnnotationProfile[]>("list_annotation_profiles");
       set({ profiles });
+      if (previousName && previousName !== newName.trim()) {
+        const payload: HistoryInvokePayload = {
+          kind: "invoke",
+          undo: {
+            command: "rename_annotation_profile",
+            args: { profileId, newName: previousName }
+          },
+          redo: {
+            command: "rename_annotation_profile",
+            args: { profileId, newName: newName.trim() }
+          },
+          refresh: "imagesAndProfiles"
+        };
+        const history = await recordHistoryOperation(
+          "Rename annotation type",
+          [`profile:${profileId}`],
+          payload,
+          true
+        );
+        if (history) set({ historyState: history.state });
+      }
     } else {
       set((current) => ({
         profiles: current.profiles.map((p) =>
@@ -2626,7 +3074,10 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
   },
   duplicateAnnotationProfile: async (profileId, newName) => {
     if (hasTauriRuntime()) {
-      await invokeCommand("duplicate_annotation_profile", { profileId, newName });
+      const duplicatedProfileId = await invokeCommand<number>("duplicate_annotation_profile", {
+        profileId,
+        newName
+      });
       const [images, profiles] = await Promise.all([
         invokeCommand<DatasetImage[]>("list_images"),
         invokeCommand<AnnotationProfile[]>("list_annotation_profiles")
@@ -2639,6 +3090,46 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
         previewImageId: current.previewImageId,
         selectedProjectId: current.selectedProjectId
       }));
+      const payload: HistoryInvokePayload = {
+        kind: "invoke",
+        undo: {
+          command: "delete_annotation_profile",
+          args: { profileId: duplicatedProfileId }
+        },
+        redo: {
+          command: "restore_annotation_profile",
+          args: {
+            profileId: duplicatedProfileId,
+            name: newName.trim(),
+            annotations: images.flatMap((image) =>
+              image.annotations
+                .filter((annotation) => annotation.profileId === duplicatedProfileId)
+                .map((annotation) => ({
+                  imageId: image.id,
+                  content: annotation.content,
+                  instruction: annotation.instruction
+                }))
+            )
+          }
+        },
+        refresh: "imagesAndProfiles"
+      };
+      const history = await recordHistoryOperation(
+        "Duplicate annotation type",
+        [
+          `profile:${duplicatedProfileId}`,
+          ...images
+            .filter((image) =>
+              image.annotations.some(
+                (annotation) => annotation.profileId === duplicatedProfileId
+              )
+            )
+            .map((image) => `image:${image.id}`)
+        ],
+        payload,
+        true
+      );
+      if (history) set({ historyState: history.state });
     }
   },
   deleteAnnotationProfile: async (profileId) => {
@@ -2656,6 +3147,8 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
         previewImageId: current.previewImageId,
         selectedProjectId: current.selectedProjectId
       }));
+      const historyState = await invalidateHistoryResources([`profile:${profileId}`]);
+      if (historyState) set({ historyState });
     } else {
       set((current) => ({
         profiles: current.profiles.filter((p) => p.id !== profileId),
@@ -2672,14 +3165,14 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
       const image = get().images.find((image) =>
         image.annotations.some((annotation) => annotation.id === annotationId)
       );
-      if (image?.sourceKind === "folder") {
-        await invokeCommand("save_folder_annotation", {
-          imagePath: image.path,
-          content: ""
-        });
-      } else {
-        await invokeCommand("clear_annotation", { annotationId });
+      const annotation = image?.annotations.find((item) => item.id === annotationId);
+      if (image && annotation) {
+        await get().saveAnnotationChanges([
+          { imageId: image.id, profileId: annotation.profileId, content: "" }
+        ]);
+        return;
       }
+      await invokeCommand("clear_annotation", { annotationId });
       const images = await invokeCommand<DatasetImage[]>("list_images");
       set((state) => ({
         images,
