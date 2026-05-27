@@ -44,6 +44,7 @@ import { AnimatedPortal, useAnimatedPortalClose } from "../ui/AnimatedPortal";
 import { AppSelect } from "../ui/AppSelect";
 import { Button } from "../ui/Button";
 import { HierarchyDisclosureButton } from "../ui/HierarchyDisclosureButton";
+import { Slider } from "../ui/Slider";
 import { Switch } from "../ui/Switch";
 
 type SettingsSectionKey =
@@ -2108,8 +2109,7 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
                     </div>
                   </div>
                   <div className="flex min-w-[210px] items-center gap-3">
-                    <input
-                      type="range"
+                    <Slider
                       min={70}
                       max={100}
                       value={bottomUiOpacity}
@@ -2131,8 +2131,7 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
                     </div>
                   </div>
                   <div className="flex min-w-[210px] items-center gap-3">
-                    <input
-                      type="range"
+                    <Slider
                       min={30}
                       max={100}
                       value={topUiOpacity}

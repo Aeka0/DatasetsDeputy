@@ -6,6 +6,7 @@ import { formatAppError } from "../../lib/errors";
 import { hasTauriRuntime, invokeCommand } from "../../lib/tauri";
 import { AnimatedPortal, useAnimatedPortalClose } from "../ui/AnimatedPortal";
 import { Button } from "../ui/Button";
+import { Slider } from "../ui/Slider";
 import { Switch } from "../ui/Switch";
 
 interface ModelSettings {
@@ -94,8 +95,7 @@ export function Wd14TaggerSettingsDialog({ onClose }: Wd14TaggerSettingsDialogPr
   ) => (
     <label className="grid grid-cols-[148px_minmax(0,1fr)_44px] items-center gap-3 px-4 py-3">
       <span className="text-[13px] text-neutral-700">{label}</span>
-      <input
-        type="range"
+      <Slider
         min={0}
         max={1}
         step={0.01}

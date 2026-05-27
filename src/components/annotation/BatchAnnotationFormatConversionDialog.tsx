@@ -18,6 +18,7 @@ import { AnimatedPortal, useAnimatedPortalClose } from "../ui/AnimatedPortal";
 import { AppSelect, type AppSelectOption } from "../ui/AppSelect";
 import { Button } from "../ui/Button";
 import { DialogTitleWithDataset } from "../ui/DialogTitleWithDataset";
+import { Slider } from "../ui/Slider";
 import { Switch } from "../ui/Switch";
 
 export interface BatchAnnotationFormatConversionOptions {
@@ -266,8 +267,7 @@ function NaturalLanguageRewriteOptions({
               <span>{t("annotationFormatConversion.xmlBatchSize")}</span>
               <span className="font-medium text-neutral-900">{xmlBatchSize}</span>
             </div>
-            <input
-              type="range"
+            <Slider
               min={MIN_XML_BATCH_SIZE}
               max={MAX_XML_BATCH_SIZE}
               step={1}
