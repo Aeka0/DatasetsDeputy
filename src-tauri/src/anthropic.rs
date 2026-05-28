@@ -12,11 +12,8 @@ use crate::{
 const SETTINGS_FILE: &str = "anthropic-settings.json";
 const DEFAULT_BASE_URL: &str = "https://api.anthropic.com";
 const DEFAULT_MODEL: &str = "claude-sonnet-4-6";
-const DEFAULT_AVAILABLE_MODELS: [&str; 3] = [
-    "claude-opus-4-7",
-    "claude-sonnet-4-6",
-    "claude-haiku-4-5",
-];
+const DEFAULT_AVAILABLE_MODELS: [&str; 3] =
+    ["claude-opus-4-7", "claude-sonnet-4-6", "claude-haiku-4-5"];
 const LEGACY_DEFAULT_AVAILABLE_MODELS: [&str; 1] = ["claude-sonnet-4-20250514"];
 const ANTHROPIC_VERSION: &str = "2023-06-01";
 
@@ -119,8 +116,7 @@ fn normalize_settings(settings: &mut AnthropicSettings) {
     settings.api_key = settings.api_key.trim().to_owned();
     settings.base_url = normalize_base_url(&settings.base_url);
     settings.model = settings.model.trim().to_owned();
-    if settings.available_models.is_empty()
-        || is_legacy_default_models(&settings.available_models)
+    if settings.available_models.is_empty() || is_legacy_default_models(&settings.available_models)
     {
         settings.available_models = default_settings().available_models;
         if LEGACY_DEFAULT_AVAILABLE_MODELS.contains(&settings.model.as_str()) {

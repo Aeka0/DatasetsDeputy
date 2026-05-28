@@ -1,6 +1,11 @@
-import { getCurrentWindow } from "@tauri-apps/api/window";
+import {
+  currentMonitor,
+  getCurrentWindow,
+  PhysicalPosition,
+  PhysicalSize
+} from "@tauri-apps/api/window";
 import { Copy, Minus, Square, X } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { hasTauriRuntime } from "../../lib/tauri";
 
@@ -12,31 +17,108 @@ interface WindowControlsProps {
   onClose: () => void;
 }
 
+interface WindowBounds {
+  position: PhysicalPosition;
+  size: PhysicalSize;
+}
+
+function updateMaximizedState(setIsMaximized: (isMaximized: boolean) => void, value: boolean) {
+  setIsMaximized(value);
+  setDocumentMaximizedState(value);
+}
+
 export function WindowControls({ onClose }: WindowControlsProps) {
   const [isMaximized, setIsMaximized] = useState(false);
+  const fakeMaximizedRef = useRef(false);
+  const applyingWindowLayoutRef = useRef(false);
+  const restoreBoundsRef = useRef<WindowBounds | null>(null);
 
   useEffect(() => {
     if (!hasTauriRuntime()) return;
     const currentWindow = getCurrentWindow();
 
-    const refreshMaximizedState = () => {
-      currentWindow
-        .isMaximized()
-        .then((maximized) => {
-          setIsMaximized(maximized);
-          setDocumentMaximizedState(maximized);
-        })
-        .catch(console.error);
-    };
-    
-    refreshMaximizedState();
+    const refreshMaximizedState = async () => {
+      if (applyingWindowLayoutRef.current) return;
 
-    const unlistenPromise = currentWindow.onResized(refreshMaximizedState);
+      try {
+        if (fakeMaximizedRef.current) {
+          const [monitor, position, size] = await Promise.all([
+            currentMonitor(),
+            currentWindow.outerPosition(),
+            currentWindow.outerSize()
+          ]);
+          const workArea = monitor?.workArea;
+          const stillMatchesWorkArea = Boolean(
+            workArea &&
+              Math.abs(position.x - workArea.position.x) <= 1 &&
+              Math.abs(position.y - workArea.position.y) <= 1 &&
+              Math.abs(size.width - workArea.size.width) <= 1 &&
+              Math.abs(size.height - workArea.size.height) <= 1
+          );
+
+          if (!stillMatchesWorkArea) {
+            fakeMaximizedRef.current = false;
+            updateMaximizedState(setIsMaximized, false);
+          }
+          return;
+        }
+
+        updateMaximizedState(setIsMaximized, await currentWindow.isMaximized());
+      } catch (error) {
+        console.error(error);
+      }
+    };
+
+    void refreshMaximizedState();
+
+    const unlistenResizePromise = currentWindow.onResized(() => void refreshMaximizedState());
+    const unlistenMovePromise = currentWindow.onMoved(() => void refreshMaximizedState());
 
     return () => {
-      unlistenPromise.then((unlisten) => unlisten()).catch(console.error);
+      unlistenResizePromise.then((unlisten) => unlisten()).catch(console.error);
+      unlistenMovePromise.then((unlisten) => unlisten()).catch(console.error);
     };
   }, []);
+
+  const toggleFakeMaximize = async () => {
+    const currentWindow = getCurrentWindow();
+    applyingWindowLayoutRef.current = true;
+
+    try {
+      if (fakeMaximizedRef.current || (await currentWindow.isMaximized())) {
+        if (await currentWindow.isMaximized()) {
+          await currentWindow.unmaximize();
+        }
+
+        const restoreBounds = restoreBoundsRef.current;
+        if (restoreBounds) {
+          await currentWindow.setPosition(restoreBounds.position);
+          await currentWindow.setSize(restoreBounds.size);
+        }
+
+        fakeMaximizedRef.current = false;
+        updateMaximizedState(setIsMaximized, false);
+        return;
+      }
+
+      const [monitor, position, size] = await Promise.all([
+        currentMonitor(),
+        currentWindow.outerPosition(),
+        currentWindow.outerSize()
+      ]);
+      if (!monitor) return;
+
+      restoreBoundsRef.current = { position, size };
+      await currentWindow.setPosition(monitor.workArea.position);
+      await currentWindow.setSize(monitor.workArea.size);
+      fakeMaximizedRef.current = true;
+      updateMaximizedState(setIsMaximized, true);
+    } catch (error) {
+      console.error(error);
+    } finally {
+      applyingWindowLayoutRef.current = false;
+    }
+  };
 
   const withWindow = (action: "minimize" | "toggleMaximize") => {
     if (!hasTauriRuntime()) {
@@ -47,7 +129,7 @@ export function WindowControls({ onClose }: WindowControlsProps) {
     if (action === "minimize") {
       void currentWindow.minimize();
     } else {
-      void currentWindow.toggleMaximize();
+      void toggleFakeMaximize();
     }
   };
 

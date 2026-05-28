@@ -12,8 +12,7 @@ use crate::{
 const SETTINGS_FILE: &str = "openai-settings.json";
 const DEFAULT_BASE_URL: &str = "https://api.openai.com/v1";
 const DEFAULT_MODEL: &str = "gpt-5.5";
-const DEFAULT_AVAILABLE_MODELS: [&str; 4] =
-    ["gpt-5.5", "gpt-5.4", "gpt-5.4-mini", "gpt-5.4-nano"];
+const DEFAULT_AVAILABLE_MODELS: [&str; 4] = ["gpt-5.5", "gpt-5.4", "gpt-5.4-mini", "gpt-5.4-nano"];
 const LEGACY_DEFAULT_AVAILABLE_MODELS: [&str; 1] = ["gpt-4.1-mini"];
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -65,8 +64,7 @@ fn normalize_settings(settings: &mut OpenAiSettings) {
     if settings.base_url == DEFAULT_BASE_URL {
         settings.base_url.clear();
     }
-    if settings.available_models.is_empty()
-        || is_legacy_default_models(&settings.available_models)
+    if settings.available_models.is_empty() || is_legacy_default_models(&settings.available_models)
     {
         settings.available_models = default_settings().available_models;
         if LEGACY_DEFAULT_AVAILABLE_MODELS.contains(&settings.model.as_str()) {
