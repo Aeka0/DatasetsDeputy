@@ -17,7 +17,7 @@ pub struct LlmLoaderEndpointSettings {
     pub base_url: String,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LlmLoaderSettings {
     #[serde(default)]
@@ -26,16 +26,6 @@ pub struct LlmLoaderSettings {
     pub textgen: LlmLoaderEndpointSettings,
     #[serde(default)]
     pub ollama: LlmLoaderEndpointSettings,
-}
-
-impl Default for LlmLoaderSettings {
-    fn default() -> Self {
-        Self {
-            lm_studio: LlmLoaderEndpointSettings::default(),
-            textgen: LlmLoaderEndpointSettings::default(),
-            ollama: LlmLoaderEndpointSettings::default(),
-        }
-    }
 }
 
 pub fn default_settings() -> LlmLoaderSettings {

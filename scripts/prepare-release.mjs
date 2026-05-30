@@ -1,5 +1,13 @@
 import { mkdir, readdir, rename, stat } from "node:fs/promises";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+const scriptDir = path.dirname(fileURLToPath(import.meta.url));
+const projectRoot = path.resolve(scriptDir, "..");
+
+function resolveFromProjectRoot(value) {
+  return path.isAbsolute(value) ? path.resolve(value) : path.resolve(projectRoot, value);
+}
 
 const allowedRootEntries = new Set([
   "DatasetsDeputy.exe",
@@ -13,8 +21,8 @@ const allowedRootEntries = new Set([
 ]);
 
 const releaseRoot = process.argv[2]
-  ? path.resolve(process.argv[2])
-  : path.resolve("release", "DatasetsDeputy");
+  ? resolveFromProjectRoot(process.argv[2])
+  : path.resolve(projectRoot, "release", "DatasetsDeputy");
 
 const appDir = path.join(releaseRoot, "app");
 
@@ -38,4 +46,4 @@ for (const entry of entries) {
   }
 }
 
-console.log(`Release layout prepared at ${releaseRoot}`);
+console.log(`发布目录结构已整理：${releaseRoot}`);

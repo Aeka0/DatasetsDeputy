@@ -3,13 +3,44 @@
     [string]$ZipPath = "",
     [switch]$Bundle,
     [switch]$Clean,
-    [switch]$Install
+    [switch]$Install,
+    [switch]$ResetCache
 )
 
 $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
 
-$ProjectRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
+function Resolve-ProjectRoot {
+    if ($PSScriptRoot) {
+        return (Resolve-Path -LiteralPath $PSScriptRoot).Path
+    }
+
+    if ($MyInvocation.MyCommand.Path) {
+        $scriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
+        return (Resolve-Path -LiteralPath $scriptRoot).Path
+    }
+
+    return (Get-Location).Path
+}
+
+function Resolve-CargoBin {
+    if ($env:CARGO_HOME) {
+        return (Join-Path $env:CARGO_HOME "bin")
+    }
+
+    if ($env:USERPROFILE) {
+        return (Join-Path $env:USERPROFILE ".cargo\bin")
+    }
+
+    if ($env:HOME) {
+        return (Join-Path $env:HOME ".cargo/bin")
+    }
+
+    return $null
+}
+
+$ProjectRoot = Resolve-ProjectRoot
+$ProjectRootMarker = Join-Path $ProjectRoot ".cache\project-root.txt"
 $ReleaseRoot = if ($OutputDir) {
     if ([IO.Path]::IsPathRooted($OutputDir)) {
         [IO.Path]::GetFullPath($OutputDir)
@@ -35,7 +66,7 @@ else {
 $TauriDir = Join-Path $ProjectRoot "src-tauri"
 $ExeSource = Join-Path $TauriDir "target\release\datasets-deputy.exe"
 $ExeTarget = Join-Path $ReleaseRoot "DatasetsDeputy.exe"
-$CargoBin = Join-Path $env:USERPROFILE ".cargo\bin"
+$CargoBin = Resolve-CargoBin
 $AssetRoot = Join-Path $ProjectRoot "assets"
 $SplashAssetDir = Join-Path $AssetRoot "splash"
 $PublicSplashDir = Join-Path $ProjectRoot "public\splash"
@@ -97,6 +128,66 @@ function New-ReleaseLayout {
     foreach ($dir in @("model", "config", "datasets", "runtime", "app", "log", "temp")) {
         New-Item -ItemType Directory -Force -Path (Join-Path $Path $dir) | Out-Null
     }
+}
+
+function Clear-GeneratedPathCaches {
+    param([string]$Reason)
+
+    Write-Step $Reason
+
+    $cachePaths = @(
+        (Join-Path $ProjectRoot ".vite")
+        (Join-Path $ProjectRoot "node_modules\.vite")
+        (Join-Path $ProjectRoot "node_modules\.cache")
+        (Join-Path $ProjectRoot "src-tauri\.tauri")
+        (Join-Path $ProjectRoot "src-tauri\target\debug\.fingerprint")
+        (Join-Path $ProjectRoot "src-tauri\target\debug\build")
+        (Join-Path $ProjectRoot "src-tauri\target\release\.fingerprint")
+        (Join-Path $ProjectRoot "src-tauri\target\release\build")
+    )
+
+    foreach ($path in $cachePaths) {
+        if (Test-Path -LiteralPath $path) {
+            Write-Host "清理本地路径缓存：$path"
+            Remove-Item -LiteralPath $path -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+}
+
+function Write-ProjectRootMarker {
+    $currentRoot = [IO.Path]::GetFullPath($ProjectRoot).TrimEnd('\')
+    $markerDir = Split-Path -Parent $ProjectRootMarker
+    New-Item -ItemType Directory -Force -Path $markerDir | Out-Null
+    Set-Content -LiteralPath $ProjectRootMarker -Value $currentRoot -Encoding UTF8
+}
+
+function Sync-ProjectRootMarker {
+    param([switch]$SkipCacheClear)
+
+    $currentRoot = [IO.Path]::GetFullPath($ProjectRoot).TrimEnd('\')
+    $previousRoot = $null
+
+    if (Test-Path -LiteralPath $ProjectRootMarker) {
+        $markerContent = Get-Content -LiteralPath $ProjectRootMarker -Raw -ErrorAction SilentlyContinue
+        if ($null -ne $markerContent) {
+            $previousRoot = $markerContent.Trim()
+        }
+    }
+
+    if ($previousRoot -and $previousRoot.Equals($currentRoot, [StringComparison]::OrdinalIgnoreCase)) {
+        return
+    }
+
+    if (-not $SkipCacheClear) {
+        if ($previousRoot) {
+            Clear-GeneratedPathCaches "检测到项目目录变化，清理包含旧绝对路径的本地缓存"
+        }
+        else {
+            Clear-GeneratedPathCaches "初始化项目目录标记，清理可能包含绝对路径的本地缓存"
+        }
+    }
+
+    Write-ProjectRootMarker
 }
 
 function Stop-ReleaseProcesses {
@@ -195,7 +286,15 @@ function Sync-ProjectAssets {
 Write-Step "准备构建环境"
 Set-Location $ProjectRoot
 
-if (Test-Path $CargoBin) {
+if ($ResetCache) {
+    Clear-GeneratedPathCaches "按参数要求清理本地路径缓存"
+    Sync-ProjectRootMarker -SkipCacheClear
+}
+else {
+    Sync-ProjectRootMarker
+}
+
+if ($CargoBin -and (Test-Path $CargoBin)) {
     $env:Path = "$CargoBin;$env:Path"
 }
 
@@ -288,7 +387,7 @@ $BuildInfo = [ordered]@{
     version = "0.1.0"
     buildTime = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
     gitCommit = Get-GitCommit
-    sourceExe = $ExeSource
+    sourceExe = "src-tauri/target/release/datasets-deputy.exe"
     defaultWindowRenderMode = $DefaultWindowRenderMode
     supportedWindowRenderModes = $SupportedWindowRenderModes
 }

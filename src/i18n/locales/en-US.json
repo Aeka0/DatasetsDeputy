@@ -70,7 +70,7 @@
     "trainingCacheCleaner": "Remove trainer cache",
     "aboutBody": "Dataset image preview, annotation dimension management, and export tools.",
     "versionLabel": "Version",
-    "version": "Alpha 6",
+    "version": "Beta 1",
     "authorLabel": "Author",
     "author": "Aeka",
     "projectLabel": "Project",
