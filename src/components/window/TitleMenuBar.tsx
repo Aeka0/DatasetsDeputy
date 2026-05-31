@@ -25,6 +25,11 @@ import {
 } from "../../lib/annotationNormalization";
 import { cn } from "../../lib/cn";
 import { formatAppError } from "../../lib/errors";
+import {
+  historyLabel,
+  translateHistoryLabel,
+  type HistoryLabelValue
+} from "../../lib/historyLabels";
 import { formatDialogMenuLabel } from "../../lib/menuLabels";
 import { findProject, formatProjectPath, getProjectDisplayName } from "../../lib/projects";
 import { getUnsavedTableDraftState } from "../../lib/tableDrafts";
@@ -854,13 +859,13 @@ export function TitleMenuBar({
 
   const finalizeBatchChanges = async (
     changes: Array<{ imageId: number; content?: string; instruction?: string }>,
-    historyLabel: string
+    historyLabelValue: HistoryLabelValue
   ) => {
     if (selectedProfileId === undefined || changes.length === 0) return;
     applyBatchTableDrafts(
       selectedProfileId,
       changes,
-      autoSaveAfterBatch ? undefined : historyLabel
+      autoSaveAfterBatch ? undefined : historyLabelValue
     );
     if (!autoSaveAfterBatch) return;
     try {
@@ -926,7 +931,10 @@ export function TitleMenuBar({
 
     try {
       if (isBatchActionActive(runId) && changes.length > 0) {
-        await finalizeBatchChanges(changes, "Batch add");
+        await finalizeBatchChanges(
+          changes,
+          historyLabel("history.labels.batchAdd", "Batch add")
+        );
       }
       if (isBatchActionActive(runId)) {
         addAppLog(t("appLog.batchAddComplete", { count: changes.length }));
@@ -998,7 +1006,10 @@ export function TitleMenuBar({
 
     try {
       if (isBatchActionActive(runId) && changes.length > 0) {
-        await finalizeBatchChanges(changes, "Batch replace");
+        await finalizeBatchChanges(
+          changes,
+          historyLabel("history.labels.batchReplace", "Batch replace")
+        );
       }
       if (isBatchActionActive(runId)) {
         addAppLog(t("appLog.batchReplaceComplete", { count: changes.length }));
@@ -1058,7 +1069,10 @@ export function TitleMenuBar({
         .filter((draft): draft is { imageId: number; content: string } => Boolean(draft));
 
       if (isBatchActionActive(runId) && changes.length > 0) {
-        await finalizeBatchChanges(changes, "Convert annotation format");
+        await finalizeBatchChanges(
+          changes,
+          historyLabel("history.labels.convertAnnotationFormat", "Convert annotation format")
+        );
       }
       if (isBatchActionActive(runId)) {
         addAppLog(t("appLog.annotationFormatConversionComplete", { count: changes.length }));
@@ -1215,7 +1229,9 @@ export function TitleMenuBar({
         applyBatchTableDrafts(
           selectedProfileId,
           completedChanges,
-          autoSaveAfterBatch ? undefined : "Rewrite annotations"
+          autoSaveAfterBatch
+            ? undefined
+            : historyLabel("history.labels.rewriteAnnotations", "Rewrite annotations")
         );
         if (autoSaveAfterBatch) {
           await saveAnnotationChanges(
@@ -1257,7 +1273,10 @@ export function TitleMenuBar({
 
     try {
       if (isBatchActionActive(runId) && changes.length > 0) {
-        await finalizeBatchChanges(changes, "Normalize annotations");
+        await finalizeBatchChanges(
+          changes,
+          historyLabel("history.labels.normalizeAnnotations", "Normalize annotations")
+        );
       }
       if (isBatchActionActive(runId)) {
         addAppLog(t("appLog.batchAnnotationNormalizationComplete", { count: changes.length }));
@@ -1318,12 +1337,16 @@ export function TitleMenuBar({
     ],
     edit: [
       {
-        label: historyState.undoLabel ? `${t("menu.undo")}: ${historyState.undoLabel}` : t("menu.undo"),
+        label: historyState.undoLabel
+          ? `${t("menu.undo")}: ${translateHistoryLabel(historyState.undoLabel, t)}`
+          : t("menu.undo"),
         disabled: !historyState.canUndo,
         onSelect: () => void undo()
       },
       {
-        label: historyState.redoLabel ? `${t("menu.redo")}: ${historyState.redoLabel}` : t("menu.redo"),
+        label: historyState.redoLabel
+          ? `${t("menu.redo")}: ${translateHistoryLabel(historyState.redoLabel, t)}`
+          : t("menu.redo"),
         disabled: !historyState.canRedo,
         onSelect: () => void redo()
       },
@@ -1653,7 +1676,7 @@ export function TitleMenuBar({
       if (successfulChanges.length === 0) return;
       if (!autoSaveAfterAnnotation) {
         await recordDraftHistory(
-          "Generate annotations",
+          historyLabel("history.labels.generateAnnotations", "Generate annotations"),
           successfulChanges.map((change) => ({
             imageId: change.imageId,
             profileId: selectedProfileId,

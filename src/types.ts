@@ -26,13 +26,21 @@ export interface AnnotationChange {
 export interface HistoryState {
   canUndo: boolean;
   canRedo: boolean;
-  undoLabel?: string;
-  redoLabel?: string;
+  undoLabel?: HistoryLabelValue;
+  redoLabel?: HistoryLabelValue;
   operationCount: number;
   sizeBytes: number;
   maxOperations: number;
   maxBytes: number;
 }
+
+export interface HistoryLabel {
+  key: string;
+  fallback?: string;
+  params?: Record<string, string | number | boolean>;
+}
+
+export type HistoryLabelValue = string | HistoryLabel;
 
 export interface HistoryTextPayload {
   kind: "text";
@@ -57,7 +65,7 @@ export type HistoryPayload = HistoryTextPayload | HistoryInvokePayload;
 
 export interface HistoryOperation {
   id: number;
-  label: string;
+  label: HistoryLabelValue;
   resources: string[];
   sizeBytes: number;
   payload: HistoryPayload;

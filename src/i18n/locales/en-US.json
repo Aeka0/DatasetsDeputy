@@ -80,6 +80,29 @@
     "developmentNotice": "Development build: features are incomplete and errors may occur.",
     "close": "Close"
   },
+  "history": {
+    "labels": {
+      "batchAdd": "Batch add",
+      "batchReplace": "Batch replace",
+      "convertAnnotationFormat": "Convert annotation format",
+      "consolidateLooseFiles": "Consolidate loose files",
+      "createAnnotationType": "Create annotation type",
+      "createFolder": "Create folder",
+      "duplicateAnnotationType": "Duplicate annotation type",
+      "editAnnotationDraft": "Edit annotation draft",
+      "generateAnnotations": "Generate annotations",
+      "importDatabase": "Import database",
+      "importDataset": "Import dataset",
+      "mountFolder": "Mount folder",
+      "normalizeAnnotations": "Normalize annotations",
+      "renameAnnotationType": "Rename annotation type",
+      "renameFolder": "Rename folder",
+      "renameImage": "Rename image",
+      "rewriteAnnotations": "Rewrite annotations",
+      "saveAnnotation": "Save annotation",
+      "saveAnnotationChanges": "Save annotation changes"
+    }
+  },
   "batchEdit": {
     "addTitle": "Batch add fields",
     "replaceTitle": "Batch replace/delete",
@@ -557,6 +580,11 @@
   },
   "appLog": {
     "saveNeedsProfile": "Select an annotation type before saving annotations.",
+    "historyUndid": "Undid: {{label}}",
+    "historyRedid": "Redid: {{label}}",
+    "historyUndoFailed": "Undo failed: {{message}}",
+    "historyRedoFailed": "Redo failed: {{message}}",
+    "historyTrimmed": "Undo history trimmed by {{count}} operation(s).",
     "importCompleted": "Import complete: imported {{imported}}, skipped {{skipped}}, failed {{failed}}.",
     "exportFailed": "Export failed: {{message}}",
     "exportCompleted": "Export complete: exported {{exported}} images, failed {{failed}}.",

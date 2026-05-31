@@ -6,11 +6,32 @@ use serde_json::Value;
 pub const HISTORY_MAX_OPERATIONS: usize = 100;
 pub const HISTORY_MAX_BYTES: u64 = 1024 * 1024 * 1024;
 
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[serde(untagged)]
+pub enum HistoryLabel {
+    Localized {
+        key: String,
+        fallback: Option<String>,
+        params: Option<Value>,
+    },
+    Plain(String),
+}
+
+impl HistoryLabel {
+    #[cfg(test)]
+    fn fallback_text(&self) -> &str {
+        match self {
+            HistoryLabel::Localized { key, fallback, .. } => fallback.as_deref().unwrap_or(key),
+            HistoryLabel::Plain(label) => label,
+        }
+    }
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct HistoryOperation {
     pub id: u64,
-    pub label: String,
+    pub label: HistoryLabel,
     pub resources: Vec<String>,
     pub size_bytes: u64,
     pub payload: Value,
@@ -20,7 +41,7 @@ pub struct HistoryOperation {
 #[derive(Clone, Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NewHistoryOperation {
-    pub label: String,
+    pub label: HistoryLabel,
     pub resources: Vec<String>,
     pub size_bytes: u64,
     pub payload: Value,
@@ -34,8 +55,8 @@ pub struct NewHistoryOperation {
 pub struct HistoryState {
     pub can_undo: bool,
     pub can_redo: bool,
-    pub undo_label: Option<String>,
-    pub redo_label: Option<String>,
+    pub undo_label: Option<HistoryLabel>,
+    pub redo_label: Option<HistoryLabel>,
     pub operation_count: usize,
     pub size_bytes: u64,
     pub max_operations: usize,
@@ -204,7 +225,7 @@ mod tests {
         persisted: bool,
     ) -> NewHistoryOperation {
         NewHistoryOperation {
-            label: label.to_owned(),
+            label: HistoryLabel::Plain(label.to_owned()),
             resources: vec![resource.to_owned()],
             size_bytes,
             payload: json!({ "kind": "text" }),
@@ -219,9 +240,16 @@ mod tests {
         manager.record(operation("A", "image:1", 10, true));
         manager.record(operation("B", "image:2", 10, true));
 
-        assert_eq!(manager.undo().unwrap().0.label, "B");
-        assert_eq!(manager.redo().unwrap().0.label, "B");
-        assert_eq!(manager.state().undo_label.as_deref(), Some("B"));
+        assert_eq!(manager.undo().unwrap().0.label.fallback_text(), "B");
+        assert_eq!(manager.redo().unwrap().0.label.fallback_text(), "B");
+        assert_eq!(
+            manager
+                .state()
+                .undo_label
+                .as_ref()
+                .map(HistoryLabel::fallback_text),
+            Some("B")
+        );
     }
 
     #[test]
@@ -244,7 +272,14 @@ mod tests {
         manager.invalidate_resources(&["dataset:1".to_owned()]);
 
         assert_eq!(manager.state().operation_count, 1);
-        assert_eq!(manager.state().undo_label.as_deref(), Some("B"));
+        assert_eq!(
+            manager
+                .state()
+                .undo_label
+                .as_ref()
+                .map(HistoryLabel::fallback_text),
+            Some("B")
+        );
     }
 
     #[test]

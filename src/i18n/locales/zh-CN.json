@@ -80,6 +80,29 @@
     "developmentNotice": "开发版本：功能尚不完整，且可能出现错误。",
     "close": "关闭"
   },
+  "history": {
+    "labels": {
+      "batchAdd": "批量添加",
+      "batchReplace": "批量替换",
+      "convertAnnotationFormat": "转换标注格式",
+      "consolidateLooseFiles": "整合零散文件",
+      "createAnnotationType": "创建标注类型",
+      "createFolder": "创建文件夹",
+      "duplicateAnnotationType": "复制标注类型",
+      "editAnnotationDraft": "编辑标注草稿",
+      "generateAnnotations": "生成标注",
+      "importDatabase": "导入数据库",
+      "importDataset": "导入数据集",
+      "mountFolder": "挂载文件夹",
+      "normalizeAnnotations": "标准化标注",
+      "renameAnnotationType": "重命名标注类型",
+      "renameFolder": "重命名文件夹",
+      "renameImage": "重命名图片",
+      "rewriteAnnotations": "重写标注",
+      "saveAnnotation": "保存标注",
+      "saveAnnotationChanges": "保存标注改动"
+    }
+  },
   "batchEdit": {
     "addTitle": "批量添加字段",
     "replaceTitle": "批量替换/删除",
@@ -557,6 +580,11 @@
   },
   "appLog": {
     "saveNeedsProfile": "保存标注需要先选择标注类型。",
+    "historyUndid": "已撤销：{{label}}",
+    "historyRedid": "已重做：{{label}}",
+    "historyUndoFailed": "撤销失败：{{message}}",
+    "historyRedoFailed": "重做失败：{{message}}",
+    "historyTrimmed": "撤销历史已裁剪 {{count}} 个操作。",
     "importCompleted": "导入完成：已导入 {{imported}}，已跳过 {{skipped}}，失败 {{failed}}。",
     "exportFailed": "导出失败：{{message}}",
     "exportCompleted": "导出完成：已导出 {{exported}} 张图片，失败 {{failed}}。",

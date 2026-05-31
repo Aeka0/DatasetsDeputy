@@ -3,6 +3,7 @@ import { create } from "zustand";
 
 import i18next from "../i18n";
 import { formatAppError } from "../lib/errors";
+import { historyLabel, translateHistoryLabel } from "../lib/historyLabels";
 import { flattenProjects } from "../lib/projects";
 import type { TableCellState } from "../lib/tableCellState";
 import { hasTauriRuntime, invokeCommand } from "../lib/tauri";
@@ -22,6 +23,7 @@ import type {
   ExportPreview,
   ExportProgress,
   HistoryInvokePayload,
+  HistoryLabelValue,
   HistoryPayload,
   HistoryRecordResult,
   HistoryState,
@@ -570,7 +572,7 @@ interface DatasetState {
   applyBatchTableDrafts: (
     profileId: number,
     drafts: Array<{ imageId: number; content?: string; instruction?: string }>,
-    historyLabel?: string
+    historyLabel?: HistoryLabelValue
   ) => void;
   updateTableAnnotationDraft: (imageId: number, value: string) => void;
   updateTableInstructionDraft: (imageId: number, value: string) => void;
@@ -591,7 +593,7 @@ interface DatasetState {
     before: { content?: string; instruction?: string }
   ) => Promise<void>;
   recordDraftHistory: (
-    label: string,
+    label: HistoryLabelValue,
     before: AnnotationChange[],
     after: AnnotationChange[]
   ) => Promise<void>;
@@ -790,7 +792,7 @@ async function invalidateHistoryResources(resources: string[]) {
 }
 
 async function recordHistoryOperation(
-  label: string,
+  label: HistoryLabelValue,
   resources: string[],
   payload: HistoryPayload,
   persisted: boolean,
@@ -913,11 +915,18 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
           await get().refreshImages();
         }
       }
-      get().addAppLog(`Undid: ${operation.label}`);
+      get().addAppLog(
+        i18next.t("appLog.historyUndid", {
+          label: translateHistoryLabel(operation.label, i18next.t.bind(i18next))
+        })
+      );
     } catch (error) {
       const restored = await invokeCommand<HistoryTakeResult>("take_history_redo");
       set({ historyState: restored.state });
-      get().addAppLog(`Undo failed: ${formatAppError(error)}`, "error");
+      get().addAppLog(
+        i18next.t("appLog.historyUndoFailed", { message: formatAppError(error) }),
+        "error"
+      );
       throw error;
     } finally {
       isApplyingHistory = false;
@@ -957,11 +966,18 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
           await get().refreshImages();
         }
       }
-      get().addAppLog(`Redid: ${operation.label}`);
+      get().addAppLog(
+        i18next.t("appLog.historyRedid", {
+          label: translateHistoryLabel(operation.label, i18next.t.bind(i18next))
+        })
+      );
     } catch (error) {
       const restored = await invokeCommand<HistoryTakeResult>("take_history_undo");
       set({ historyState: restored.state });
-      get().addAppLog(`Redo failed: ${formatAppError(error)}`, "error");
+      get().addAppLog(
+        i18next.t("appLog.historyRedoFailed", { message: formatAppError(error) }),
+        "error"
+      );
       throw error;
     } finally {
       isApplyingHistory = false;
@@ -988,7 +1004,7 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
     if (after.content === undefined && after.instruction === undefined) return;
     const resources = textHistoryResources([after]);
     const result = await recordHistoryOperation(
-      "Edit annotation draft",
+      historyLabel("history.labels.editAnnotationDraft", "Edit annotation draft"),
       resources,
       { kind: "text", before: [prior], after: [after], persisted: false },
       false
@@ -1076,7 +1092,7 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
             refresh: "imagesAndProfiles"
           };
           const history = await recordHistoryOperation(
-            "Import dataset",
+            historyLabel("history.labels.importDataset", "Import dataset"),
             [
               `dataset:${progress.report.datasetId}`,
               ...images
@@ -1508,7 +1524,7 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
         refresh: "imagesAndProfiles"
       };
       const history = await recordHistoryOperation(
-        "Mount folder",
+        historyLabel("history.labels.mountFolder", "Mount folder"),
         [`folder:${mountedPath}`],
         payload,
         true
@@ -1778,7 +1794,7 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
         refresh: "imagesAndProfiles"
       };
       const history = await recordHistoryOperation(
-        "Rename folder",
+        historyLabel("history.labels.renameFolder", "Rename folder"),
         [`folder:${project.path}`, `folder:${newPath}`],
         payload,
         true
@@ -1835,7 +1851,7 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
           refresh: "images"
         };
         const history = await recordHistoryOperation(
-          "Create folder",
+          historyLabel("history.labels.createFolder", "Create folder"),
           [`folder:${createdPath}`],
           payload,
           true
@@ -1879,7 +1895,7 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
         refresh: "images"
       };
       const history = await recordHistoryOperation(
-        "Consolidate loose files",
+        historyLabel("history.labels.consolidateLooseFiles", "Consolidate loose files"),
         [
           `folder:${project.path}`,
           ...project.imageIds.map((imageId) => `image:${imageId}`)
@@ -1999,7 +2015,7 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
         refresh: "images"
       };
       const history = await recordHistoryOperation(
-        "Rename image",
+        historyLabel("history.labels.renameImage", "Rename image"),
         [`image:${image.id}`],
         payload,
         true
@@ -2246,7 +2262,7 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
         refresh: "imagesAndProfiles"
       };
       const history = await recordHistoryOperation(
-        "Import database",
+        historyLabel("history.labels.importDatabase", "Import database"),
         [
           `dataset:${result.datasetId}`,
           ...images
@@ -2888,7 +2904,9 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
       if (!isApplyingHistory) {
         const resources = textHistoryResources(effectiveChanges);
         const result = await recordHistoryOperation(
-          effectiveChanges.length > 1 ? "Save annotation changes" : "Save annotation",
+          effectiveChanges.length > 1
+            ? historyLabel("history.labels.saveAnnotationChanges", "Save annotation changes")
+            : historyLabel("history.labels.saveAnnotation", "Save annotation"),
           resources,
           {
             kind: "text",
@@ -2902,7 +2920,10 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
         if (result) {
           set({ historyState: result.state });
           if (result.trimmed > 0) {
-            get().addAppLog(`Undo history trimmed by ${result.trimmed} operation(s).`, "warning");
+            get().addAppLog(
+              i18next.t("appLog.historyTrimmed", { count: result.trimmed }),
+              "warning"
+            );
           }
         }
       }
@@ -2988,7 +3009,7 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
         refresh: "imagesAndProfiles"
       };
       const history = await recordHistoryOperation(
-        "Create annotation type",
+        historyLabel("history.labels.createAnnotationType", "Create annotation type"),
         [
           `profile:${profileId}`,
           ...images
@@ -3057,7 +3078,7 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
           refresh: "imagesAndProfiles"
         };
         const history = await recordHistoryOperation(
-          "Rename annotation type",
+          historyLabel("history.labels.renameAnnotationType", "Rename annotation type"),
           [`profile:${profileId}`],
           payload,
           true
@@ -3115,7 +3136,7 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
         refresh: "imagesAndProfiles"
       };
       const history = await recordHistoryOperation(
-        "Duplicate annotation type",
+        historyLabel("history.labels.duplicateAnnotationType", "Duplicate annotation type"),
         [
           `profile:${duplicatedProfileId}`,
           ...images
