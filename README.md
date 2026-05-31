@@ -1,5 +1,7 @@
 # Datasets Deputy
 
+<img width="1344" height="768" alt="DatasetsDeputy" src="https://github.com/user-attachments/assets/b5b61cbb-388d-4524-be1e-8a3673b38a4a" />
+
 Composite dataset manager desktop app.
 
 ## MVP Scope
