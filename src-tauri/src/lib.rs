@@ -1,5 +1,6 @@
 mod anthropic;
 mod app_dirs;
+mod clip_similarity;
 mod commands;
 mod db;
 mod errors;
@@ -27,7 +28,10 @@ mod wd14_tagger;
 mod window_region;
 mod window_rendering;
 
-use std::sync::{atomic::AtomicBool, Arc, Mutex};
+use std::{
+    collections::HashMap,
+    sync::{atomic::AtomicBool, Arc, Mutex},
+};
 
 use tauri::{Manager, WebviewWindowBuilder, WindowEvent};
 #[cfg(target_os = "windows")]
@@ -43,6 +47,7 @@ pub struct AppState {
     pub dirs: app_dirs::AppDirs,
     pub history: Mutex<history::HistoryManager>,
     pub import_cancel: Mutex<Option<Arc<AtomicBool>>>,
+    pub similarity_scans: Mutex<HashMap<String, Arc<AtomicBool>>>,
     pub thumbnail_watcher: Mutex<Option<file_watcher::ThumbnailWatcher>>,
 }
 
@@ -92,6 +97,7 @@ pub fn run() {
                 dirs: dirs.clone(),
                 history: Mutex::new(history::HistoryManager::default()),
                 import_cancel: Mutex::new(None),
+                similarity_scans: Mutex::new(HashMap::new()),
                 thumbnail_watcher: Mutex::new(None),
             });
 
@@ -269,6 +275,8 @@ pub fn run() {
             commands::start_export_dataset,
             commands::scan_training_cache,
             commands::remove_training_cache,
+            commands::start_similarity_scan,
+            commands::cancel_similarity_scan,
             commands::start_format_mismatch_scan,
             commands::fix_format_mismatches,
             commands::get_history_state,

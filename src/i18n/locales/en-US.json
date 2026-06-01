@@ -68,6 +68,7 @@
     "datasetDebug": "Dataset debugging",
     "formatValidator": "Format validator",
     "trainingCacheCleaner": "Remove trainer cache",
+    "duplicateSimilarity": "Duplicate/similar images",
     "aboutBody": "Dataset image preview, annotation dimension management, and export tools.",
     "versionLabel": "Version",
     "version": "Beta 1",
@@ -236,6 +237,31 @@
       "confirmRemove": "Confirm delete",
       "removeComplete": "Deleted {{count}} item(s), failed {{failed}}; released {{size}}.",
       "actionFailed": "Action failed: {{message}}"
+    },
+    "duplicateSimilarity": {
+      "title": "Duplicate/similar image detection",
+      "selectFolder": "Select folder",
+      "noFolderSelected": "Please select a folder containing images",
+      "threshold": "Cosine threshold",
+      "hint": "Select a folder and run CLIP-based duplicate/similar detection. Results are report-only.",
+      "scan": "Run scan",
+      "scanFailed": "Scan failed: {{message}}",
+      "noGroups": "No duplicate or similar groups were found.",
+      "exactGroup": "Exact",
+      "similarGroup": "Similar",
+      "groupSummary": "{{count}} images, {{min}} - {{max}}",
+      "pairCount": "{{count}} pair(s)",
+      "progressCount": "{{processed}} / {{total}}",
+      "warningCount": "{{count}} warning(s)",
+      "resultSummary": "{{scanned}} scanned, {{groups}} group(s), {{cacheHits}} cache hit(s), {{embedded}} embedded, {{seconds}}s",
+      "phase": {
+        "scanning": "Scanning images...",
+        "hashing": "Checking exact duplicates...",
+        "embedding": "Generating CLIP embeddings...",
+        "comparing": "Comparing cosine similarity...",
+        "done": "Done",
+        "failed": "Failed"
+      }
     }
   },
   "toolbar": {
@@ -437,7 +463,11 @@
     "wd14Tagger": "WD14 tagger",
     "wd14ModelPath": "Model folder",
     "wd14ModelPathPlaceholder": "Select a WD14 model folder containing ONNX or PyTorch weights",
+    "clipSimilarity": "CLIP similarity",
+    "clipModelPath": "Model folder",
+    "clipModelPathPlaceholder": "Select a local Hugging Face CLIP model folder",
     "modelTypeUnset": "No model selected",
+    "modelTypeFolder": "Folder",
     "modelTypeunknown": "Unknown weight type",
     "modelTypepytorch": "PyTorch weights",
     "modelTypeonnx": "ONNX weights",

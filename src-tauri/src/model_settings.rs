@@ -14,6 +14,15 @@ const SETTINGS_FILE: &str = "model-settings.json";
 pub struct ModelSettings {
     #[serde(default)]
     pub wd14_tagger: Wd14TaggerSettings,
+    #[serde(default)]
+    pub clip_similarity: ClipSimilaritySettings,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ClipSimilaritySettings {
+    #[serde(default)]
+    pub model_path: String,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -72,6 +81,7 @@ fn normalize_settings(mut settings: ModelSettings) -> ModelSettings {
     settings.wd14_tagger.general_threshold = settings.wd14_tagger.general_threshold.clamp(0.0, 1.0);
     settings.wd14_tagger.character_threshold =
         settings.wd14_tagger.character_threshold.clamp(0.0, 1.0);
+    settings.clip_similarity.model_path = settings.clip_similarity.model_path.trim().to_owned();
     settings
 }
 

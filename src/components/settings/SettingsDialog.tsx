@@ -189,11 +189,16 @@ interface PythonEnvInstallResult {
 
 interface ModelSettings {
   wd14Tagger: Wd14TaggerSettings;
+  clipSimilarity: ClipSimilaritySettings;
 }
 
 interface ModelPathSelection {
   path: string;
   modelType: Wd14TaggerSettings["modelType"];
+}
+
+interface ClipSimilaritySettings {
+  modelPath: string;
 }
 
 interface Wd14TaggerSettings {
@@ -297,6 +302,9 @@ const defaultModelSettings: ModelSettings = {
     replaceUnderscoresWithSpaces: true,
     generalThreshold: 0.7,
     characterThreshold: 0.9
+  },
+  clipSimilarity: {
+    modelPath: ""
   }
 };
 
@@ -941,6 +949,17 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
     setModelSettingsMessage("");
   };
 
+  const patchClipSimilaritySettings = (patch: Partial<ClipSimilaritySettings>) => {
+    setModelSettings((current) => ({
+      ...current,
+      clipSimilarity: {
+        ...current.clipSimilarity,
+        ...patch
+      }
+    }));
+    setModelSettingsMessage("");
+  };
+
   const runGeminiAction = async (action: "fetch" | "test") => {
     if (!hasTauriRuntime() || isGeminiBusy) return;
 
@@ -1273,6 +1292,26 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
         modelPath: selection.path,
         modelType: selection.modelType
       });
+      setModelSettingsMessage(t("settings.modelPathSelected"));
+    } catch (error) {
+      const payload = error as { code?: string; message?: string };
+      if (payload.code !== "dialog_cancelled") {
+        const message = formatAppError(error);
+        setModelSettingsMessage(t("settings.modelSettingsActionFailed", { message }));
+      }
+    } finally {
+      setIsModelSettingsBusy(false);
+    }
+  };
+
+  const pickClipModelPath = async () => {
+    if (!hasTauriRuntime() || isModelSettingsBusy) return;
+
+    setIsModelSettingsBusy(true);
+    setModelSettingsMessage("");
+    try {
+      const selection = await invokeCommand<ModelPathSelection>("pick_wd14_model_path");
+      patchClipSimilaritySettings({ modelPath: selection.path });
       setModelSettingsMessage(t("settings.modelPathSelected"));
     } catch (error) {
       const payload = error as { code?: string; message?: string };
@@ -1928,43 +1967,82 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
                 ) : null}
 
                 {activeLocalFilesSection === "models" ? (
-                  <div className="rounded-lg border border-neutral-200 bg-white">
-                    <div className="flex h-11 items-center justify-between gap-3 border-b border-neutral-200 px-3">
-                      <div className="min-w-0 text-[13px] font-semibold text-neutral-900">
-                        {t("settings.wd14Tagger")}
+                  <div className="space-y-3">
+                    <div className="rounded-lg border border-neutral-200 bg-white">
+                      <div className="flex h-11 items-center justify-between gap-3 border-b border-neutral-200 px-3">
+                        <div className="min-w-0 text-[13px] font-semibold text-neutral-900">
+                          {t("settings.wd14Tagger")}
+                        </div>
+                        <div className="shrink-0 text-[12px] text-neutral-500">
+                          {modelSettings.wd14Tagger.modelPath
+                            ? t(`settings.modelType${modelSettings.wd14Tagger.modelType}`)
+                            : t("settings.modelTypeUnset")}
+                        </div>
                       </div>
-                      <div className="shrink-0 text-[12px] text-neutral-500">
-                        {modelSettings.wd14Tagger.modelPath
-                          ? t(`settings.modelType${modelSettings.wd14Tagger.modelType}`)
-                          : t("settings.modelTypeUnset")}
+
+                      <div className="divide-y divide-black/[0.06]">
+                        <div className="grid min-h-12 grid-cols-[132px_minmax(0,1fr)_104px] items-center gap-2 px-3 py-2">
+                          <div className="text-[12px] text-neutral-500">
+                            {t("settings.wd14ModelPath")}
+                          </div>
+                          <input
+                            className="glass-input h-8 min-w-0 px-2.5 text-[13px]"
+                            value={modelSettings.wd14Tagger.modelPath}
+                            placeholder={t("settings.wd14ModelPathPlaceholder")}
+                            onChange={(event) => updateWd14ModelPath(event.target.value)}
+                          />
+                          <button
+                            type="button"
+                            className="no-drag h-8 rounded-md border border-neutral-300 bg-white px-2 text-[12px] text-neutral-700 transition hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-50"
+                            disabled={isModelSettingsBusy}
+                            onClick={() => void pickWd14ModelPath()}
+                          >
+                            {t("settings.modelPickFile")}
+                          </button>
+                        </div>
                       </div>
                     </div>
 
-                    <div className="divide-y divide-black/[0.06]">
-                      <div className="grid min-h-12 grid-cols-[132px_minmax(0,1fr)_104px] items-center gap-2 px-3 py-2">
-                        <div className="text-[12px] text-neutral-500">
-                          {t("settings.wd14ModelPath")}
+                    <div className="rounded-lg border border-neutral-200 bg-white">
+                      <div className="flex h-11 items-center justify-between gap-3 border-b border-neutral-200 px-3">
+                        <div className="min-w-0 text-[13px] font-semibold text-neutral-900">
+                          {t("settings.clipSimilarity")}
                         </div>
-                        <input
-                          className="glass-input h-8 min-w-0 px-2.5 text-[13px]"
-                          value={modelSettings.wd14Tagger.modelPath}
-                          placeholder={t("settings.wd14ModelPathPlaceholder")}
-                          onChange={(event) => updateWd14ModelPath(event.target.value)}
-                        />
-                        <button
-                          type="button"
-                          className="no-drag h-8 rounded-md border border-neutral-300 bg-white px-2 text-[12px] text-neutral-700 transition hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-50"
-                          disabled={isModelSettingsBusy}
-                          onClick={() => void pickWd14ModelPath()}
-                        >
-                          {t("settings.modelPickFile")}
-                        </button>
+                        <div className="shrink-0 text-[12px] text-neutral-500">
+                          {modelSettings.clipSimilarity.modelPath
+                            ? t("settings.modelTypeFolder")
+                            : t("settings.modelTypeUnset")}
+                        </div>
+                      </div>
+
+                      <div className="divide-y divide-black/[0.06]">
+                        <div className="grid min-h-12 grid-cols-[132px_minmax(0,1fr)_104px] items-center gap-2 px-3 py-2">
+                          <div className="text-[12px] text-neutral-500">
+                            {t("settings.clipModelPath")}
+                          </div>
+                          <input
+                            className="glass-input h-8 min-w-0 px-2.5 text-[13px]"
+                            value={modelSettings.clipSimilarity.modelPath}
+                            placeholder={t("settings.clipModelPathPlaceholder")}
+                            onChange={(event) =>
+                              patchClipSimilaritySettings({ modelPath: event.target.value })
+                            }
+                          />
+                          <button
+                            type="button"
+                            className="no-drag h-8 rounded-md border border-neutral-300 bg-white px-2 text-[12px] text-neutral-700 transition hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-50"
+                            disabled={isModelSettingsBusy}
+                            onClick={() => void pickClipModelPath()}
+                          >
+                            {t("settings.modelPickFile")}
+                          </button>
+                        </div>
                       </div>
                     </div>
 
                     {modelSettingsMessage ? (
                       <div
-                        className="truncate border-t border-black/[0.06] px-3 py-2 text-[12px] text-neutral-500"
+                        className="truncate rounded-lg border border-neutral-200 bg-white px-3 py-2 text-[12px] text-neutral-500"
                         title={modelSettingsMessage}
                       >
                         {modelSettingsMessage}

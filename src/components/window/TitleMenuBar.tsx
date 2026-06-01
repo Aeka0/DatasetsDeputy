@@ -55,6 +55,7 @@ import { BatchAnnotationNormalizationDialog } from "../annotation/BatchAnnotatio
 import { PromptManagementDialog } from "../annotation/PromptManagementDialog";
 import { Wd14TaggerSettingsDialog } from "../annotation/Wd14TaggerSettingsDialog";
 import { SettingsDialog } from "../settings/SettingsDialog";
+import { DuplicateSimilarityDialog } from "../tools/DuplicateSimilarityDialog";
 import { FormatValidatorDialog } from "../tools/FormatValidatorDialog";
 import { TrainingCacheCleanerDialog } from "../tools/TrainingCacheCleanerDialog";
 import { AnimatedPortal } from "../ui/AnimatedPortal";
@@ -71,6 +72,7 @@ type DialogKey =
   | "batchReplace"
   | "batchAnnotationFormatConversion"
   | "batchAnnotationNormalization"
+  | "duplicateSimilarity"
   | "formatValidator"
   | "trainingCacheCleaner"
   | "about";
@@ -1477,6 +1479,12 @@ export function TitleMenuBar({
     ],
     tools: [
       {
+        label: t("menu.duplicateSimilarity"),
+        opensDialog: true,
+        onSelect: () => setDialog("duplicateSimilarity")
+      },
+      { type: "separator" },
+      {
         label: t("menu.trainingCacheCleaner"),
         opensDialog: true,
         onSelect: () => setDialog("trainingCacheCleaner")
@@ -2022,6 +2030,9 @@ export function TitleMenuBar({
       ) : null}
       {dialog === "wd14Settings" ? (
         <Wd14TaggerSettingsDialog onClose={() => setDialog(undefined)} />
+      ) : null}
+      {dialog === "duplicateSimilarity" ? (
+        <DuplicateSimilarityDialog onClose={() => setDialog(undefined)} />
       ) : null}
       {dialog === "formatValidator" ? (
         <FormatValidatorDialog onClose={() => setDialog(undefined)} />

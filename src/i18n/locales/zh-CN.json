@@ -68,6 +68,7 @@
     "datasetDebug": "训练集除错",
     "formatValidator": "格式校验",
     "trainingCacheCleaner": "移除训练器缓存",
+    "duplicateSimilarity": "重复/相似检测",
     "aboutBody": "数据集图片预览、标注维度管理与导出工具。",
     "versionLabel": "版本",
     "version": "Beta 1",
@@ -236,6 +237,31 @@
       "confirmRemove": "确认删除",
       "removeComplete": "已删除 {{count}} 项，失败 {{failed}} 项；释放 {{size}}。",
       "actionFailed": "操作失败：{{message}}"
+    },
+    "duplicateSimilarity": {
+      "title": "重复/相似图片检测",
+      "selectFolder": "选择文件夹",
+      "noFolderSelected": "请选择一个包含图片的文件夹",
+      "threshold": "余弦阈值",
+      "hint": "选择文件夹后执行基于 CLIP 的重复/相似检测。结果仅报告，不会修改文件。",
+      "scan": "执行检测",
+      "scanFailed": "检测失败：{{message}}",
+      "noGroups": "未发现重复或相似分组。",
+      "exactGroup": "完全重复",
+      "similarGroup": "相似",
+      "groupSummary": "{{count}} 张，{{min}} - {{max}}",
+      "pairCount": "{{count}} 对",
+      "progressCount": "{{processed}} / {{total}}",
+      "warningCount": "{{count}} 条警告",
+      "resultSummary": "扫描 {{scanned}} 张，{{groups}} 组，缓存命中 {{cacheHits}}，新生成 {{embedded}}，耗时 {{seconds}} 秒",
+      "phase": {
+        "scanning": "正在扫描图片...",
+        "hashing": "正在检查完全重复...",
+        "embedding": "正在生成 CLIP 向量...",
+        "comparing": "正在比较余弦相似度...",
+        "done": "完成",
+        "failed": "失败"
+      }
     }
   },
   "toolbar": {
@@ -433,7 +459,11 @@
     "wd14Tagger": "WD14 标注器",
     "wd14ModelPath": "模型文件夹",
     "wd14ModelPathPlaceholder": "选择包含 ONNX 或 PyTorch 权重的 WD14 模型文件夹",
+    "clipSimilarity": "CLIP 相似检测",
+    "clipModelPath": "模型文件夹",
+    "clipModelPathPlaceholder": "选择本地 Hugging Face CLIP 模型文件夹",
     "modelTypeUnset": "未选择模型",
+    "modelTypeFolder": "文件夹",
     "modelTypeunknown": "未知权重类型",
     "modelTypepytorch": "PyTorch 权重",
     "modelTypeonnx": "ONNX 权重",

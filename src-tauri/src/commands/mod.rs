@@ -22,6 +22,7 @@ use zip::{write::SimpleFileOptions, CompressionMethod, ZipArchive, ZipWriter};
 use crate::{
     anthropic::{self, AnthropicSettings},
     app_dirs,
+    clip_similarity::{self, SimilarityScanOptions},
     db::{AnnotationChange, AnnotationProfile, Database, DatasetImage, ImageSourceMetadata},
     errors::{AppError, AppResult},
     export::{self, ExportDatasetRequest, ExportItem, ExportPreview, PreparedExport},
@@ -4847,6 +4848,56 @@ pub async fn remove_training_cache(
     .map_err(|error| {
         AppError::InvalidInput(format!("Training cache removal task failed: {error}"))
     })?
+}
+
+#[tauri::command]
+pub fn start_similarity_scan(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    scan_id: String,
+    folder: String,
+    options: SimilarityScanOptions,
+) -> AppResult<()> {
+    let folder_path = PathBuf::from(&folder);
+    if !folder_path.is_dir() {
+        return Err(AppError::InvalidInput(format!(
+            "Path is not a valid folder: {folder}"
+        )));
+    }
+
+    let token = Arc::new(AtomicBool::new(false));
+    {
+        let mut scans = state
+            .similarity_scans
+            .lock()
+            .map_err(|_| AppError::InvalidInput("Similarity scan state is unavailable".to_owned()))?;
+        if let Some(existing) = scans.remove(&scan_id) {
+            existing.store(true, Ordering::Relaxed);
+        }
+        scans.insert(scan_id.clone(), Arc::clone(&token));
+    }
+
+    clip_similarity::start_scan(
+        app,
+        state.dirs.clone(),
+        scan_id,
+        folder,
+        options,
+        token,
+    );
+    Ok(())
+}
+
+#[tauri::command]
+pub fn cancel_similarity_scan(state: State<'_, AppState>, scan_id: String) -> AppResult<()> {
+    let scans = state
+        .similarity_scans
+        .lock()
+        .map_err(|_| AppError::InvalidInput("Similarity scan state is unavailable".to_owned()))?;
+    if let Some(token) = scans.get(&scan_id) {
+        token.store(true, Ordering::Relaxed);
+    }
+    Ok(())
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

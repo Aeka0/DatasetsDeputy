@@ -405,6 +405,8 @@ pub fn install_managed_dependencies(
         "torchvision".to_owned(),
         "transformers".to_owned(),
         "safetensors".to_owned(),
+        "Pillow".to_owned(),
+        "numpy".to_owned(),
     ];
     let index_url = torch_index_url(&profile);
     if let Some(index_url) = index_url {
