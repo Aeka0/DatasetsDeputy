@@ -8,7 +8,6 @@ use std::{
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use walkdir::WalkDir;
 
 use crate::{
     app_dirs::AppDirs,
@@ -29,6 +28,25 @@ struct FolderRegistry {
     folders: Vec<String>,
 }
 
+#[derive(Clone, Serialize, Deserialize)]
+struct FolderIndexEntry {
+    path: String,
+    #[serde(default)]
+    source_missing: bool,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+struct FolderIndex {
+    root: String,
+    entries: Vec<FolderIndexEntry>,
+    built_at: String,
+}
+
+#[derive(Default, Serialize, Deserialize)]
+struct FolderIndexStore {
+    folders: Vec<FolderIndex>,
+}
+
 fn normalize_path(path: &Path) -> String {
     path.to_string_lossy()
         .replace('\\', "/")
@@ -40,6 +58,10 @@ fn registry_path(dirs: &AppDirs) -> &Path {
     &dirs.folder_registry
 }
 
+fn index_path(dirs: &AppDirs) -> PathBuf {
+    dirs.config.join("folder-indexes.json")
+}
+
 fn read_registry(dirs: &AppDirs) -> AppResult<FolderRegistry> {
     let path = registry_path(dirs);
     if !path.exists() {
@@ -49,11 +71,137 @@ fn read_registry(dirs: &AppDirs) -> AppResult<FolderRegistry> {
     Ok(serde_json::from_str(&fs::read_to_string(path)?)?)
 }
 
+fn read_index_store(dirs: &AppDirs) -> AppResult<FolderIndexStore> {
+    let path = index_path(dirs);
+    if !path.exists() {
+        return Ok(FolderIndexStore::default());
+    }
+
+    Ok(serde_json::from_str(&fs::read_to_string(path)?)?)
+}
+
+fn write_index_store(dirs: &AppDirs, store: &FolderIndexStore) -> AppResult<()> {
+    let path = index_path(dirs);
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    fs::write(path, serde_json::to_string_pretty(store)?)?;
+    Ok(())
+}
+
 fn write_registry(dirs: &AppDirs, registry: &FolderRegistry) -> AppResult<()> {
     if let Some(parent) = registry_path(dirs).parent() {
         fs::create_dir_all(parent)?;
     }
     fs::write(registry_path(dirs), serde_json::to_string_pretty(registry)?)?;
+    Ok(())
+}
+
+fn build_folder_index(root: &Path) -> FolderIndex {
+    let paths = files::collect_image_paths(root);
+    let orphan_paths = collect_orphan_sidecar_paths(root, &paths);
+    let mut entries = paths
+        .into_iter()
+        .map(|path| FolderIndexEntry {
+            path: normalize_path(&path),
+            source_missing: false,
+        })
+        .collect::<Vec<_>>();
+    entries.extend(orphan_paths.into_iter().map(|path| FolderIndexEntry {
+        path: normalize_path(&path),
+        source_missing: true,
+    }));
+    entries.sort_by_key(|entry| entry.path.to_ascii_lowercase());
+    entries.dedup_by(|left, right| left.path.eq_ignore_ascii_case(&right.path));
+
+    FolderIndex {
+        root: normalize_path(root),
+        entries,
+        built_at: Utc::now().to_rfc3339(),
+    }
+}
+
+fn replace_folder_index(
+    dirs: &AppDirs,
+    store: &mut FolderIndexStore,
+    index: FolderIndex,
+) -> AppResult<()> {
+    store
+        .folders
+        .retain(|folder| !folder.root.eq_ignore_ascii_case(&index.root));
+    store.folders.push(index);
+    store
+        .folders
+        .sort_by_key(|folder| folder.root.to_ascii_lowercase());
+    write_index_store(dirs, store)
+}
+
+fn ensure_folder_index(dirs: &AppDirs, root: &Path) -> AppResult<FolderIndex> {
+    let normalized = normalize_path(root);
+    let mut store = read_index_store(dirs)?;
+    if let Some(index) = store
+        .folders
+        .iter()
+        .find(|index| index.root.eq_ignore_ascii_case(&normalized))
+        .cloned()
+    {
+        return Ok(index);
+    }
+
+    let index = build_folder_index(root);
+    replace_folder_index(dirs, &mut store, index.clone())?;
+    Ok(index)
+}
+
+pub fn refresh_folder_index(dirs: &AppDirs, root: &Path) -> AppResult<()> {
+    if !root.is_dir() {
+        return Ok(());
+    }
+    let mut store = read_index_store(dirs)?;
+    replace_folder_index(dirs, &mut store, build_folder_index(root))
+}
+
+pub fn refresh_folder_indexes(dirs: &AppDirs) -> AppResult<()> {
+    let registry = read_registry(dirs)?;
+    let mut store = read_index_store(dirs)?;
+    let registered_roots = registry
+        .folders
+        .iter()
+        .map(|root| root.to_ascii_lowercase())
+        .collect::<HashSet<_>>();
+    store
+        .folders
+        .retain(|index| registered_roots.contains(&index.root.to_ascii_lowercase()));
+
+    for root in registry
+        .folders
+        .iter()
+        .map(PathBuf::from)
+        .filter(|root| root.is_dir())
+    {
+        let index = build_folder_index(&root);
+        store
+            .folders
+            .retain(|folder| !folder.root.eq_ignore_ascii_case(&index.root));
+        store.folders.push(index);
+    }
+    store
+        .folders
+        .sort_by_key(|folder| folder.root.to_ascii_lowercase());
+    write_index_store(dirs, &store)
+}
+
+pub fn refresh_registered_folder_for_path(dirs: &AppDirs, target: &Path) -> AppResult<()> {
+    let registry = read_registry(dirs)?;
+    let normalized_target = normalize_path(target).to_ascii_lowercase();
+    for root in registry.folders.iter().map(PathBuf::from) {
+        let normalized_root = normalize_path(&root).to_ascii_lowercase();
+        if normalized_target == normalized_root
+            || normalized_target.starts_with(&format!("{normalized_root}/"))
+        {
+            return refresh_folder_index(dirs, &root);
+        }
+    }
     Ok(())
 }
 
@@ -151,12 +299,15 @@ pub fn ensure_folder_thumbnails(
             break;
         }
 
-        for path in WalkDir::new(&root)
-            .into_iter()
-            .filter_map(Result::ok)
-            .map(|entry| entry.into_path())
-            .filter(|path| path.is_file() && files::is_supported_image(path))
-        {
+        let index = ensure_folder_index(dirs, &root)?;
+        for entry in index.entries {
+            if entry.source_missing {
+                continue;
+            }
+            let path = PathBuf::from(&entry.path);
+            if !path.is_file() || !files::is_supported_image(&path) {
+                continue;
+            }
             let id = folder_image_id(&root, &path);
             if !remaining_ids.remove(&id) {
                 continue;
@@ -290,6 +441,7 @@ pub fn add_folder_dataset(dirs: &AppDirs, folder: &Path) -> AppResult<bool> {
             .folders
             .sort_by_key(|path| path.to_ascii_lowercase());
         write_registry(dirs, &registry)?;
+        refresh_folder_index(dirs, folder)?;
         return Ok(true);
     }
 
@@ -307,6 +459,11 @@ pub fn remove_folder_dataset(dirs: &AppDirs, folder_path: &str) -> AppResult<usi
         .folders
         .retain(|path| !path.eq_ignore_ascii_case(&normalized));
     write_registry(dirs, &registry)?;
+    let mut store = read_index_store(dirs)?;
+    store
+        .folders
+        .retain(|index| !index.root.eq_ignore_ascii_case(&normalized));
+    write_index_store(dirs, &store)?;
 
     Ok(original_count.saturating_sub(registry.folders.len()))
 }
@@ -340,24 +497,25 @@ pub fn list_folder_images(dirs: &AppDirs) -> AppResult<Vec<DatasetImage>> {
         let profile_id = folder_profile_id(&root);
         let root_path = normalize_path(&root);
         let dataset_id = dataset_id(&root);
-        let paths = files::collect_image_paths(&root);
-        let orphan_paths = collect_orphan_sidecar_paths(&root, &paths);
-        let mut entries = paths
-            .into_iter()
-            .map(|path| (path, false))
-            .collect::<Vec<_>>();
-        entries.extend(orphan_paths.into_iter().map(|path| (path, true)));
+        let index = ensure_folder_index(dirs, &root)?;
 
-        for (path, source_missing) in entries.iter() {
-            let id = folder_image_id(&root, path);
-            let metadata = (!source_missing).then(|| fs::metadata(path).ok()).flatten();
-            let thumbnail_path = if *source_missing {
+        for entry in index.entries {
+            let path = PathBuf::from(&entry.path);
+            let id = folder_image_id(&root, &path);
+            let source_missing = entry.source_missing || !path.is_file();
+            let annotation = read_text_file(annotation_path(&path))?;
+            let instruction = read_text_file(instruction_path(&path))?;
+            if source_missing && annotation.trim().is_empty() && instruction.trim().is_empty() {
+                continue;
+            }
+            let metadata = (!source_missing)
+                .then(|| fs::metadata(&path).ok())
+                .flatten();
+            let thumbnail_path = if source_missing {
                 None
             } else {
-                folder_thumbnail_path(dirs, path, metadata.as_ref())
+                folder_thumbnail_path(dirs, &path, metadata.as_ref())
             };
-            let annotation = read_text_file(annotation_path(path))?;
-            let instruction = read_text_file(instruction_path(path))?;
             let updated_at = metadata
                 .as_ref()
                 .and_then(|metadata| metadata.modified().ok())
@@ -380,7 +538,7 @@ pub fn list_folder_images(dirs: &AppDirs) -> AppResult<Vec<DatasetImage>> {
                 height: None,
                 file_size: metadata.map(|metadata| metadata.len() as i64),
                 file_hash: None,
-                source_missing: *source_missing,
+                source_missing,
                 imported_at: updated_at.clone(),
                 updated_at: updated_at.clone(),
                 annotations: vec![Annotation {

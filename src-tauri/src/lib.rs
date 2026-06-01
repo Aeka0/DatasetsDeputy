@@ -230,6 +230,7 @@ pub fn run() {
             commands::clear_thumbnail_cache,
             commands::get_log_files_info,
             commands::clear_log_files,
+            commands::refresh_folder_indexes,
             commands::save_annotation,
             commands::save_instruction,
             commands::save_annotation_changes,

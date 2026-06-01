@@ -2890,6 +2890,12 @@ pub async fn import_images_to_folder(
             }
         }
 
+        if summary.imported > 0 {
+            if let Some(target) = import_target.target.as_ref() {
+                folders::refresh_registered_folder_for_path(&dirs, target)?;
+            }
+        }
+
         Ok(summary)
     })
     .await
@@ -2939,6 +2945,11 @@ pub fn clear_log_files(state: State<'_, AppState>) -> AppResult<LogFilesInfo> {
     Ok(LogFilesInfo {
         size_bytes: directory_size(&state.dirs.log)?,
     })
+}
+
+#[tauri::command]
+pub fn refresh_folder_indexes(state: State<'_, AppState>) -> AppResult<()> {
+    folders::refresh_folder_indexes(&state.dirs)
 }
 
 #[tauri::command]
@@ -3274,7 +3285,9 @@ pub fn rename_dataset_image(
     new_name: String,
 ) -> AppResult<String> {
     if source_kind.as_deref() == Some("folder") || image_id < 0 {
-        return folders::rename_folder_image(&image_path, &new_name);
+        let new_path = folders::rename_folder_image(&image_path, &new_name)?;
+        folders::refresh_registered_folder_for_path(&state.dirs, Path::new(&new_path))?;
+        return Ok(new_path);
     }
 
     let (prefix, local_image_id) = split_public_id(image_id)?;
@@ -3290,7 +3303,9 @@ pub fn delete_dataset_image(
     source_kind: Option<String>,
 ) -> AppResult<usize> {
     if source_kind.as_deref() == Some("folder") || image_id < 0 {
-        return folders::delete_folder_image(&image_path);
+        let deleted = folders::delete_folder_image(&image_path)?;
+        folders::refresh_registered_folder_for_path(&state.dirs, Path::new(&image_path))?;
+        return Ok(deleted);
     }
 
     let (prefix, local_image_id) = split_public_id(image_id)?;
@@ -3659,6 +3674,7 @@ pub fn rename_dataset_folder(
         let mut db = open_database(&db_ref.path)?;
         db.rename_source_folder_paths(&folder_path, &new_path_string)?;
     }
+    folders::refresh_registered_folder_for_path(&state.dirs, &new_path)?;
 
     Ok(new_path_string)
 }
@@ -3753,12 +3769,14 @@ pub fn consolidate_loose_files(
             .as_deref()
             .is_some_and(|id| id.starts_with("folder:"))
     {
-        return folders::consolidate_folder_loose_files(
+        let moved = folders::consolidate_folder_loose_files(
             &state.dirs,
             &folder_path,
             &folder_name,
             &image_paths,
-        );
+        )?;
+        folders::refresh_registered_folder_for_path(&state.dirs, Path::new(&folder_path))?;
+        return Ok(moved);
     }
 
     let source_kind = normalize_database_source_kind(source_kind)?;
@@ -3807,12 +3825,14 @@ pub fn restore_consolidated_loose_files(
             .as_deref()
             .is_some_and(|id| id.starts_with("folder:"))
     {
-        return folders::restore_consolidated_folder_loose_files(
+        let restored = folders::restore_consolidated_folder_loose_files(
             &state.dirs,
             &folder_path,
             &folder_name,
             &image_paths,
-        );
+        )?;
+        folders::refresh_registered_folder_for_path(&state.dirs, Path::new(&folder_path))?;
+        return Ok(restored);
     }
     let dataset_id = dataset_id.ok_or_else(|| {
         AppError::InvalidInput("Consolidation undo requires a dataset id".to_owned())
@@ -3850,7 +3870,11 @@ pub fn delete_loose_files(
             .as_deref()
             .is_some_and(|id| id.starts_with("folder:"))
     {
-        return folders::delete_folder_images(&image_paths);
+        let deleted = folders::delete_folder_images(&image_paths)?;
+        for image_path in &image_paths {
+            folders::refresh_registered_folder_for_path(&state.dirs, Path::new(image_path))?;
+        }
+        return Ok(deleted);
     }
 
     let source_kind = normalize_database_source_kind(source_kind)?;

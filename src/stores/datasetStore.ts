@@ -1275,6 +1275,7 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
     }
 
     try {
+      await invokeCommand<void>("refresh_folder_indexes");
       const images = await invokeCommand<DatasetImage[]>("list_images");
       set((state) => {
         const imageIds = new Set(images.map((image) => image.id));
