@@ -2,9 +2,42 @@ import type { Annotation, DatasetImage } from "../types";
 
 const trailingAnnotationSeparatorPattern = /([,，.;:!?。；：！？、])\s*$/;
 const leadingAnnotationSeparatorPattern = /^\s*([,，.;:!?。；：！？、])\s*/;
+const cjkCharacterPattern = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]$/u;
 
 function formatAnnotationSeparator(separator: string) {
-  return separator === "," || separator === "，" ? ", " : `${separator} `;
+  return separator === "," || separator === "，"
+    ? ", "
+    : /[。；：！？、]/.test(separator)
+      ? separator
+      : `${separator} `;
+}
+
+function lastNonSpaceCharacter(value: string) {
+  return value.trimEnd().at(-1) ?? "";
+}
+
+function getNaturalLanguageSeparator(value: string) {
+  return cjkCharacterPattern.test(lastNonSpaceCharacter(value)) ? "。" : ". ";
+}
+
+function appendNaturalLanguagePrefixSeparator(value: string) {
+  if (!value) return value;
+  if (value.endsWith(". ") || value.endsWith("。")) return value;
+
+  const trimmed = value.trimEnd();
+  if (trimmed.endsWith(".")) return `${trimmed} `;
+  if (trimmed.endsWith("。")) return trimmed;
+  return `${trimmed}${getNaturalLanguageSeparator(trimmed)}`;
+}
+
+function appendNaturalLanguageSuffixSeparator(value: string) {
+  if (!value) return value;
+  if (value.endsWith(", ") || value.endsWith(". ") || value.endsWith("。")) return value;
+
+  const trimmed = value.trimEnd();
+  if (trimmed.endsWith(",") || trimmed.endsWith(".")) return `${trimmed} `;
+  if (trimmed.endsWith("。")) return trimmed;
+  return `${trimmed}${getNaturalLanguageSeparator(trimmed)}`;
 }
 
 export function joinAnnotationSegments(
@@ -31,6 +64,22 @@ export function joinAnnotationSegments(
   }
 
   return `${before.trimEnd()}${defaultSeparator}${after.trimStart()}`;
+}
+
+export function joinNaturalLanguageAnnotationSegments(before: string, after: string) {
+  if (!before) return after;
+  if (!after) return before;
+  return `${appendNaturalLanguageSuffixSeparator(before)}${after.trimStart()}`;
+}
+
+export function mergeNaturalLanguageAnnotation(
+  existing: string,
+  incoming: string,
+  placement: "prefix" | "suffix"
+) {
+  return placement === "prefix"
+    ? `${appendNaturalLanguagePrefixSeparator(incoming)}${existing.trimStart()}`
+    : joinNaturalLanguageAnnotationSegments(existing, incoming);
 }
 
 export function getAnnotationForProfile(

@@ -5,7 +5,11 @@ import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import { useShallow } from "zustand/react/shallow";
 
-import { getAnnotationForProfile, joinAnnotationSegments } from "../../lib/annotations";
+import {
+  getAnnotationForProfile,
+  joinAnnotationSegments,
+  mergeNaturalLanguageAnnotation
+} from "../../lib/annotations";
 import {
   generateAnnotationPrompt,
   type AnnotationPromptSettings
@@ -139,32 +143,6 @@ const menuLabels: Array<{ key: MenuKey; labelKey: string }> = [
 
 const annotationCancelledError = "annotation_cancelled";
 
-const cjkCharacterPattern = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]$/u;
-
-function lastNonSpaceCharacter(value: string) {
-  return value.trimEnd().at(-1) ?? "";
-}
-
-function isCjkCharacter(value: string) {
-  return cjkCharacterPattern.test(value);
-}
-
-function appendPrefixSeparator(value: string) {
-  if (!value) return value;
-  if (value.endsWith(". ") || value.endsWith("。")) return value;
-  const trimmed = value.trimEnd();
-  if (trimmed.endsWith(".")) return `${trimmed} `;
-  return `${trimmed}${isCjkCharacter(lastNonSpaceCharacter(trimmed)) ? "。" : ". "}`;
-}
-
-function appendSuffixSeparator(value: string) {
-  if (!value) return value;
-  if (value.endsWith(", ") || value.endsWith(". ") || value.endsWith("。")) return value;
-  const trimmed = value.trimEnd();
-  if (trimmed.endsWith(",") || trimmed.endsWith(".")) return `${trimmed} `;
-  return `${trimmed}${isCjkCharacter(lastNonSpaceCharacter(trimmed)) ? "。" : ". "}`;
-}
-
 function mergeGeneratedAnnotation(
   existing: string,
   generated: string,
@@ -174,10 +152,10 @@ function mergeGeneratedAnnotation(
   if (!existing) return generated;
   if (!generated) return existing;
   if (strategy === "mergePrefix") {
-    return `${appendPrefixSeparator(generated)}${existing.trimStart()}`;
+    return mergeNaturalLanguageAnnotation(existing, generated, "prefix");
   }
   if (strategy === "mergeSuffix") {
-    return `${appendSuffixSeparator(existing)}${generated.trimStart()}`;
+    return mergeNaturalLanguageAnnotation(existing, generated, "suffix");
   }
   return generated;
 }
