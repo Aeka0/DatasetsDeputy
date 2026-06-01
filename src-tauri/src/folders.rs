@@ -19,6 +19,11 @@ use crate::{
 
 const FOLDER_PROFILE_NAME: &str = "TXT";
 
+pub struct FolderThumbnailUpdate {
+    pub image_id: i64,
+    pub thumbnail_path: String,
+}
+
 #[derive(Default, Serialize, Deserialize)]
 struct FolderRegistry {
     folders: Vec<String>,
@@ -120,9 +125,12 @@ fn folder_thumbnail_path(
     cached_folder_thumbnail_path(dirs, path, metadata)
 }
 
-pub fn ensure_folder_thumbnails(dirs: &AppDirs, image_ids: &HashSet<i64>) -> AppResult<usize> {
+pub fn ensure_folder_thumbnails(
+    dirs: &AppDirs,
+    image_ids: &HashSet<i64>,
+) -> AppResult<Vec<FolderThumbnailUpdate>> {
     if image_ids.is_empty() {
-        return Ok(0);
+        return Ok(Vec::new());
     }
 
     let registry = read_registry(dirs)?;
@@ -130,7 +138,7 @@ pub fn ensure_folder_thumbnails(dirs: &AppDirs, image_ids: &HashSet<i64>) -> App
     let thumbnail_size = thumbnail_settings::load_settings(dirs)
         .map(|settings| settings.thumbnail_size)
         .unwrap_or(256);
-    let mut updated = 0;
+    let mut updates = Vec::new();
     let mut remaining_ids = image_ids.clone();
 
     for root in registry
@@ -154,12 +162,23 @@ pub fn ensure_folder_thumbnails(dirs: &AppDirs, image_ids: &HashSet<i64>) -> App
                 continue;
             }
             let metadata = fs::metadata(&path).ok();
-            if cached_folder_thumbnail_path(dirs, &path, metadata.as_ref()).is_some() {
+            if let Some(thumbnail_path) =
+                cached_folder_thumbnail_path(dirs, &path, metadata.as_ref())
+            {
+                updates.push(FolderThumbnailUpdate {
+                    image_id: id,
+                    thumbnail_path: thumbnail_path.to_string_lossy().to_string(),
+                });
                 continue;
             }
             let hash = folder_thumbnail_hash(&path, metadata.as_ref());
-            if thumbnail::create_thumbnail(&path, &thumbnail_dir, &hash, thumbnail_size).is_ok() {
-                updated += 1;
+            if let Ok(thumbnail) =
+                thumbnail::create_thumbnail(&path, &thumbnail_dir, &hash, thumbnail_size)
+            {
+                updates.push(FolderThumbnailUpdate {
+                    image_id: id,
+                    thumbnail_path: thumbnail.path.to_string_lossy().to_string(),
+                });
             }
 
             if remaining_ids.is_empty() {
@@ -168,7 +187,7 @@ pub fn ensure_folder_thumbnails(dirs: &AppDirs, image_ids: &HashSet<i64>) -> App
         }
     }
 
-    Ok(updated)
+    Ok(updates)
 }
 
 fn read_text_file(path: PathBuf) -> AppResult<String> {

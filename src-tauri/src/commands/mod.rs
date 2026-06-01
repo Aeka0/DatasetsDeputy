@@ -145,6 +145,16 @@ pub struct ThumbnailCacheInfo {
 
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct ThumbnailUpdate {
+    pub image_id: i64,
+    pub thumbnail_path: String,
+    pub width: Option<u32>,
+    pub height: Option<u32>,
+    pub updated_at: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct LogFilesInfo {
     pub size_bytes: u64,
 }
@@ -1687,7 +1697,7 @@ fn repair_database_image_thumbnail(
     thumbnail_dir: &Path,
     thumbnail_size: u32,
     verify_source_hash: bool,
-) -> AppResult<bool> {
+) -> AppResult<Option<ThumbnailUpdate>> {
     let source_path = if source_kind == "asset" {
         image.storage_path.as_deref().unwrap_or(&image.path)
     } else {
@@ -1695,14 +1705,21 @@ fn repair_database_image_thumbnail(
     };
     let source_path = PathBuf::from(source_path);
     if !source_path.is_file() {
-        return Ok(false);
+        return Ok(None);
     }
 
+    let expected_thumbnail_path = image
+        .file_hash
+        .as_deref()
+        .map(|hash| thumbnail::thumbnail_path(thumbnail_dir, hash, thumbnail_size));
     let has_cached_thumbnail = image
         .thumbnail_path
         .as_deref()
         .map(Path::new)
-        .is_some_and(thumbnail::is_valid_thumbnail);
+        .zip(expected_thumbnail_path.as_deref())
+        .is_some_and(|(current, expected)| {
+            current == expected && thumbnail::is_valid_thumbnail(expected)
+        });
     let source_hash = if verify_source_hash || (!has_cached_thumbnail && image.file_hash.is_none())
     {
         Some(files::hash_file(&source_path)?)
@@ -1714,7 +1731,7 @@ fn repair_database_image_thumbnail(
         .is_some_and(|hash| image.file_hash.as_deref() != Some(hash));
 
     if has_cached_thumbnail && !source_changed {
-        return Ok(false);
+        return Ok(None);
     }
 
     let hash = source_hash
@@ -1728,7 +1745,7 @@ fn repair_database_image_thumbnail(
     let metadata = fs::metadata(&source_path)?;
     let thumbnail =
         thumbnail::create_thumbnail(&source_path, thumbnail_dir, &hash, thumbnail_size)?;
-    db.update_image_source_metadata(
+    let updated_at = db.update_image_source_metadata(
         image.id,
         &ImageSourceMetadata {
             file_size: metadata.len() as i64,
@@ -1744,24 +1761,42 @@ fn repair_database_image_thumbnail(
     image.thumbnail_path = Some(thumbnail.path.to_string_lossy().to_string());
     image.width = Some(thumbnail.width);
     image.height = Some(thumbnail.height);
-    Ok(true)
+    image.updated_at = updated_at.clone();
+    Ok(Some(ThumbnailUpdate {
+        image_id: image.id,
+        thumbnail_path: thumbnail.path.to_string_lossy().to_string(),
+        width: Some(thumbnail.width),
+        height: Some(thumbnail.height),
+        updated_at: Some(updated_at),
+    }))
 }
 
-fn has_valid_thumbnail_path(image: &DatasetImage) -> bool {
-    image
-        .thumbnail_path
-        .as_deref()
-        .map(Path::new)
-        .is_some_and(thumbnail::is_valid_thumbnail)
+fn has_current_thumbnail_path(
+    image: &DatasetImage,
+    thumbnail_dir: &Path,
+    thumbnail_size: u32,
+) -> bool {
+    let Some(current) = image.thumbnail_path.as_deref().map(Path::new) else {
+        return false;
+    };
+    if let Some(hash) = image.file_hash.as_deref() {
+        let expected = thumbnail::thumbnail_path(thumbnail_dir, hash, thumbnail_size);
+        return current == expected && thumbnail::is_valid_thumbnail(&expected);
+    }
+    thumbnail::is_valid_thumbnail(current)
 }
 
 fn list_images_for_dirs(dirs: &app_dirs::AppDirs) -> AppResult<Vec<DatasetImage>> {
     let mut images = Vec::new();
+    let thumbnail_dir = files::default_thumbnail_dir(&dirs.root);
+    let thumbnail_size = thumbnail_settings::load_settings(dirs)?.thumbnail_size;
     for db_ref in dataset_database_refs(dirs)? {
         let db = open_database(&db_ref.path)?;
         let source_kind = db.dataset_source_kind()?;
         for mut image in db.list_images()? {
-            if image.thumbnail_path.is_some() && !has_valid_thumbnail_path(&image) {
+            if image.thumbnail_path.is_some()
+                && !has_current_thumbnail_path(&image, &thumbnail_dir, thumbnail_size)
+            {
                 image.thumbnail_path = None;
             }
             images.push(namespace_image(image, db_ref.prefix, &source_kind));
@@ -1771,10 +1806,13 @@ fn list_images_for_dirs(dirs: &app_dirs::AppDirs) -> AppResult<Vec<DatasetImage>
     Ok(images)
 }
 
-fn ensure_thumbnails_for_dirs(dirs: &app_dirs::AppDirs, image_ids: &[i64]) -> AppResult<usize> {
+fn ensure_thumbnails_for_dirs(
+    dirs: &app_dirs::AppDirs,
+    image_ids: &[i64],
+) -> AppResult<Vec<ThumbnailUpdate>> {
     let thumbnail_dir = files::default_thumbnail_dir(&dirs.root);
     let thumbnail_settings = thumbnail_settings::load_settings(dirs)?;
-    let mut updated = 0;
+    let mut updates = Vec::new();
     let mut ids_by_prefix = std::collections::HashMap::<i64, HashSet<i64>>::new();
     let mut folder_ids = HashSet::new();
 
@@ -1791,10 +1829,10 @@ fn ensure_thumbnails_for_dirs(dirs: &app_dirs::AppDirs, image_ids: &[i64]) -> Ap
     for (prefix, local_ids) in ids_by_prefix {
         let (mut db, _) = open_database_by_prefix(dirs, prefix)?;
         let source_kind = db.dataset_source_kind()?;
-        for mut image in db.list_images()? {
-            if !local_ids.contains(&image.id) {
+        for local_id in local_ids {
+            let Some(mut image) = db.get_image(local_id)? else {
                 continue;
-            }
+            };
             match repair_database_image_thumbnail(
                 &mut db,
                 &mut image,
@@ -1803,8 +1841,11 @@ fn ensure_thumbnails_for_dirs(dirs: &app_dirs::AppDirs, image_ids: &[i64]) -> Ap
                 thumbnail_settings.thumbnail_size,
                 false,
             ) {
-                Ok(true) => updated += 1,
-                Ok(false) => {}
+                Ok(Some(mut update)) => {
+                    update.image_id = to_public_id(prefix, update.image_id);
+                    updates.push(update);
+                }
+                Ok(None) => {}
                 Err(error) => {
                     tracing::warn!(
                         "Visible thumbnail generation failed for {:?}: {}",
@@ -1816,8 +1857,18 @@ fn ensure_thumbnails_for_dirs(dirs: &app_dirs::AppDirs, image_ids: &[i64]) -> Ap
         }
     }
 
-    updated += folders::ensure_folder_thumbnails(dirs, &folder_ids)?;
-    Ok(updated)
+    updates.extend(
+        folders::ensure_folder_thumbnails(dirs, &folder_ids)?
+            .into_iter()
+            .map(|update| ThumbnailUpdate {
+                image_id: update.image_id,
+                thumbnail_path: update.thumbnail_path,
+                width: None,
+                height: None,
+                updated_at: None,
+            }),
+    );
+    Ok(updates)
 }
 
 fn list_annotation_profiles_for_dirs(
@@ -1886,8 +1937,8 @@ fn check_database_problem_items(
         );
 
         match result {
-            Ok(true) => summary.updated += 1,
-            Ok(false) => {}
+            Ok(Some(_)) => summary.updated += 1,
+            Ok(None) => {}
             Err(error) => {
                 summary.failed += 1;
                 tracing::warn!("问题条目检查失败：{:?}：{}", source_path, error);
@@ -1936,7 +1987,7 @@ pub async fn list_images(state: State<'_, AppState>) -> AppResult<Vec<DatasetIma
 pub async fn ensure_thumbnails(
     state: State<'_, AppState>,
     image_ids: Vec<i64>,
-) -> AppResult<usize> {
+) -> AppResult<Vec<ThumbnailUpdate>> {
     let dirs = state.dirs.clone();
     tauri::async_runtime::spawn_blocking(move || ensure_thumbnails_for_dirs(&dirs, &image_ids))
         .await

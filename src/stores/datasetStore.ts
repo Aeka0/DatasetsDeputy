@@ -32,7 +32,8 @@ import type {
   ImportProgress,
   ImportReport,
   ImportSummary,
-  ProblemItemCheckSummary
+  ProblemItemCheckSummary,
+  ThumbnailUpdate
 } from "../types";
 
 const now = new Date().toISOString();
@@ -162,7 +163,7 @@ let unlistenDatabaseExportProgress: UnlistenFn | undefined;
 const thumbnailRequestsInFlight = new Set<number>();
 const thumbnailRequestQueue: number[] = [];
 let thumbnailQueueRunning = false;
-const thumbnailBatchSize = 8;
+const thumbnailBatchSize = 64;
 
 function normalizePath(path: string) {
   return path.replaceAll("\\", "/").replace(/\/+$/, "");
@@ -286,6 +287,38 @@ function getProjectSourceKind(project: DatasetProject | undefined) {
 
 function normalizeProfileName(name: string) {
   return name.trim().toLocaleLowerCase();
+}
+
+function applyThumbnailUpdates(images: DatasetImage[], updates: ThumbnailUpdate[]) {
+  if (updates.length === 0) {
+    return images;
+  }
+
+  const updatesById = new Map(updates.map((update) => [update.imageId, update]));
+  let changed = false;
+  const nextImages = images.map((image) => {
+    const update = updatesById.get(image.id);
+    if (!update) {
+      return image;
+    }
+
+    const nextImage = {
+      ...image,
+      thumbnailPath: update.thumbnailPath || image.thumbnailPath,
+      width: update.width ?? image.width,
+      height: update.height ?? image.height,
+      updatedAt: update.updatedAt ?? image.updatedAt
+    };
+    const imageChanged =
+      nextImage.thumbnailPath !== image.thumbnailPath ||
+      nextImage.width !== image.width ||
+      nextImage.height !== image.height ||
+      nextImage.updatedAt !== image.updatedAt;
+    changed ||= imageChanged;
+    return imageChanged ? nextImage : image;
+  });
+
+  return changed ? nextImages : images;
 }
 
 function createProjectTree(
@@ -1279,10 +1312,10 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
     try {
       while (thumbnailRequestQueue.length > 0) {
         const batch = thumbnailRequestQueue.splice(0, thumbnailBatchSize);
-        let updated = 0;
+        let updates: ThumbnailUpdate[] = [];
 
         try {
-          updated = await invokeCommand<number>("ensure_thumbnails", {
+          updates = await invokeCommand<ThumbnailUpdate[]>("ensure_thumbnails", {
             imageIds: batch
           });
         } catch (error) {
@@ -1296,9 +1329,10 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
           }
         }
 
-        if (updated > 0) {
-          await get().refreshImages();
-          get().bumpThumbnailCacheKey();
+        if (updates.length > 0) {
+          set((state) => ({
+            images: applyThumbnailUpdates(state.images, updates)
+          }));
         }
       }
     } finally {

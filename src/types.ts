@@ -105,6 +105,14 @@ export interface DatasetImage {
   rootPath?: string;
 }
 
+export interface ThumbnailUpdate {
+  imageId: number;
+  thumbnailPath: string;
+  width?: number;
+  height?: number;
+  updatedAt?: string;
+}
+
 export type DatasetSourceKind = "asset" | "database" | "folder";
 
 export interface DatasetProject {

@@ -485,6 +485,48 @@ impl Database {
         Ok(images)
     }
 
+    pub fn get_image(&self, image_id: i64) -> AppResult<Option<DatasetImage>> {
+        let root_name: Option<String> = self
+            .conn
+            .query_row(
+                "SELECT value FROM dataset_metadata WHERE key = 'root_name'",
+                [],
+                |row| row.get(0),
+            )
+            .optional()?;
+        self.conn
+            .query_row(
+                "SELECT id, path, dataset_path, file_name, storage_path, thumbnail_path, width, height, file_size, file_hash, imported_at, updated_at
+                 FROM images
+                 WHERE id = ?1",
+                params![image_id],
+                |row| {
+                    Ok(DatasetImage {
+                        id: row.get(0)?,
+                        path: row.get(1)?,
+                        dataset_path: row.get(2)?,
+                        file_name: row.get(3)?,
+                        storage_path: row.get(4)?,
+                        thumbnail_path: row.get(5)?,
+                        width: row.get(6)?,
+                        height: row.get(7)?,
+                        file_size: row.get(8)?,
+                        file_hash: row.get(9)?,
+                        imported_at: row.get(10)?,
+                        updated_at: row.get(11)?,
+                        annotations: Vec::new(),
+                        source_missing: false,
+                        source_kind: None,
+                        dataset_id: None,
+                        root_name: root_name.clone(),
+                        root_path: None,
+                    })
+                },
+            )
+            .optional()
+            .map_err(Into::into)
+    }
+
     pub fn clear_thumbnail_paths(&self) -> AppResult<usize> {
         Ok(self.conn.execute(
             "UPDATE images SET thumbnail_path = NULL WHERE thumbnail_path IS NOT NULL",
@@ -533,7 +575,7 @@ impl Database {
         &mut self,
         image_id: i64,
         metadata: &ImageSourceMetadata,
-    ) -> AppResult<()> {
+    ) -> AppResult<String> {
         let now = Utc::now().to_rfc3339();
         self.conn.execute(
             "UPDATE images
@@ -557,7 +599,7 @@ impl Database {
                 image_id
             ],
         )?;
-        Ok(())
+        Ok(now)
     }
 
     pub fn rename_image(&mut self, image_id: i64, new_name: &str) -> AppResult<String> {

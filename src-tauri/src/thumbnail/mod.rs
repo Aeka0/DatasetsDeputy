@@ -1,8 +1,11 @@
 use std::path::{Path, PathBuf};
 
-use image::{imageops::FilterType, GenericImageView, ImageFormat, ImageReader};
+use image::{imageops::FilterType, ImageFormat, ImageReader};
 
 use crate::errors::AppResult;
+
+#[cfg(target_os = "windows")]
+mod windows_shell;
 
 pub struct ThumbnailResult {
     pub path: PathBuf,
@@ -84,6 +87,10 @@ pub fn is_valid_thumbnail(path: &Path) -> bool {
     path.is_file() && image::image_dimensions(path).is_ok()
 }
 
+pub fn thumbnail_path(target_dir: &Path, hash: &str, max_edge: u32) -> PathBuf {
+    target_dir.join(format!("{hash}-{}.webp", max_edge.max(1)))
+}
+
 pub fn create_thumbnail(
     source: &Path,
     target_dir: &Path,
@@ -91,7 +98,8 @@ pub fn create_thumbnail(
     max_edge: u32,
 ) -> AppResult<ThumbnailResult> {
     std::fs::create_dir_all(target_dir)?;
-    let target = target_dir.join(format!("{hash}.webp"));
+    let max_edge = max_edge.max(1);
+    let target = thumbnail_path(target_dir, hash, max_edge);
 
     if target.is_file() {
         if !is_valid_thumbnail(&target) {
@@ -107,9 +115,19 @@ pub fn create_thumbnail(
         }
     }
 
+    let ((width, height), format_warning) = dimensions_with_fallback(source)?;
+
+    #[cfg(target_os = "windows")]
+    if windows_shell::create_thumbnail(source, &target, max_edge) && is_valid_thumbnail(&target) {
+        return Ok(ThumbnailResult {
+            path: target,
+            width,
+            height,
+            format_warning,
+        });
+    }
+
     let (image, format_warning) = open_with_fallback(source)?;
-    let (width, height) = image.dimensions();
-    let max_edge = max_edge.max(1);
     let thumbnail = if width <= max_edge && height <= max_edge {
         image
     } else {
