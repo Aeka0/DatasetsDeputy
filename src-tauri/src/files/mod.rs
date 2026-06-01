@@ -27,6 +27,7 @@ pub struct ImportImageResult {
     pub image_id: i64,
     pub has_annotation: bool,
     pub format_warning: Option<String>,
+    pub storage_path: Option<PathBuf>,
 }
 
 #[derive(Debug, Serialize)]
@@ -103,8 +104,8 @@ pub fn import_image(
     let image_id = db.insert_image(&NewImage {
         path: path.to_path_buf(),
         dataset_path: dataset_path.to_path_buf(),
-        storage_path,
-        thumbnail_path: Some(thumbnail.path),
+        storage_path: storage_path.clone(),
+        thumbnail_path: Some(thumbnail.path.clone()),
         width: Some(thumbnail.width),
         height: Some(thumbnail.height),
         file_size: Some(metadata.len() as i64),
@@ -125,6 +126,7 @@ pub fn import_image(
         image_id,
         has_annotation,
         format_warning: thumbnail.format_warning,
+        storage_path,
     })
 }
 

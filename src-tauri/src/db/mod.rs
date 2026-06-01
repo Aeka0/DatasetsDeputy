@@ -309,7 +309,7 @@ impl Database {
         rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
     }
 
-    pub fn ensure_import_profile(&self, name: &str) -> AppResult<i64> {
+    pub fn ensure_import_profile(&self, name: &str) -> AppResult<(i64, bool)> {
         let name = name.trim();
         if name.is_empty() {
             return Err(crate::errors::AppError::InvalidInput(
@@ -327,7 +327,7 @@ impl Database {
             .optional()?;
 
         if let Some(id) = existing {
-            return Ok(id);
+            return Ok((id, false));
         }
 
         self.conn.execute(
@@ -335,7 +335,7 @@ impl Database {
             params![name],
         )?;
 
-        Ok(self.conn.last_insert_rowid())
+        Ok((self.conn.last_insert_rowid(), true))
     }
 
     pub fn create_dataset_annotation_profile(

@@ -1,4 +1,4 @@
-import { Loader2 } from "lucide-react";
+import { Loader2, XCircle } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import { useDatasetStore } from "../../stores/datasetStore";
@@ -6,6 +6,7 @@ import { useDatasetStore } from "../../stores/datasetStore";
 export function ImportProgressView() {
   const { t } = useTranslation();
   const progress = useDatasetStore((state) => state.importProgress);
+  const cancelImport = useDatasetStore((state) => state.cancelImport);
 
   if (!progress || progress.done) {
     return null;
@@ -55,6 +56,17 @@ export function ImportProgressView() {
         {progress.currentPath ? (
           <div className="mt-2 truncate leading-5 text-neutral-400">{progress.currentPath}</div>
         ) : null}
+
+        <div className="mt-4 flex justify-end border-t border-neutral-100 pt-3">
+          <button
+            type="button"
+            className="no-drag inline-flex h-8 items-center gap-2 rounded-md border border-neutral-200 bg-white px-3 text-[13px] font-medium text-neutral-700 transition hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-50"
+            onClick={() => void cancelImport()}
+          >
+            <XCircle size={15} />
+            {t("import.cancel")}
+          </button>
+        </div>
       </div>
     </div>
   );

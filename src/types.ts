@@ -166,7 +166,7 @@ export interface ImportReport {
 }
 
 export interface ImportProgress extends ImportSummary {
-  phase: "scanning" | "importing" | "done" | "failed";
+  phase: "scanning" | "importing" | "done" | "failed" | "cancelled";
   processed: number;
   total: number;
   currentPath?: string;

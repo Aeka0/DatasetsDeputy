@@ -586,6 +586,9 @@
     "historyRedoFailed": "Redo failed: {{message}}",
     "historyTrimmed": "Undo history trimmed by {{count}} operation(s).",
     "importCompleted": "Import complete: imported {{imported}}, skipped {{skipped}}, failed {{failed}}.",
+    "importCancelRequested": "Cancelling import and cleaning up imported content.",
+    "importCancelled": "Import cancelled. Content from this import was cleaned up.",
+    "importCancelFailed": "Could not cancel import: {{message}}",
     "exportFailed": "Export failed: {{message}}",
     "exportCompleted": "Export complete: exported {{exported}} images, failed {{failed}}.",
     "refreshStarting": "Refreshing dataset state.",
@@ -756,6 +759,8 @@
   "import": {
     "title": "Importing dataset",
     "scanning": "Scanning image files...",
+    "cancelling": "Cancelling and cleaning up imported content...",
+    "cancel": "Cancel import",
     "progress": "Processed {{processed}} / {{total}}",
     "summary": "Imported {{imported}}, skipped {{skipped}}, failed {{failed}}"
   },

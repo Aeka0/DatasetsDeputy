@@ -586,6 +586,9 @@
     "historyRedoFailed": "重做失败：{{message}}",
     "historyTrimmed": "撤销历史已裁剪 {{count}} 个操作。",
     "importCompleted": "导入完成：已导入 {{imported}}，已跳过 {{skipped}}，失败 {{failed}}。",
+    "importCancelRequested": "正在取消导入并清理已导入内容。",
+    "importCancelled": "导入已取消，已清理本次导入的内容。",
+    "importCancelFailed": "取消导入失败：{{message}}",
     "exportFailed": "导出失败：{{message}}",
     "exportCompleted": "导出完成：已导出 {{exported}} 张图片，失败 {{failed}}。",
     "refreshStarting": "正在刷新数据集状态。",
@@ -756,6 +759,8 @@
   "import": {
     "title": "正在导入数据集",
     "scanning": "正在扫描图片文件...",
+    "cancelling": "正在取消并清理已导入内容...",
+    "cancel": "取消导入",
     "progress": "已处理 {{processed}} / {{total}}",
     "summary": "导入 {{imported}}，跳过 {{skipped}}，失败 {{failed}}"
   },

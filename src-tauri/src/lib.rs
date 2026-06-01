@@ -26,7 +26,7 @@ mod wd14_tagger;
 mod window_region;
 mod window_rendering;
 
-use std::sync::Mutex;
+use std::sync::{atomic::AtomicBool, Arc, Mutex};
 
 use tauri::{Manager, WebviewWindowBuilder, WindowEvent};
 #[cfg(target_os = "windows")]
@@ -41,6 +41,7 @@ const MAIN_PAGE_READY_DELAY_MILLISECONDS: u64 = 250;
 pub struct AppState {
     pub dirs: app_dirs::AppDirs,
     pub history: Mutex<history::HistoryManager>,
+    pub import_cancel: Mutex<Option<Arc<AtomicBool>>>,
 }
 
 impl Drop for AppState {
@@ -88,6 +89,7 @@ pub fn run() {
             app.manage(AppState {
                 dirs: dirs.clone(),
                 history: Mutex::new(history::HistoryManager::default()),
+                import_cancel: Mutex::new(None),
             });
 
             #[cfg(target_os = "windows")]
@@ -219,6 +221,7 @@ pub fn run() {
             commands::install_managed_onnx_deps,
             commands::prepare_import_folder,
             commands::start_import_folder,
+            commands::cancel_import,
             commands::mount_folder_dataset,
             commands::add_folder_dataset_path,
             commands::prepare_folder_image_import,

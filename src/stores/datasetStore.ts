@@ -550,6 +550,7 @@ interface DatasetState {
   importFolder: () => Promise<void>;
   mountFolder: () => Promise<void>;
   startPreparedImport: () => Promise<void>;
+  cancelImport: () => Promise<void>;
   browseImportedDataset: () => Promise<void>;
   setAnnotationType: (annotationType: string) => void;
   clearImportPreview: () => void;
@@ -1066,7 +1067,7 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
       set({
         importProgress: progress,
         isLoading: !progress.done,
-        lastImport: progress.done
+        lastImport: progress.done && progress.phase !== "cancelled"
           ? {
               imported: progress.imported,
               skipped: progress.skipped,
@@ -1074,6 +1075,20 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
             }
           : get().lastImport
       });
+
+      if (progress.done && progress.phase === "cancelled") {
+        get().addAppLog(i18next.t("appLog.importCancelled"), "warning");
+        set({
+          importProgress: undefined,
+          pendingImportKind: undefined,
+          preparedImportKind: undefined,
+          importPreview: undefined,
+          importReport: undefined,
+          isLoading: false
+        });
+        await get().refreshImages();
+        return;
+      }
 
       if (progress.done && progress.report) {
         get().addAppLog(
@@ -1626,6 +1641,30 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
       });
       get().addAppLog(
         i18next.t("appLog.preparedImportFailed", { message: formatAppError(error) }),
+        "error"
+      );
+    }
+  },
+  cancelImport: async () => {
+    if (!hasTauriRuntime()) {
+      return;
+    }
+    try {
+      const requested = await invokeCommand<boolean>("cancel_import");
+      if (requested) {
+        get().addAppLog(i18next.t("appLog.importCancelRequested"), "warning");
+        set((state) => ({
+          importProgress: state.importProgress
+            ? {
+                ...state.importProgress,
+                currentPath: i18next.t("import.cancelling")
+              }
+            : state.importProgress
+        }));
+      }
+    } catch (error) {
+      get().addAppLog(
+        i18next.t("appLog.importCancelFailed", { message: formatAppError(error) }),
         "error"
       );
     }

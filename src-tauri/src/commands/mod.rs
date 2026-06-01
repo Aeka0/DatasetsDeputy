@@ -3,6 +3,10 @@ use std::{
     fs::{self, File},
     io,
     path::{Component, Path, PathBuf},
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
     time::{SystemTime, UNIX_EPOCH},
 };
 
@@ -614,6 +618,36 @@ fn remove_sqlite_files(path: &Path) -> AppResult<()> {
         }
     }
     Ok(())
+}
+
+fn register_import_cancel_token(app: &AppHandle, token: Arc<AtomicBool>) -> AppResult<()> {
+    let state = app.state::<AppState>();
+    let mut current = state.import_cancel.lock().map_err(|_| {
+        AppError::InvalidInput("Import cancellation state is unavailable".to_owned())
+    })?;
+    if current
+        .as_ref()
+        .is_some_and(|existing| !existing.load(Ordering::SeqCst))
+    {
+        return Err(AppError::InvalidInput(
+            "Another import is already running".to_owned(),
+        ));
+    }
+    *current = Some(token);
+    Ok(())
+}
+
+fn clear_import_cancel_token(app: &AppHandle, token: &Arc<AtomicBool>) {
+    let state = app.state::<AppState>();
+    let Ok(mut current) = state.import_cancel.lock() else {
+        return;
+    };
+    if current
+        .as_ref()
+        .is_some_and(|existing| Arc::ptr_eq(existing, token))
+    {
+        *current = None;
+    }
 }
 
 fn imported_history_size(database_path: &Path, artifact_paths: &[String]) -> u64 {
@@ -2935,6 +2969,8 @@ pub fn start_import_folder(
         .unwrap_or("Dataset")
         .to_owned();
     let root_path = folder.to_string_lossy().to_string();
+    let cancel_token = Arc::new(AtomicBool::new(false));
+    register_import_cancel_token(&app, cancel_token.clone())?;
 
     tracing::info!(
         "开始后台导入数据集：{:?}，标注类型={:?}，数据模式={}",
@@ -2997,6 +3033,7 @@ pub fn start_import_folder(
                         warnings: Vec::new(),
                     }),
                 });
+                clear_import_cancel_token(&app_for_thread, &cancel_token);
                 return;
             }
         };
@@ -3005,15 +3042,15 @@ pub fn start_import_folder(
             .map(str::trim)
             .filter(|value| !value.is_empty())
             .map(ToOwned::to_owned);
-        let import_profile_id = match annotation_type.as_deref() {
+        let (import_profile_id, created_import_profile) = match annotation_type.as_deref() {
             Some(import_profile_name) => match db.ensure_import_profile(import_profile_name) {
-                Ok(profile_id) => Some(profile_id),
+                Ok((profile_id, created)) => (Some(profile_id), created),
                 Err(error) => {
                     tracing::warn!("创建导入标注类型失败：{:?}：{}", import_profile_name, error);
-                    None
+                    (None, false)
                 }
             },
-            None => None,
+            None => (None, false),
         };
 
         let paths = files::collect_image_paths(&folder);
@@ -3027,6 +3064,8 @@ pub fn start_import_folder(
         let mut success_with_annotations = 0;
         let mut failures = Vec::new();
         let mut warnings = Vec::new();
+        let mut imported_image_ids = Vec::new();
+        let mut imported_asset_paths = Vec::new();
 
         emit_progress(ImportProgress {
             phase: "importing".to_owned(),
@@ -3043,6 +3082,59 @@ pub fn start_import_folder(
         });
 
         for (index, path) in paths.iter().enumerate() {
+            if cancel_token.load(Ordering::SeqCst) {
+                tracing::info!(
+                    "Import cancelled; removing partial import content: imported={}",
+                    imported_image_ids.len()
+                );
+                if created_database {
+                    drop(db);
+                    if let Err(error) = remove_sqlite_files(&database_path) {
+                        tracing::warn!("Failed to remove cancelled import database: {}", error);
+                    }
+                } else {
+                    for image_id in imported_image_ids.iter().rev() {
+                        if let Err(error) = db.delete_image(*image_id) {
+                            tracing::warn!(
+                                "Failed to remove cancelled import image {}: {}",
+                                image_id,
+                                error
+                            );
+                        }
+                    }
+                    if created_import_profile {
+                        if let Some(profile_id) = import_profile_id {
+                            if let Err(error) = db.delete_annotation_profile(profile_id) {
+                                tracing::warn!(
+                                    "Failed to remove cancelled import profile {}: {}",
+                                    profile_id,
+                                    error
+                                );
+                            }
+                        }
+                    }
+                    drop(db);
+                }
+                if source_kind == "asset" {
+                    cleanup_unreferenced_asset_files(&dirs, &imported_asset_paths, None);
+                }
+                emit_progress(ImportProgress {
+                    phase: "cancelled".to_owned(),
+                    processed: index,
+                    total,
+                    imported: 0,
+                    skipped: 0,
+                    failed: 0,
+                    current_path: None,
+                    root_name: Some(root_name.clone()),
+                    root_path: Some(root_path.clone()),
+                    done: true,
+                    report: None,
+                });
+                clear_import_cancel_token(&app_for_thread, &cancel_token);
+                return;
+            }
+
             let import_asset_dir = (source_kind == "asset").then_some(asset_dir.as_path());
             let dataset_path = import_relative_dataset_path(&folder, path);
             match files::import_image(
@@ -3055,6 +3147,10 @@ pub fn start_import_folder(
                 thumbnail_size,
             ) {
                 Ok(result) => {
+                    imported_image_ids.push(result.image_id);
+                    if let Some(storage_path) = result.storage_path {
+                        imported_asset_paths.push(storage_path.to_string_lossy().to_string());
+                    }
                     if let Some(warning_message) = result.format_warning {
                         warnings.push(ImportWarning {
                             file_path: path.to_string_lossy().to_string(),
@@ -3133,9 +3229,22 @@ pub fn start_import_folder(
                 warnings,
             }),
         });
+        clear_import_cancel_token(&app_for_thread, &cancel_token);
     });
 
     Ok(())
+}
+
+#[tauri::command]
+pub fn cancel_import(state: State<'_, AppState>) -> AppResult<bool> {
+    let current = state.import_cancel.lock().map_err(|_| {
+        AppError::InvalidInput("Import cancellation state is unavailable".to_owned())
+    })?;
+    if let Some(token) = current.as_ref() {
+        token.store(true, Ordering::SeqCst);
+        return Ok(true);
+    }
+    Ok(false)
 }
 
 #[tauri::command]
