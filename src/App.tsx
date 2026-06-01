@@ -161,17 +161,19 @@ export default function App() {
       .catch((error) => {
         console.error(t("appConsole.windowRenderingFallback"), error);
       });
-    const preload = Promise.all([
-      loadWindowRendering,
-      store.initImportEvents(),
-      store.initExportEvents(),
-      store.initDatabaseExportEvents(),
-      store.initHistory(),
-      store.load()
-    ])
-      .catch((error) => {
-        console.error(t("appConsole.startupPreloadFailed"), error);
-      });
+    const preload = (async () => {
+      await Promise.all([
+        loadWindowRendering,
+        store.initThumbnailEvents(),
+        store.initImportEvents(),
+        store.initExportEvents(),
+        store.initDatabaseExportEvents(),
+        store.initHistory()
+      ]);
+      await store.load();
+    })().catch((error) => {
+      console.error(t("appConsole.startupPreloadFailed"), error);
+    });
     const timeout = new Promise<void>((resolve) =>
       window.setTimeout(resolve, STARTUP_PRELOAD_TIMEOUT_MS)
     );

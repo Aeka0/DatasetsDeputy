@@ -717,6 +717,8 @@
     "conflict": "冲突管理",
     "conflictOverwrite": "覆盖",
     "conflictSkip": "跳过",
+    "conflictMergePrefix": "合并为前缀",
+    "conflictMergeSuffix": "合并为后缀",
     "start": "开始标注"
   },
   "wd14Settings": {

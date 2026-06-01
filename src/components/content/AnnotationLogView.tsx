@@ -1,4 +1,5 @@
 import { Trash2 } from "lucide-react";
+import { useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 
 import { useDatasetStore } from "../../stores/datasetStore";
@@ -7,6 +8,13 @@ export function AnnotationLogView() {
   const { t } = useTranslation();
   const logs = useDatasetStore((state) => state.appLogs);
   const clearAppLogs = useDatasetStore((state) => state.clearAppLogs);
+  const logContainerRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const container = logContainerRef.current;
+    if (!container) return;
+    container.scrollTop = container.scrollHeight;
+  }, [logs.length]);
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -15,6 +23,7 @@ export function AnnotationLogView() {
           <h2 className="m-0 text-[14px] font-semibold text-neutral-900">
             {t("logs.title")}
           </h2>
+          <div className="mt-0.5 text-[12px] text-neutral-500">{logs.length} 条记录</div>
         </div>
         <button
           type="button"
@@ -28,6 +37,7 @@ export function AnnotationLogView() {
       </div>
 
       <div
+        ref={logContainerRef}
         className="hover-scrollbar selectable-text min-h-0 flex-1 overflow-auto rounded-lg border border-neutral-200 bg-white p-3 font-mono text-[12px] leading-5 text-neutral-700"
         data-native-context-menu="true"
       >

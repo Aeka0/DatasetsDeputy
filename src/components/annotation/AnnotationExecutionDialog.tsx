@@ -7,7 +7,7 @@ import { AnimatedPortal, useAnimatedPortalClose } from "../ui/AnimatedPortal";
 import { Button } from "../ui/Button";
 
 export type AnnotationExecutionScope = "selected" | "all" | "empty";
-export type AnnotationConflictStrategy = "overwrite" | "skip";
+export type AnnotationConflictStrategy = "overwrite" | "skip" | "mergePrefix" | "mergeSuffix";
 export type AnnotationExecutionMode =
   | "gemini"
   | "openai"
@@ -27,6 +27,13 @@ const modeOptions: Array<{ value: AnnotationExecutionMode; labelKey: string }> =
   { value: "lmStudio", labelKey: "annotationRun.modeLmStudio" },
   { value: "ollama", labelKey: "annotationRun.modeOllama" },
   { value: "textgen", labelKey: "annotationRun.modeTextgen" }
+];
+
+const conflictOptions: Array<{ value: AnnotationConflictStrategy; labelKey: string }> = [
+  { value: "skip", labelKey: "annotationRun.conflictSkip" },
+  { value: "overwrite", labelKey: "annotationRun.conflictOverwrite" },
+  { value: "mergePrefix", labelKey: "annotationRun.conflictMergePrefix" },
+  { value: "mergeSuffix", labelKey: "annotationRun.conflictMergeSuffix" }
 ];
 
 interface AnnotationExecutionDialogProps {
@@ -58,12 +65,45 @@ export function AnnotationExecutionDialog({
   const [mode, setMode] = useState<AnnotationExecutionMode>("wd14");
   const [conflictStrategy, setConflictStrategy] =
     useState<AnnotationConflictStrategy>("skip");
-  const [modeMenuOpen, setModeMenuOpen] = useState(false);
-  const [modeMenuPosition, setModeMenuPosition] = useState({ left: 0, top: 0, width: 0 });
+  const [openMenu, setOpenMenu] = useState<"mode" | "scope" | "conflict" | undefined>();
+  const [menuPosition, setMenuPosition] = useState({ left: 0, top: 0, width: 0 });
   const modeButtonRef = useRef<HTMLButtonElement>(null);
-  const modeMenuRef = useRef<HTMLDivElement>(null);
+  const scopeButtonRef = useRef<HTMLButtonElement>(null);
+  const conflictButtonRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
   const selectedModeLabel =
     modeOptions.find((option) => option.value === mode)?.labelKey ?? "annotationRun.modeWd14";
+  const scopeOptions: Array<{
+    value: AnnotationExecutionScope;
+    label: string;
+    disabled?: boolean;
+  }> = [
+    {
+      value: "selected",
+      label: t("annotationRun.scopeSelected", { count: selectedImageCount }),
+      disabled: !hasSelectedImage
+    },
+    { value: "all", label: t("annotationRun.scopeAll") },
+    { value: "empty", label: t("annotationRun.scopeEmpty") }
+  ];
+  const selectedScopeLabel =
+    scopeOptions.find((option) => option.value === scope)?.label ?? t("annotationRun.scopeEmpty");
+  const selectedConflictLabel =
+    conflictOptions.find((option) => option.value === conflictStrategy)?.labelKey ??
+    "annotationRun.conflictSkip";
+
+  const openSelectMenu = (
+    menu: "mode" | "scope" | "conflict",
+    button: HTMLButtonElement
+  ) => {
+    const rect = button.getBoundingClientRect();
+    setMenuPosition({
+      left: rect.left,
+      top: rect.bottom + 6,
+      width: rect.width
+    });
+    setOpenMenu((current) => (current === menu ? undefined : menu));
+  };
 
   useEffect(() => {
     if (!hasSelectedImage && scope === "selected") {
@@ -72,21 +112,23 @@ export function AnnotationExecutionDialog({
   }, [hasSelectedImage, scope]);
 
   useEffect(() => {
-    if (!modeMenuOpen) return;
+    if (!openMenu) return;
 
     const close = (event: MouseEvent) => {
       if (
         event.target instanceof Node &&
         (modeButtonRef.current?.contains(event.target) ||
-          modeMenuRef.current?.contains(event.target))
+          scopeButtonRef.current?.contains(event.target) ||
+          conflictButtonRef.current?.contains(event.target) ||
+          menuRef.current?.contains(event.target))
       ) {
         return;
       }
-      setModeMenuOpen(false);
+      setOpenMenu(undefined);
     };
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
-        setModeMenuOpen(false);
+        setOpenMenu(undefined);
       }
     };
 
@@ -96,7 +138,7 @@ export function AnnotationExecutionDialog({
       window.removeEventListener("mousedown", close);
       window.removeEventListener("keydown", closeOnEscape);
     };
-  }, [modeMenuOpen]);
+  }, [openMenu]);
 
   return (
     <AnimatedPortal open={open}>
@@ -143,90 +185,41 @@ export function AnnotationExecutionDialog({
                 ref={modeButtonRef}
                 type="button"
                 className="glass-input no-drag flex h-8 w-full items-center justify-between gap-2 px-2.5 text-left text-[13px]"
-                onClick={(event) => {
-                  const rect = event.currentTarget.getBoundingClientRect();
-                  setModeMenuPosition({
-                    left: rect.left,
-                    top: rect.bottom + 6,
-                    width: rect.width
-                  });
-                  setModeMenuOpen((open) => !open);
-                }}
+                onClick={(event) => openSelectMenu("mode", event.currentTarget)}
               >
                 <span className="min-w-0 truncate">{t(selectedModeLabel)}</span>
                 <ChevronDown size={14} className="shrink-0 text-neutral-400" />
               </button>
             </div>
-          </section>
-
-          <section className="rounded-lg border border-neutral-200 bg-white">
-            <div className="border-b border-neutral-100 px-4 py-3 text-[13px] font-semibold text-neutral-900">
-              {t("annotationRun.scope")}
-            </div>
-            <div className="space-y-2 px-4 py-3">
-              <label
-                className={`flex min-h-8 items-center gap-2 text-[13px] ${
-                  hasSelectedImage ? "text-neutral-700" : "text-neutral-400"
-                }`}
+            <div className="mx-4 border-t border-neutral-100" />
+            <div className="grid min-h-12 grid-cols-[112px_minmax(0,1fr)] items-center gap-3 px-4 py-3">
+              <div className="text-[13px] font-semibold text-neutral-900">
+                {t("annotationRun.scope")}
+              </div>
+              <button
+                ref={scopeButtonRef}
+                type="button"
+                className="glass-input no-drag flex h-8 w-full items-center justify-between gap-2 px-2.5 text-left text-[13px]"
+                onClick={(event) => openSelectMenu("scope", event.currentTarget)}
               >
-                <input
-                  type="radio"
-                  name="annotation-scope"
-                  value="selected"
-                  disabled={!hasSelectedImage}
-                  checked={scope === "selected"}
-                  onChange={() => setScope("selected")}
-                />
-                {t("annotationRun.scopeSelected", { count: selectedImageCount })}
-              </label>
-              <label className="flex min-h-8 items-center gap-2 text-[13px] text-neutral-700">
-                <input
-                  type="radio"
-                  name="annotation-scope"
-                  value="all"
-                  checked={scope === "all"}
-                  onChange={() => setScope("all")}
-                />
-                {t("annotationRun.scopeAll")}
-              </label>
-              <label className="flex min-h-8 items-center gap-2 text-[13px] text-neutral-700">
-                <input
-                  type="radio"
-                  name="annotation-scope"
-                  value="empty"
-                  checked={scope === "empty"}
-                  onChange={() => setScope("empty")}
-                />
-                {t("annotationRun.scopeEmpty")}
-              </label>
+                <span className="min-w-0 truncate">{selectedScopeLabel}</span>
+                <ChevronDown size={14} className="shrink-0 text-neutral-400" />
+              </button>
             </div>
-          </section>
-
-          <section className="rounded-lg border border-neutral-200 bg-white">
-            <div className="border-b border-neutral-100 px-4 py-3 text-[13px] font-semibold text-neutral-900">
-              {t("annotationRun.conflict")}
-            </div>
-            <div className="space-y-2 px-4 py-3">
-              <label className="flex min-h-8 items-center gap-2 text-[13px] text-neutral-700">
-                <input
-                  type="radio"
-                  name="annotation-conflict"
-                  value="overwrite"
-                  checked={conflictStrategy === "overwrite"}
-                  onChange={() => setConflictStrategy("overwrite")}
-                />
-                {t("annotationRun.conflictOverwrite")}
-              </label>
-              <label className="flex min-h-8 items-center gap-2 text-[13px] text-neutral-700">
-                <input
-                  type="radio"
-                  name="annotation-conflict"
-                  value="skip"
-                  checked={conflictStrategy === "skip"}
-                  onChange={() => setConflictStrategy("skip")}
-                />
-                {t("annotationRun.conflictSkip")}
-              </label>
+            <div className="mx-4 border-t border-neutral-100" />
+            <div className="grid min-h-12 grid-cols-[112px_minmax(0,1fr)] items-center gap-3 px-4 py-3">
+              <div className="text-[13px] font-semibold text-neutral-900">
+                {t("annotationRun.conflict")}
+              </div>
+              <button
+                ref={conflictButtonRef}
+                type="button"
+                className="glass-input no-drag flex h-8 w-full items-center justify-between gap-2 px-2.5 text-left text-[13px]"
+                onClick={(event) => openSelectMenu("conflict", event.currentTarget)}
+              >
+                <span className="min-w-0 truncate">{t(selectedConflictLabel)}</span>
+                <ChevronDown size={14} className="shrink-0 text-neutral-400" />
+              </button>
             </div>
           </section>
 
@@ -241,19 +234,19 @@ export function AnnotationExecutionDialog({
           </div>
         </div>
       </section>
-      {modeMenuOpen
+      {openMenu
         ? createPortal(
         <div
-          ref={modeMenuRef}
+          ref={menuRef}
           className="app-dropdown-menu no-drag fixed z-[1010] rounded-lg py-2"
           style={{
-            left: modeMenuPosition.left,
-            top: modeMenuPosition.top,
-            width: modeMenuPosition.width
+            left: menuPosition.left,
+            top: menuPosition.top,
+            width: menuPosition.width
           }}
         >
           <div className="app-dropdown-backdrop" />
-          {modeOptions.map((option) => {
+          {openMenu === "mode" ? modeOptions.map((option) => {
             const isSelected = option.value === mode;
             return (
               <button
@@ -264,7 +257,7 @@ export function AnnotationExecutionDialog({
                 }`}
                 onClick={() => {
                   setMode(option.value);
-                  setModeMenuOpen(false);
+                  setOpenMenu(undefined);
                 }}
               >
                 <span className="flex w-4 shrink-0 justify-center">
@@ -273,7 +266,51 @@ export function AnnotationExecutionDialog({
                 <span className="min-w-0 flex-1 truncate">{t(option.labelKey)}</span>
               </button>
             );
-          })}
+          }) : null}
+          {openMenu === "scope" ? scopeOptions.map((option) => {
+            const isSelected = option.value === scope;
+            return (
+              <button
+                key={option.value}
+                type="button"
+                disabled={option.disabled}
+                className={`app-dropdown-item flex h-9 w-full items-center gap-2 px-3 text-left text-[13px] font-medium transition hover:bg-neutral-100 disabled:cursor-not-allowed disabled:opacity-45 ${
+                  isSelected ? "text-neutral-950" : "text-neutral-600"
+                }`}
+                onClick={() => {
+                  if (option.disabled) return;
+                  setScope(option.value);
+                  setOpenMenu(undefined);
+                }}
+              >
+                <span className="flex w-4 shrink-0 justify-center">
+                  {isSelected ? <Check size={14} /> : null}
+                </span>
+                <span className="min-w-0 flex-1 truncate">{option.label}</span>
+              </button>
+            );
+          }) : null}
+          {openMenu === "conflict" ? conflictOptions.map((option) => {
+            const isSelected = option.value === conflictStrategy;
+            return (
+              <button
+                key={option.value}
+                type="button"
+                className={`app-dropdown-item flex h-9 w-full items-center gap-2 px-3 text-left text-[13px] font-medium transition hover:bg-neutral-100 ${
+                  isSelected ? "text-neutral-950" : "text-neutral-600"
+                }`}
+                onClick={() => {
+                  setConflictStrategy(option.value);
+                  setOpenMenu(undefined);
+                }}
+              >
+                <span className="flex w-4 shrink-0 justify-center">
+                  {isSelected ? <Check size={14} /> : null}
+                </span>
+                <span className="min-w-0 flex-1 truncate">{t(option.labelKey)}</span>
+              </button>
+            );
+          }) : null}
         </div>,
           document.body
         )

@@ -43,6 +43,7 @@ pub struct DatasetImage {
     pub width: Option<u32>,
     pub height: Option<u32>,
     pub file_size: Option<i64>,
+    pub file_mtime: Option<i64>,
     pub file_hash: Option<String>,
     pub source_missing: bool,
     pub imported_at: String,
@@ -62,11 +63,13 @@ pub struct NewImage {
     pub width: Option<u32>,
     pub height: Option<u32>,
     pub file_size: Option<i64>,
+    pub file_mtime: Option<i64>,
     pub file_hash: String,
 }
 
 pub struct ImageSourceMetadata {
     pub file_size: i64,
+    pub file_mtime: i64,
     pub file_hash: String,
     pub thumbnail_path: Option<PathBuf>,
     pub width: Option<u32>,
@@ -109,6 +112,7 @@ impl Database {
               width INTEGER,
               height INTEGER,
               file_size INTEGER,
+              file_mtime INTEGER,
               file_hash TEXT NOT NULL UNIQUE,
               imported_at TEXT NOT NULL,
               updated_at TEXT NOT NULL
@@ -140,7 +144,22 @@ impl Database {
             CREATE INDEX IF NOT EXISTS idx_annotations_profile ON annotations(profile_id);
             "#,
         )?;
+        if !self.column_exists("images", "file_mtime")? {
+            self.conn
+                .execute("ALTER TABLE images ADD COLUMN file_mtime INTEGER", [])?;
+        }
         Ok(())
+    }
+
+    fn column_exists(&self, table: &str, column: &str) -> AppResult<bool> {
+        let mut stmt = self.conn.prepare(&format!("PRAGMA table_info({table})"))?;
+        let rows = stmt.query_map([], |row| row.get::<_, String>(1))?;
+        for name in rows {
+            if name? == column {
+                return Ok(true);
+            }
+        }
+        Ok(false)
     }
 
     pub fn set_dataset_metadata(
@@ -395,7 +414,7 @@ impl Database {
             )
             .optional()?;
         let mut stmt = self.conn.prepare(
-            "SELECT id, path, dataset_path, file_name, storage_path, thumbnail_path, width, height, file_size, file_hash, imported_at, updated_at
+            "SELECT id, path, dataset_path, file_name, storage_path, thumbnail_path, width, height, file_size, file_mtime, file_hash, imported_at, updated_at
              FROM images
              ORDER BY replace(dataset_path, '\', '/') COLLATE NOCASE ASC, id ASC",
         )?;
@@ -411,9 +430,10 @@ impl Database {
                 row.get::<_, Option<u32>>(6)?,
                 row.get::<_, Option<u32>>(7)?,
                 row.get::<_, Option<i64>>(8)?,
-                row.get::<_, Option<String>>(9)?,
-                row.get::<_, String>(10)?,
+                row.get::<_, Option<i64>>(9)?,
+                row.get::<_, Option<String>>(10)?,
                 row.get::<_, String>(11)?,
+                row.get::<_, String>(12)?,
             ))
         })?;
 
@@ -430,6 +450,7 @@ impl Database {
                 width,
                 height,
                 file_size,
+                file_mtime,
                 file_hash,
                 imported_at,
                 updated_at,
@@ -445,6 +466,7 @@ impl Database {
                 width,
                 height,
                 file_size,
+                file_mtime,
                 file_hash,
                 source_missing: false,
                 imported_at,
@@ -496,7 +518,7 @@ impl Database {
             .optional()?;
         self.conn
             .query_row(
-                "SELECT id, path, dataset_path, file_name, storage_path, thumbnail_path, width, height, file_size, file_hash, imported_at, updated_at
+                "SELECT id, path, dataset_path, file_name, storage_path, thumbnail_path, width, height, file_size, file_mtime, file_hash, imported_at, updated_at
                  FROM images
                  WHERE id = ?1",
                 params![image_id],
@@ -511,9 +533,10 @@ impl Database {
                         width: row.get(6)?,
                         height: row.get(7)?,
                         file_size: row.get(8)?,
-                        file_hash: row.get(9)?,
-                        imported_at: row.get(10)?,
-                        updated_at: row.get(11)?,
+                        file_mtime: row.get(9)?,
+                        file_hash: row.get(10)?,
+                        imported_at: row.get(11)?,
+                        updated_at: row.get(12)?,
                         annotations: Vec::new(),
                         source_missing: false,
                         source_kind: None,
@@ -545,8 +568,8 @@ impl Database {
             .to_owned();
 
         self.conn.execute(
-            "INSERT INTO images (path, dataset_path, file_name, storage_path, thumbnail_path, width, height, file_size, file_hash, imported_at, updated_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+            "INSERT INTO images (path, dataset_path, file_name, storage_path, thumbnail_path, width, height, file_size, file_mtime, file_hash, imported_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
             params![
                 image.path.to_string_lossy(),
                 normalize_dataset_path(&image.dataset_path.to_string_lossy()),
@@ -562,6 +585,7 @@ impl Database {
                 image.width,
                 image.height,
                 image.file_size,
+                image.file_mtime,
                 image.file_hash,
                 now,
                 now
@@ -583,9 +607,10 @@ impl Database {
                  width = ?2,
                  height = ?3,
                  file_size = ?4,
-                 file_hash = ?5,
-                 updated_at = ?6
-             WHERE id = ?7",
+                 file_mtime = ?5,
+                 file_hash = ?6,
+                 updated_at = ?7
+             WHERE id = ?8",
             params![
                 metadata
                     .thumbnail_path
@@ -594,12 +619,48 @@ impl Database {
                 metadata.width,
                 metadata.height,
                 metadata.file_size,
+                metadata.file_mtime,
                 metadata.file_hash,
                 now,
                 image_id
             ],
         )?;
         Ok(now)
+    }
+
+    pub fn invalidate_image_thumbnail(
+        &mut self,
+        image_id: i64,
+        file_size: i64,
+        file_mtime: i64,
+    ) -> AppResult<String> {
+        let now = Utc::now().to_rfc3339();
+        self.conn.execute(
+            "UPDATE images
+             SET thumbnail_path = NULL,
+                 file_size = ?1,
+                 file_mtime = ?2,
+                 updated_at = ?3
+             WHERE id = ?4",
+            params![file_size, file_mtime, now, image_id],
+        )?;
+        Ok(now)
+    }
+
+    pub fn update_image_quick_metadata(
+        &mut self,
+        image_id: i64,
+        file_size: i64,
+        file_mtime: i64,
+    ) -> AppResult<()> {
+        self.conn.execute(
+            "UPDATE images
+             SET file_size = ?1,
+                 file_mtime = ?2
+             WHERE id = ?3",
+            params![file_size, file_mtime, image_id],
+        )?;
+        Ok(())
     }
 
     pub fn rename_image(&mut self, image_id: i64, new_name: &str) -> AppResult<String> {

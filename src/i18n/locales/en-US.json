@@ -717,6 +717,8 @@
     "conflict": "Conflict handling",
     "conflictOverwrite": "Overwrite",
     "conflictSkip": "Skip",
+    "conflictMergePrefix": "Merge as prefix",
+    "conflictMergeSuffix": "Merge as suffix",
     "start": "Start annotation"
   },
   "wd14Settings": {

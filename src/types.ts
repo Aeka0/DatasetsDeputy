@@ -94,6 +94,7 @@ export interface DatasetImage {
   width?: number;
   height?: number;
   fileSize?: number;
+  fileMtime?: number;
   fileHash?: string;
   sourceMissing?: boolean;
   importedAt: string;
@@ -111,6 +112,13 @@ export interface ThumbnailUpdate {
   width?: number;
   height?: number;
   updatedAt?: string;
+}
+
+export interface FolderAnnotationData {
+  imageId: number;
+  profileId: number;
+  annotation: string;
+  instruction: string;
 }
 
 export type DatasetSourceKind = "asset" | "database" | "folder";

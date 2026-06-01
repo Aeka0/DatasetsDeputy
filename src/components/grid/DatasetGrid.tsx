@@ -188,7 +188,7 @@ export function DatasetGrid({
     if (missingVisibleIds.length === 0) return;
 
     const timer = window.setTimeout(() => {
-      void ensureThumbnails(missingVisibleIds);
+      ensureThumbnails(missingVisibleIds);
     }, 180);
     return () => window.clearTimeout(timer);
   }, [missingVisibleIdsKey, ensureThumbnails]);

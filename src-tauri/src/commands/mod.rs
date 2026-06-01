@@ -1,5 +1,5 @@
 use std::{
-    collections::HashSet,
+    collections::{HashMap, HashSet},
     fs::{self, File},
     io,
     path::{Component, Path, PathBuf},
@@ -7,9 +7,10 @@ use std::{
         atomic::{AtomicBool, Ordering},
         Arc,
     },
-    time::{SystemTime, UNIX_EPOCH},
+    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
+use rayon::prelude::*;
 use rusqlite::{params, Connection, OpenFlags, OptionalExtension};
 use serde::Deserialize;
 use serde::Serialize;
@@ -24,6 +25,7 @@ use crate::{
     db::{AnnotationChange, AnnotationProfile, Database, DatasetImage, ImageSourceMetadata},
     errors::{AppError, AppResult},
     export::{self, ExportDatasetRequest, ExportItem, ExportPreview, PreparedExport},
+    file_watcher,
     files::{self, ImportPreview, ImportSummary},
     folders,
     gemini::{self, GeminiSettings},
@@ -1741,6 +1743,7 @@ fn repair_database_image_thumbnail(
     if !source_path.is_file() {
         return Ok(None);
     }
+    let quick_metadata = files::quick_file_metadata(&source_path)?;
 
     let expected_thumbnail_path = image
         .file_hash
@@ -1754,7 +1757,15 @@ fn repair_database_image_thumbnail(
         .is_some_and(|(current, expected)| {
             current == expected && thumbnail::is_valid_thumbnail(expected)
         });
-    let source_hash = if verify_source_hash || (!has_cached_thumbnail && image.file_hash.is_none())
+    let source_changed_quick = image
+        .file_size
+        .is_some_and(|size| size != quick_metadata.size)
+        || image
+            .file_mtime
+            .is_some_and(|mtime| mtime != quick_metadata.modified_millis);
+    let source_hash = if verify_source_hash
+        || source_changed_quick
+        || (!has_cached_thumbnail && image.file_hash.is_none())
     {
         Some(files::hash_file(&source_path)?)
     } else {
@@ -1765,6 +1776,17 @@ fn repair_database_image_thumbnail(
         .is_some_and(|hash| image.file_hash.as_deref() != Some(hash));
 
     if has_cached_thumbnail && !source_changed {
+        if image.file_size != Some(quick_metadata.size)
+            || image.file_mtime != Some(quick_metadata.modified_millis)
+        {
+            db.update_image_quick_metadata(
+                image.id,
+                quick_metadata.size,
+                quick_metadata.modified_millis,
+            )?;
+            image.file_size = Some(quick_metadata.size);
+            image.file_mtime = Some(quick_metadata.modified_millis);
+        }
         return Ok(None);
     }
 
@@ -1776,13 +1798,13 @@ fn repair_database_image_thumbnail(
     } else {
         hash
     };
-    let metadata = fs::metadata(&source_path)?;
     let thumbnail =
         thumbnail::create_thumbnail(&source_path, thumbnail_dir, &hash, thumbnail_size)?;
     let updated_at = db.update_image_source_metadata(
         image.id,
         &ImageSourceMetadata {
-            file_size: metadata.len() as i64,
+            file_size: quick_metadata.size,
+            file_mtime: quick_metadata.modified_millis,
             file_hash: hash.clone(),
             thumbnail_path: Some(thumbnail.path.clone()),
             width: Some(thumbnail.width),
@@ -1790,7 +1812,8 @@ fn repair_database_image_thumbnail(
         },
     )?;
 
-    image.file_size = Some(metadata.len() as i64);
+    image.file_size = Some(quick_metadata.size);
+    image.file_mtime = Some(quick_metadata.modified_millis);
     image.file_hash = Some(hash);
     image.thumbnail_path = Some(thumbnail.path.to_string_lossy().to_string());
     image.width = Some(thumbnail.width);
@@ -1803,6 +1826,74 @@ fn repair_database_image_thumbnail(
         height: Some(thumbnail.height),
         updated_at: Some(updated_at),
     }))
+}
+
+struct PendingThumbnailRepair {
+    image_id: i64,
+    source_path: PathBuf,
+    log_path: String,
+    existing_hash: Option<String>,
+    quick_metadata: files::QuickFileMetadata,
+}
+
+struct CompletedThumbnailRepair {
+    image_id: i64,
+    hash: String,
+    quick_metadata: files::QuickFileMetadata,
+    thumbnail: thumbnail::ThumbnailResult,
+    elapsed: Duration,
+}
+
+fn source_path_for_database_image(image: &DatasetImage, source_kind: &str) -> PathBuf {
+    if source_kind == "asset" {
+        PathBuf::from(image.storage_path.as_deref().unwrap_or(&image.path))
+    } else {
+        PathBuf::from(&image.path)
+    }
+}
+
+fn has_cached_database_thumbnail(
+    image: &DatasetImage,
+    thumbnail_dir: &Path,
+    thumbnail_size: u32,
+) -> bool {
+    let Some(expected_thumbnail_path) = image
+        .file_hash
+        .as_deref()
+        .map(|hash| thumbnail::thumbnail_path(thumbnail_dir, hash, thumbnail_size))
+    else {
+        return false;
+    };
+    image
+        .thumbnail_path
+        .as_deref()
+        .map(Path::new)
+        .is_some_and(|current| {
+            current == expected_thumbnail_path
+                && thumbnail::is_valid_thumbnail(&expected_thumbnail_path)
+        })
+}
+
+fn complete_thumbnail_repair(
+    repair: &PendingThumbnailRepair,
+    thumbnail_dir: &Path,
+    thumbnail_size: u32,
+) -> Result<CompletedThumbnailRepair, String> {
+    let start = Instant::now();
+    let hash = match &repair.existing_hash {
+        Some(hash) => hash.clone(),
+        None => files::quick_cache_key(&repair.source_path).map_err(|error| error.to_string())?,
+    };
+    let thumbnail =
+        thumbnail::create_thumbnail_with_timeout(&repair.source_path, thumbnail_dir, &hash, thumbnail_size)
+            .map_err(|error| error.to_string())?;
+    Ok(CompletedThumbnailRepair {
+        image_id: repair.image_id,
+        hash,
+        quick_metadata: repair.quick_metadata,
+        thumbnail,
+        elapsed: start.elapsed(),
+    })
 }
 
 fn has_current_thumbnail_path(
@@ -1821,9 +1912,18 @@ fn has_current_thumbnail_path(
 }
 
 fn list_images_for_dirs(dirs: &app_dirs::AppDirs) -> AppResult<Vec<DatasetImage>> {
-    let mut images = Vec::new();
+    list_images_for_dirs_inner(dirs, false)
+}
+
+fn list_images_for_dirs_fast(dirs: &app_dirs::AppDirs) -> AppResult<Vec<DatasetImage>> {
+    list_images_for_dirs_inner(dirs, true)
+}
+
+fn list_images_for_dirs_inner(dirs: &app_dirs::AppDirs, fast: bool) -> AppResult<Vec<DatasetImage>> {
     let thumbnail_dir = files::default_thumbnail_dir(&dirs.root);
     let thumbnail_size = thumbnail_settings::load_settings(dirs)?.thumbnail_size;
+
+    let mut db_images = Vec::new();
     for db_ref in dataset_database_refs(dirs)? {
         let db = open_database(&db_ref.path)?;
         let source_kind = db.dataset_source_kind()?;
@@ -1833,21 +1933,36 @@ fn list_images_for_dirs(dirs: &app_dirs::AppDirs) -> AppResult<Vec<DatasetImage>
             {
                 image.thumbnail_path = None;
             }
-            images.push(namespace_image(image, db_ref.prefix, &source_kind));
+            db_images.push((image, db_ref.prefix, source_kind.clone()));
         }
     }
-    images.extend(folders::list_folder_images(dirs)?);
+
+    let mut images: Vec<DatasetImage> = db_images
+        .into_par_iter()
+        .map(|(image, prefix, source_kind)| namespace_image(image, prefix, &source_kind))
+        .collect();
+
+    if fast {
+        images.extend(folders::list_folder_images_fast(dirs)?);
+    } else {
+        images.extend(folders::list_folder_images(dirs)?);
+    }
     Ok(images)
+}
+
+struct ThumbnailBatchResult {
+    updates: Vec<ThumbnailUpdate>,
 }
 
 fn ensure_thumbnails_for_dirs(
     dirs: &app_dirs::AppDirs,
     image_ids: &[i64],
-) -> AppResult<Vec<ThumbnailUpdate>> {
+    stream_to: Option<&AppHandle>,
+) -> AppResult<ThumbnailBatchResult> {
     let thumbnail_dir = files::default_thumbnail_dir(&dirs.root);
     let thumbnail_settings = thumbnail_settings::load_settings(dirs)?;
     let mut updates = Vec::new();
-    let mut ids_by_prefix = std::collections::HashMap::<i64, HashSet<i64>>::new();
+    let mut ids_by_prefix = HashMap::<i64, HashSet<i64>>::new();
     let mut folder_ids = HashSet::new();
 
     for public_id in image_ids {
@@ -1863,46 +1978,125 @@ fn ensure_thumbnails_for_dirs(
     for (prefix, local_ids) in ids_by_prefix {
         let (mut db, _) = open_database_by_prefix(dirs, prefix)?;
         let source_kind = db.dataset_source_kind()?;
+        let mut repairs = Vec::new();
         for local_id in local_ids {
             let Some(mut image) = db.get_image(local_id)? else {
                 continue;
             };
-            match repair_database_image_thumbnail(
-                &mut db,
-                &mut image,
-                &source_kind,
+            let source_path = source_path_for_database_image(&image, &source_kind);
+            if !source_path.is_file() {
+                continue;
+            }
+            let quick_metadata = match files::quick_file_metadata(&source_path) {
+                Ok(metadata) => metadata,
+                Err(error) => {
+                    tracing::warn!("读取缩略图源文件元数据失败：{:?}：{}", source_path, error);
+                    continue;
+                }
+            };
+            let source_changed_quick = image
+                .file_size
+                .is_some_and(|size| size != quick_metadata.size)
+                || image
+                    .file_mtime
+                    .is_some_and(|mtime| mtime != quick_metadata.modified_millis);
+            if has_cached_database_thumbnail(
+                &image,
                 &thumbnail_dir,
                 thumbnail_settings.thumbnail_size,
-                false,
-            ) {
-                Ok(Some(mut update)) => {
-                    update.image_id = to_public_id(prefix, update.image_id);
-                    updates.push(update);
+            ) && !source_changed_quick
+            {
+                if image.file_size != Some(quick_metadata.size)
+                    || image.file_mtime != Some(quick_metadata.modified_millis)
+                {
+                    db.update_image_quick_metadata(
+                        image.id,
+                        quick_metadata.size,
+                        quick_metadata.modified_millis,
+                    )?;
+                    image.file_size = Some(quick_metadata.size);
+                    image.file_mtime = Some(quick_metadata.modified_millis);
                 }
-                Ok(None) => {}
-                Err(error) => {
-                    tracing::warn!(
-                        "Visible thumbnail generation failed for {:?}: {}",
-                        image.path,
-                        error
-                    );
-                }
+                continue;
             }
+            repairs.push(PendingThumbnailRepair {
+                image_id: image.id,
+                source_path,
+                log_path: image.path,
+                existing_hash: (!source_changed_quick).then(|| image.file_hash).flatten(),
+                quick_metadata,
+            });
+        }
+
+        let completed = repairs
+            .par_iter()
+            .map(|repair| {
+                let result = complete_thumbnail_repair(
+                    repair,
+                    &thumbnail_dir,
+                    thumbnail_settings.thumbnail_size,
+                );
+                match &result {
+                    Ok(completed) => {
+                        let update = ThumbnailUpdate {
+                            image_id: to_public_id(prefix, completed.image_id),
+                            thumbnail_path: completed.thumbnail.path.to_string_lossy().to_string(),
+                            width: Some(completed.thumbnail.width),
+                            height: Some(completed.thumbnail.height),
+                            updated_at: None,
+                        };
+                        if let Some(app) = stream_to {
+                            let _ = app.emit("thumbnail-batch-ready", vec![update]);
+                        }
+                    }
+                    Err(_) => {}
+                }
+                result.map_err(|error| (repair.log_path.clone(), error))
+            })
+            .collect::<Vec<_>>();
+
+        for result in completed {
+            let repair = match result {
+                Ok(repair) => repair,
+                Err((path, error)) => {
+                    let msg = format!("缩略图生成失败：{}：{}", path, error);
+                    tracing::warn!("{}", msg);
+                    if let Some(app) = stream_to {
+                        let _ = app.emit("thumbnail-prewarm-log", msg);
+                    }
+                    continue;
+                }
+            };
+            let updated_at = db.update_image_source_metadata(
+                repair.image_id,
+                &ImageSourceMetadata {
+                    file_size: repair.quick_metadata.size,
+                    file_mtime: repair.quick_metadata.modified_millis,
+                    file_hash: repair.hash,
+                    thumbnail_path: Some(repair.thumbnail.path.clone()),
+                    width: Some(repair.thumbnail.width),
+                    height: Some(repair.thumbnail.height),
+                },
+            )?;
+            updates.push(ThumbnailUpdate {
+                image_id: to_public_id(prefix, repair.image_id),
+                thumbnail_path: repair.thumbnail.path.to_string_lossy().to_string(),
+                width: Some(repair.thumbnail.width),
+                height: Some(repair.thumbnail.height),
+                updated_at: Some(updated_at),
+            });
         }
     }
 
-    updates.extend(
-        folders::ensure_folder_thumbnails(dirs, &folder_ids)?
-            .into_iter()
-            .map(|update| ThumbnailUpdate {
-                image_id: update.image_id,
-                thumbnail_path: update.thumbnail_path,
-                width: None,
-                height: None,
-                updated_at: None,
-            }),
-    );
-    Ok(updates)
+    let folder_result = folders::ensure_folder_thumbnails(dirs, &folder_ids, stream_to)?;
+    updates.extend(folder_result.updates.into_iter().map(|u| ThumbnailUpdate {
+        image_id: u.image_id,
+        thumbnail_path: u.thumbnail_path,
+        width: None,
+        height: None,
+        updated_at: None,
+    }));
+    Ok(ThumbnailBatchResult { updates })
 }
 
 fn list_annotation_profiles_for_dirs(
@@ -2018,14 +2212,284 @@ pub async fn list_images(state: State<'_, AppState>) -> AppResult<Vec<DatasetIma
 }
 
 #[tauri::command]
+pub async fn list_images_fast(state: State<'_, AppState>) -> AppResult<Vec<DatasetImage>> {
+    let dirs = state.dirs.clone();
+    tauri::async_runtime::spawn_blocking(move || list_images_for_dirs_fast(&dirs))
+        .await
+        .map_err(|error| AppError::InvalidInput(format!("快速图片列表任务失败: {error}")))?
+}
+
+#[tauri::command]
+pub async fn load_folder_annotations(
+    state: State<'_, AppState>,
+    image_ids: Vec<i64>,
+) -> AppResult<Vec<folders::FolderAnnotationData>> {
+    let dirs = state.dirs.clone();
+    let id_set: std::collections::HashSet<i64> = image_ids.into_iter().collect();
+    tauri::async_runtime::spawn_blocking(move || {
+        folders::load_folder_image_annotations(&dirs, &id_set)
+    })
+    .await
+    .map_err(|error| AppError::InvalidInput(format!("加载文件夹标注失败: {error}")))?
+}
+
+#[tauri::command]
+pub fn refresh_thumbnail_watchers(app: AppHandle, state: State<'_, AppState>) -> AppResult<usize> {
+    let (watcher, watched_roots) = file_watcher::start(app, state.dirs.clone())?;
+    let mut current = state
+        .thumbnail_watcher
+        .lock()
+        .map_err(|_| AppError::InvalidInput("缩略图文件监听状态不可用".to_owned()))?;
+    *current = Some(watcher);
+    Ok(watched_roots)
+}
+
+#[tauri::command]
+pub fn prewarm_thumbnails(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    image_ids: Option<Vec<i64>>,
+) -> AppResult<()> {
+    let dirs = state.dirs.clone();
+    let _ = tauri::async_runtime::spawn_blocking(move || {
+        let result = (|| -> AppResult<()> {
+        let overall_start = Instant::now();
+        let ids = match image_ids {
+            Some(ids) => ids,
+            None => list_images_for_dirs(&dirs)?
+                .into_iter()
+                .filter(|image| !image.source_missing)
+                .map(|image| image.id)
+                .collect::<Vec<_>>(),
+        };
+        let _ = app.emit(
+            "thumbnail-prewarm-log",
+            format!("后台缩略图预生成启动：共 {} 张图片", ids.len()),
+        );
+
+        let thumbnail_dir = files::default_thumbnail_dir(&dirs.root);
+        let thumbnail_settings = thumbnail_settings::load_settings(&dirs)?;
+        let thumbnail_size = thumbnail_settings.thumbnail_size;
+
+        let mut all_repairs: Vec<(i64, PendingThumbnailRepair)> = Vec::new();
+        let mut folder_ids = HashSet::new();
+        let mut ids_by_prefix = HashMap::<i64, HashSet<i64>>::new();
+
+        for public_id in &ids {
+            if *public_id < 0 {
+                folder_ids.insert(*public_id);
+                continue;
+            }
+            if let Ok((prefix, local_id)) = split_public_id(*public_id) {
+                ids_by_prefix.entry(prefix).or_default().insert(local_id);
+            }
+        }
+
+        let mut db_handles: HashMap<i64, Database> = HashMap::new();
+        for (prefix, local_ids) in &ids_by_prefix {
+            let (mut db, _) = open_database_by_prefix(&dirs, *prefix)?;
+            let source_kind = db.dataset_source_kind()?;
+            for &local_id in local_ids {
+                let Some(image) = db.get_image(local_id)? else {
+                    continue;
+                };
+                let source_path = source_path_for_database_image(&image, &source_kind);
+                if !source_path.is_file() {
+                    continue;
+                }
+                let quick_metadata = match files::quick_file_metadata(&source_path) {
+                    Ok(m) => m,
+                    Err(e) => {
+                        tracing::warn!("读取缩略图源文件元数据失败：{:?}：{}", source_path, e);
+                        continue;
+                    }
+                };
+                let source_changed_quick = image
+                    .file_size
+                    .is_some_and(|s| s != quick_metadata.size)
+                    || image
+                        .file_mtime
+                        .is_some_and(|m| m != quick_metadata.modified_millis);
+                if has_cached_database_thumbnail(&image, &thumbnail_dir, thumbnail_size)
+                    && !source_changed_quick
+                {
+                    if image.file_size != Some(quick_metadata.size)
+                        || image.file_mtime != Some(quick_metadata.modified_millis)
+                    {
+                        db.update_image_quick_metadata(
+                            image.id,
+                            quick_metadata.size,
+                            quick_metadata.modified_millis,
+                        )?;
+                    }
+                    continue;
+                }
+                all_repairs.push((
+                    *prefix,
+                    PendingThumbnailRepair {
+                        image_id: image.id,
+                        source_path,
+                        log_path: image.path.clone(),
+                        existing_hash: (!source_changed_quick)
+                            .then(|| image.file_hash)
+                            .flatten(),
+                        quick_metadata,
+                    },
+                ));
+            }
+            db_handles.insert(*prefix, db);
+        }
+
+        let need_generate = all_repairs.len() + folder_ids.len();
+        let _ = app.emit(
+            "thumbnail-prewarm-log",
+            format!("需要生成缩略图：{} 张", need_generate),
+        );
+
+        let total_generated = std::sync::atomic::AtomicUsize::new(0);
+        let total_failed = std::sync::atomic::AtomicUsize::new(0);
+
+        let results: Vec<_> = all_repairs
+            .par_iter()
+            .map(|(prefix, repair)| {
+                let start = Instant::now();
+                let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    complete_thumbnail_repair(repair, &thumbnail_dir, thumbnail_size)
+                }));
+                let elapsed = start.elapsed();
+
+                let outcome = match result {
+                    Ok(Ok(completed)) => {
+                        total_generated.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                        let update = ThumbnailUpdate {
+                            image_id: to_public_id(*prefix, completed.image_id),
+                            thumbnail_path: completed
+                                .thumbnail
+                                .path
+                                .to_string_lossy()
+                                .to_string(),
+                            width: Some(completed.thumbnail.width),
+                            height: Some(completed.thumbnail.height),
+                            updated_at: None,
+                        };
+                        let _ = app.emit("thumbnail-batch-ready", vec![update.clone()]);
+
+                        let elapsed = completed.elapsed.as_secs_f64();
+                        let msg = if elapsed > 2.0 {
+                            format!("{} 缩略图生成耗时 {:.1}s（较慢）", repair.log_path, elapsed)
+                        } else {
+                            format!("{} 缩略图生成耗时 {:.1}s", repair.log_path, elapsed)
+                        };
+                        tracing::info!("{}", msg);
+                        let _ = app.emit("thumbnail-prewarm-log", msg);
+                        Ok((*prefix, completed))
+                    }
+                    Ok(Err(err)) => {
+                        total_failed.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                        let msg = format!(
+                            "缩略图生成失败 ({:.1}s)：{}：{}",
+                            elapsed.as_secs_f64(),
+                            repair.log_path,
+                            err
+                        );
+                        tracing::warn!("{}", msg);
+                        let _ = app.emit("thumbnail-prewarm-log", msg);
+                        Err(())
+                    }
+                    Err(_) => {
+                        total_failed.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                        let msg = format!(
+                            "缩略图生成崩溃 ({:.1}s)：{}",
+                            elapsed.as_secs_f64(),
+                            repair.log_path
+                        );
+                        tracing::warn!("{}", msg);
+                        let _ = app.emit("thumbnail-prewarm-log", msg);
+                        Err(())
+                    }
+                };
+                outcome
+            })
+            .collect();
+
+        for result in results {
+            if let Ok((prefix, completed)) = result {
+                if let Some(db) = db_handles.get_mut(&prefix) {
+                    let _ = db.update_image_source_metadata(
+                        completed.image_id,
+                        &ImageSourceMetadata {
+                            file_size: completed.quick_metadata.size,
+                            file_mtime: completed.quick_metadata.modified_millis,
+                            file_hash: completed.hash.clone(),
+                            thumbnail_path: Some(completed.thumbnail.path.clone()),
+                            width: Some(completed.thumbnail.width),
+                            height: Some(completed.thumbnail.height),
+                        },
+                    )?;
+                }
+            }
+        }
+
+        if !folder_ids.is_empty() {
+            match folders::ensure_folder_thumbnails(&dirs, &folder_ids, Some(&app)) {
+                Ok(folder_result) => {
+                    total_failed.fetch_add(
+                        folder_result.warnings.len(),
+                        std::sync::atomic::Ordering::Relaxed,
+                    );
+                    let generated_count = folder_result
+                        .updates
+                        .iter()
+                        .filter(|u| u.generated)
+                        .count();
+                    total_generated
+                        .fetch_add(generated_count, std::sync::atomic::Ordering::Relaxed);
+                }
+                Err(e) => {
+                    let msg = format!("文件夹缩略图生成失败：{}", e);
+                    tracing::warn!("{}", msg);
+                    let _ = app.emit("thumbnail-prewarm-log", msg);
+                }
+            }
+        }
+
+        let gen = total_generated.load(std::sync::atomic::Ordering::Relaxed);
+        let fail = total_failed.load(std::sync::atomic::Ordering::Relaxed);
+        let overall_elapsed = overall_start.elapsed();
+        let _ = app.emit(
+            "thumbnail-prewarm-log",
+            format!(
+                "后台缩略图预生成完成：共处理 {} 张，成功 {} 张，失败 {} 张，总耗时 {:.1}s",
+                need_generate,
+                gen,
+                fail,
+                overall_elapsed.as_secs_f64()
+            ),
+        );
+        Ok::<(), AppError>(())
+        })();
+        if let Err(error) = result {
+            let msg = format!("后台缩略图预生成异常中止：{}", error);
+            tracing::warn!("{}", msg);
+            let _ = app.emit("thumbnail-prewarm-log", msg);
+        }
+    });
+    Ok(())
+}
+
+#[tauri::command]
 pub async fn ensure_thumbnails(
+    app: AppHandle,
     state: State<'_, AppState>,
     image_ids: Vec<i64>,
 ) -> AppResult<Vec<ThumbnailUpdate>> {
     let dirs = state.dirs.clone();
-    tauri::async_runtime::spawn_blocking(move || ensure_thumbnails_for_dirs(&dirs, &image_ids))
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        ensure_thumbnails_for_dirs(&dirs, &image_ids, Some(&app))
+    })
         .await
-        .map_err(|error| AppError::InvalidInput(format!("Thumbnail task failed: {error}")))?
+        .map_err(|error| AppError::InvalidInput(format!("Thumbnail task failed: {error}")))?;
+    result.map(|r| r.updates)
 }
 
 #[tauri::command]

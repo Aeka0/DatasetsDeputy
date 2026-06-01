@@ -16,7 +16,10 @@ tauri-build = { version = "2", features = [] }
 base64 = "0.22"
 chrono = { version = "0.4", features = ["serde"] }
 dunce = "1"
+fast_image_resize = { version = "5", features = ["image"] }
 image = "0.25"
+notify = "7"
+rayon = "1.12.0"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 rusqlite = { version = "0.32", features = ["bundled"] }
 serde = { version = "1", features = ["derive"] }

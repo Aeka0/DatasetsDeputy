@@ -4,6 +4,7 @@ mod commands;
 mod db;
 mod errors;
 mod export;
+mod file_watcher;
 mod files;
 mod folders;
 mod gemini;
@@ -42,6 +43,7 @@ pub struct AppState {
     pub dirs: app_dirs::AppDirs,
     pub history: Mutex<history::HistoryManager>,
     pub import_cancel: Mutex<Option<Arc<AtomicBool>>>,
+    pub thumbnail_watcher: Mutex<Option<file_watcher::ThumbnailWatcher>>,
 }
 
 impl Drop for AppState {
@@ -90,6 +92,7 @@ pub fn run() {
                 dirs: dirs.clone(),
                 history: Mutex::new(history::HistoryManager::default()),
                 import_cancel: Mutex::new(None),
+                thumbnail_watcher: Mutex::new(None),
             });
 
             #[cfg(target_os = "windows")]
@@ -166,6 +169,10 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::finish_startup,
             commands::list_images,
+            commands::list_images_fast,
+            commands::load_folder_annotations,
+            commands::refresh_thumbnail_watchers,
+            commands::prewarm_thumbnails,
             commands::ensure_thumbnails,
             commands::list_annotation_profiles,
             commands::check_problem_items,

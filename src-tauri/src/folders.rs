@@ -2,12 +2,14 @@ use std::{
     collections::{HashMap, HashSet},
     fs,
     path::{Path, PathBuf},
-    time::UNIX_EPOCH,
+    time::{Duration, Instant, UNIX_EPOCH},
 };
 
 use chrono::Utc;
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
+use tauri::Emitter;
 
 use crate::{
     app_dirs::AppDirs,
@@ -18,9 +20,18 @@ use crate::{
 
 const FOLDER_PROFILE_NAME: &str = "TXT";
 
+#[allow(dead_code)]
 pub struct FolderThumbnailUpdate {
     pub image_id: i64,
     pub thumbnail_path: String,
+    pub source_path: String,
+    pub elapsed: Duration,
+    pub generated: bool,
+}
+
+pub struct FolderThumbnailResult {
+    pub updates: Vec<FolderThumbnailUpdate>,
+    pub warnings: Vec<String>,
 }
 
 #[derive(Default, Serialize, Deserialize)]
@@ -69,6 +80,14 @@ fn read_registry(dirs: &AppDirs) -> AppResult<FolderRegistry> {
     }
 
     Ok(serde_json::from_str(&fs::read_to_string(path)?)?)
+}
+
+pub fn registered_folder_roots(dirs: &AppDirs) -> AppResult<Vec<PathBuf>> {
+    Ok(read_registry(dirs)?
+        .folders
+        .into_iter()
+        .map(PathBuf::from)
+        .collect())
 }
 
 fn read_index_store(dirs: &AppDirs) -> AppResult<FolderIndexStore> {
@@ -173,13 +192,19 @@ pub fn refresh_folder_indexes(dirs: &AppDirs) -> AppResult<()> {
         .folders
         .retain(|index| registered_roots.contains(&index.root.to_ascii_lowercase()));
 
-    for root in registry
+    let roots: Vec<PathBuf> = registry
         .folders
         .iter()
         .map(PathBuf::from)
         .filter(|root| root.is_dir())
-    {
-        let index = build_folder_index(&root);
+        .collect();
+
+    let new_indexes: Vec<FolderIndex> = roots
+        .par_iter()
+        .map(|root| build_folder_index(root))
+        .collect();
+
+    for index in new_indexes {
         store
             .folders
             .retain(|folder| !folder.root.eq_ignore_ascii_case(&index.root));
@@ -235,6 +260,10 @@ fn folder_image_id(root: &Path, image_path: &Path) -> i64 {
     -(folder_prefix(root) * ID_NAMESPACE_SIZE + local_id)
 }
 
+pub fn folder_image_public_id(root: &Path, image_path: &Path) -> i64 {
+    folder_image_id(root, image_path)
+}
+
 fn dataset_id(root: &Path) -> String {
     format!("folder:{}", normalize_path(root))
 }
@@ -258,10 +287,11 @@ fn cached_folder_thumbnail_path(
     dirs: &AppDirs,
     path: &Path,
     metadata: Option<&fs::Metadata>,
+    thumbnail_size: u32,
 ) -> Option<PathBuf> {
     let thumbnail_dir = files::default_thumbnail_dir(&dirs.root).join("folders");
-    let thumbnail_path =
-        thumbnail_dir.join(format!("{}.webp", folder_thumbnail_hash(path, metadata)));
+    let hash = folder_thumbnail_hash(path, metadata);
+    let thumbnail_path = thumbnail::thumbnail_path(&thumbnail_dir, &hash, thumbnail_size);
     thumbnail::is_valid_thumbnail(&thumbnail_path).then_some(thumbnail_path)
 }
 
@@ -270,15 +300,53 @@ fn folder_thumbnail_path(
     path: &Path,
     metadata: Option<&fs::Metadata>,
 ) -> Option<PathBuf> {
-    cached_folder_thumbnail_path(dirs, path, metadata)
+    let thumbnail_size = thumbnail_settings::load_settings(dirs)
+        .map(|settings| settings.thumbnail_size)
+        .unwrap_or(256);
+    cached_folder_thumbnail_path(dirs, path, metadata, thumbnail_size)
+}
+
+struct FolderThumbnailJob {
+    id: i64,
+    path: PathBuf,
+    entry_path: String,
+    cached: Option<String>,
+    hash: String,
+}
+
+#[derive(Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct FolderThumbnailEvent {
+    image_id: i64,
+    thumbnail_path: String,
+    width: Option<u32>,
+    height: Option<u32>,
+    updated_at: Option<String>,
+}
+
+fn emit_folder_thumbnail(stream_to: Option<&tauri::AppHandle>, update: &FolderThumbnailUpdate) {
+    if let Some(app) = stream_to {
+        let event = FolderThumbnailEvent {
+            image_id: update.image_id,
+            thumbnail_path: update.thumbnail_path.clone(),
+            width: None,
+            height: None,
+            updated_at: None,
+        };
+        let _ = app.emit("thumbnail-batch-ready", vec![event]);
+    }
 }
 
 pub fn ensure_folder_thumbnails(
     dirs: &AppDirs,
     image_ids: &HashSet<i64>,
-) -> AppResult<Vec<FolderThumbnailUpdate>> {
+    stream_to: Option<&tauri::AppHandle>,
+) -> AppResult<FolderThumbnailResult> {
     if image_ids.is_empty() {
-        return Ok(Vec::new());
+        return Ok(FolderThumbnailResult {
+            updates: Vec::new(),
+            warnings: Vec::new(),
+        });
     }
 
     let registry = read_registry(dirs)?;
@@ -286,8 +354,8 @@ pub fn ensure_folder_thumbnails(
     let thumbnail_size = thumbnail_settings::load_settings(dirs)
         .map(|settings| settings.thumbnail_size)
         .unwrap_or(256);
-    let mut updates = Vec::new();
     let mut remaining_ids = image_ids.clone();
+    let mut jobs: Vec<FolderThumbnailJob> = Vec::new();
 
     for root in registry
         .folders
@@ -313,24 +381,16 @@ pub fn ensure_folder_thumbnails(
                 continue;
             }
             let metadata = fs::metadata(&path).ok();
-            if let Some(thumbnail_path) =
-                cached_folder_thumbnail_path(dirs, &path, metadata.as_ref())
-            {
-                updates.push(FolderThumbnailUpdate {
-                    image_id: id,
-                    thumbnail_path: thumbnail_path.to_string_lossy().to_string(),
-                });
-                continue;
-            }
+            let cached = cached_folder_thumbnail_path(dirs, &path, metadata.as_ref(), thumbnail_size)
+                .map(|p| p.to_string_lossy().to_string());
             let hash = folder_thumbnail_hash(&path, metadata.as_ref());
-            if let Ok(thumbnail) =
-                thumbnail::create_thumbnail(&path, &thumbnail_dir, &hash, thumbnail_size)
-            {
-                updates.push(FolderThumbnailUpdate {
-                    image_id: id,
-                    thumbnail_path: thumbnail.path.to_string_lossy().to_string(),
-                });
-            }
+            jobs.push(FolderThumbnailJob {
+                id,
+                path,
+                entry_path: entry.path.clone(),
+                cached,
+                hash,
+            });
 
             if remaining_ids.is_empty() {
                 break;
@@ -338,7 +398,76 @@ pub fn ensure_folder_thumbnails(
         }
     }
 
-    Ok(updates)
+    let results: Vec<_> = jobs
+        .par_iter()
+        .map(|job| {
+            if let Some(cached_path) = &job.cached {
+                let update = FolderThumbnailUpdate {
+                    image_id: job.id,
+                    thumbnail_path: cached_path.clone(),
+                    source_path: job.entry_path.clone(),
+                    elapsed: Duration::ZERO,
+                    generated: false,
+                };
+                emit_folder_thumbnail(stream_to, &update);
+                return Ok(update);
+            }
+            let start = Instant::now();
+            match thumbnail::create_thumbnail_with_timeout(
+                &job.path,
+                &thumbnail_dir,
+                &job.hash,
+                thumbnail_size,
+            ) {
+                Ok(thumb) => {
+                    let update = FolderThumbnailUpdate {
+                        image_id: job.id,
+                        thumbnail_path: thumb.path.to_string_lossy().to_string(),
+                        source_path: job.entry_path.clone(),
+                        elapsed: start.elapsed(),
+                        generated: true,
+                    };
+                    emit_folder_thumbnail(stream_to, &update);
+                    if let Some(app) = stream_to {
+                        let elapsed = update.elapsed.as_secs_f64();
+                        let msg = if elapsed > 2.0 {
+                            format!("{} 缩略图生成耗时 {:.1}s（较慢）", job.entry_path, elapsed)
+                        } else {
+                            format!("{} 缩略图生成耗时 {:.1}s", job.entry_path, elapsed)
+                        };
+                        tracing::info!("{}", msg);
+                        let _ = app.emit("thumbnail-prewarm-log", msg);
+                    }
+                    Ok(update)
+                }
+                Err(error) => {
+                    let warning = format!(
+                        "文件夹缩略图生成失败 ({:.1}s)：{}：{}",
+                        start.elapsed().as_secs_f64(),
+                        job.entry_path,
+                        error
+                    );
+                    if let Some(app) = stream_to {
+                        let _ = app.emit("thumbnail-prewarm-log", warning.clone());
+                    }
+                    Err(warning)
+                }
+            }
+        })
+        .collect();
+
+    let mut updates = Vec::new();
+    let mut warnings = Vec::new();
+    for result in results {
+        match result {
+            Ok(update) => updates.push(update),
+            Err(warning) => {
+                tracing::warn!("{}", warning);
+                warnings.push(warning);
+            }
+        }
+    }
+    Ok(FolderThumbnailResult { updates, warnings })
 }
 
 fn read_text_file(path: PathBuf) -> AppResult<String> {
@@ -485,6 +614,14 @@ pub fn list_folder_profiles(dirs: &AppDirs) -> AppResult<Vec<AnnotationProfile>>
 }
 
 pub fn list_folder_images(dirs: &AppDirs) -> AppResult<Vec<DatasetImage>> {
+    list_folder_images_inner(dirs, false)
+}
+
+pub fn list_folder_images_fast(dirs: &AppDirs) -> AppResult<Vec<DatasetImage>> {
+    list_folder_images_inner(dirs, true)
+}
+
+fn list_folder_images_inner(dirs: &AppDirs, skip_annotations: bool) -> AppResult<Vec<DatasetImage>> {
     let registry = read_registry(dirs)?;
     let mut images = Vec::new();
 
@@ -499,67 +636,152 @@ pub fn list_folder_images(dirs: &AppDirs) -> AppResult<Vec<DatasetImage>> {
         let dataset_id = dataset_id(&root);
         let index = ensure_folder_index(dirs, &root)?;
 
-        for entry in index.entries {
-            let path = PathBuf::from(&entry.path);
-            let id = folder_image_id(&root, &path);
-            let source_missing = entry.source_missing || !path.is_file();
-            let annotation = read_text_file(annotation_path(&path))?;
-            let instruction = read_text_file(instruction_path(&path))?;
-            if source_missing && annotation.trim().is_empty() && instruction.trim().is_empty() {
-                continue;
-            }
-            let metadata = (!source_missing)
-                .then(|| fs::metadata(&path).ok())
-                .flatten();
-            let thumbnail_path = if source_missing {
-                None
-            } else {
-                folder_thumbnail_path(dirs, &path, metadata.as_ref())
-            };
-            let updated_at = metadata
-                .as_ref()
-                .and_then(|metadata| metadata.modified().ok())
-                .map(chrono::DateTime::<Utc>::from)
-                .unwrap_or_else(Utc::now)
-                .to_rfc3339();
+        let batch: Vec<DatasetImage> = index
+            .entries
+            .par_iter()
+            .filter_map(|entry| {
+                let path = PathBuf::from(&entry.path);
+                let id = folder_image_id(&root, &path);
+                let source_missing = entry.source_missing || !path.is_file();
 
-            images.push(DatasetImage {
-                id,
-                path: path.to_string_lossy().to_string(),
-                dataset_path: None,
-                file_name: path
-                    .file_name()
-                    .and_then(|value| value.to_str())
-                    .unwrap_or("image")
-                    .to_owned(),
-                storage_path: None,
-                thumbnail_path: thumbnail_path.map(|path| path.to_string_lossy().to_string()),
-                width: None,
-                height: None,
-                file_size: metadata.map(|metadata| metadata.len() as i64),
-                file_hash: None,
-                source_missing,
-                imported_at: updated_at.clone(),
-                updated_at: updated_at.clone(),
-                annotations: vec![Annotation {
-                    id: id * 10 - 1,
-                    image_id: id,
-                    profile_id,
-                    content: annotation,
-                    instruction,
-                    confidence: None,
-                    created_at: updated_at.clone(),
+                if skip_annotations && source_missing {
+                    return None;
+                }
+
+                let (annotation, instruction) = if skip_annotations {
+                    (String::new(), String::new())
+                } else {
+                    let ann = read_text_file(annotation_path(&path)).unwrap_or_default();
+                    let inst = read_text_file(instruction_path(&path)).unwrap_or_default();
+                    if source_missing && ann.trim().is_empty() && inst.trim().is_empty() {
+                        return None;
+                    }
+                    (ann, inst)
+                };
+
+                let metadata = (!source_missing)
+                    .then(|| fs::metadata(&path).ok())
+                    .flatten();
+                let thumbnail_path = if source_missing {
+                    None
+                } else {
+                    folder_thumbnail_path(dirs, &path, metadata.as_ref())
+                };
+                let updated_at = metadata
+                    .as_ref()
+                    .and_then(|m| m.modified().ok())
+                    .map(chrono::DateTime::<Utc>::from)
+                    .unwrap_or_else(Utc::now)
+                    .to_rfc3339();
+
+                Some(DatasetImage {
+                    id,
+                    path: path.to_string_lossy().to_string(),
+                    dataset_path: None,
+                    file_name: path
+                        .file_name()
+                        .and_then(|value| value.to_str())
+                        .unwrap_or("image")
+                        .to_owned(),
+                    storage_path: None,
+                    thumbnail_path: thumbnail_path.map(|p| p.to_string_lossy().to_string()),
+                    width: None,
+                    height: None,
+                    file_size: metadata.as_ref().map(|m| m.len() as i64),
+                    file_mtime: metadata
+                        .as_ref()
+                        .and_then(|m| m.modified().ok())
+                        .and_then(|modified| modified.duration_since(UNIX_EPOCH).ok())
+                        .map(|duration| duration.as_millis().min(i64::MAX as u128) as i64),
+                    file_hash: None,
+                    source_missing,
+                    imported_at: updated_at.clone(),
                     updated_at: updated_at.clone(),
-                }],
-                source_kind: Some("folder".to_owned()),
-                dataset_id: Some(dataset_id.clone()),
-                root_name: None,
-                root_path: Some(root_path.clone()),
-            });
-        }
+                    annotations: vec![Annotation {
+                        id: id * 10 - 1,
+                        image_id: id,
+                        profile_id,
+                        content: annotation,
+                        instruction,
+                        confidence: None,
+                        created_at: updated_at.clone(),
+                        updated_at: updated_at.clone(),
+                    }],
+                    source_kind: Some("folder".to_owned()),
+                    dataset_id: Some(dataset_id.clone()),
+                    root_name: None,
+                    root_path: Some(root_path.clone()),
+                })
+            })
+            .collect();
+
+        images.extend(batch);
     }
 
     Ok(images)
+}
+
+pub fn load_folder_image_annotations(
+    dirs: &AppDirs,
+    image_ids: &HashSet<i64>,
+) -> AppResult<Vec<FolderAnnotationData>> {
+    if image_ids.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let registry = read_registry(dirs)?;
+    let mut results = Vec::new();
+    let mut remaining = image_ids.clone();
+
+    for root in registry
+        .folders
+        .iter()
+        .map(PathBuf::from)
+        .filter(|path| path.is_dir())
+    {
+        if remaining.is_empty() {
+            break;
+        }
+
+        let profile_id = folder_profile_id(&root);
+        let index = ensure_folder_index(dirs, &root)?;
+
+        let batch: Vec<FolderAnnotationData> = index
+            .entries
+            .par_iter()
+            .filter_map(|entry| {
+                let path = PathBuf::from(&entry.path);
+                let id = folder_image_id(&root, &path);
+                if !image_ids.contains(&id) {
+                    return None;
+                }
+                let annotation = read_text_file(annotation_path(&path)).unwrap_or_default();
+                let instruction = read_text_file(instruction_path(&path)).unwrap_or_default();
+                Some(FolderAnnotationData {
+                    image_id: id,
+                    profile_id,
+                    annotation,
+                    instruction,
+                })
+            })
+            .collect();
+
+        for item in &batch {
+            remaining.remove(&item.image_id);
+        }
+        results.extend(batch);
+    }
+
+    Ok(results)
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FolderAnnotationData {
+    pub image_id: i64,
+    pub profile_id: i64,
+    pub annotation: String,
+    pub instruction: String,
 }
 
 pub fn is_path_within_registered_folder(dirs: &AppDirs, target: &Path) -> AppResult<bool> {

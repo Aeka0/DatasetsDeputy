@@ -15,7 +15,7 @@ use windows::{
         System::Com::{CoInitializeEx, CoUninitialize, COINIT_MULTITHREADED},
         UI::Shell::{
             IShellItemImageFactory, SHCreateItemFromParsingName, SIIGBF_BIGGERSIZEOK,
-            SIIGBF_RESIZETOFIT, SIIGBF_THUMBNAILONLY,
+            SIIGBF_RESIZETOFIT,
         },
     },
 };
@@ -76,7 +76,7 @@ pub fn create_thumbnail(source: &Path, target: &Path, max_edge: u32) -> bool {
     let bitmap = match unsafe {
         item.GetImage(
             size,
-            SIIGBF_THUMBNAILONLY | SIIGBF_BIGGERSIZEOK | SIIGBF_RESIZETOFIT,
+            SIIGBF_BIGGERSIZEOK | SIIGBF_RESIZETOFIT,
         )
     } {
         Ok(bitmap) if !bitmap.0.is_null() => BitmapGuard(bitmap),

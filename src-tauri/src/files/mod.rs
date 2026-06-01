@@ -3,6 +3,7 @@ use std::{
     fs::{self, File},
     io::Read,
     path::{Path, PathBuf},
+    time::UNIX_EPOCH,
 };
 
 use serde::Serialize;
@@ -28,6 +29,12 @@ pub struct ImportImageResult {
     pub has_annotation: bool,
     pub format_warning: Option<String>,
     pub storage_path: Option<PathBuf>,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct QuickFileMetadata {
+    pub size: i64,
+    pub modified_millis: i64,
 }
 
 #[derive(Debug, Serialize)]
@@ -92,7 +99,7 @@ pub fn import_image(
     thumbnail_size: u32,
 ) -> AppResult<ImportImageResult> {
     let hash = hash_file(path)?;
-    let metadata = std::fs::metadata(path)?;
+    let metadata = quick_file_metadata(path)?;
     let storage_path = match asset_dir {
         Some(asset_dir) => Some(copy_to_managed_asset_store(path, asset_dir, &hash)?),
         None => None,
@@ -108,7 +115,8 @@ pub fn import_image(
         thumbnail_path: Some(thumbnail.path.clone()),
         width: Some(thumbnail.width),
         height: Some(thumbnail.height),
-        file_size: Some(metadata.len() as i64),
+        file_size: Some(metadata.size),
+        file_mtime: Some(metadata.modified_millis),
         file_hash: hash,
     })?;
 
@@ -164,6 +172,34 @@ pub fn hash_file(path: &Path) -> AppResult<String> {
     }
 
     Ok(format!("{:x}", hasher.finalize()))
+}
+
+pub fn quick_file_metadata(path: &Path) -> AppResult<QuickFileMetadata> {
+    let metadata = std::fs::metadata(path)?;
+    let modified_millis = metadata
+        .modified()
+        .ok()
+        .and_then(|modified| modified.duration_since(UNIX_EPOCH).ok())
+        .map(|duration| duration.as_millis().min(i64::MAX as u128) as i64)
+        .unwrap_or_default();
+    Ok(QuickFileMetadata {
+        size: metadata.len().min(i64::MAX as u64) as i64,
+        modified_millis,
+    })
+}
+
+pub fn quick_cache_key(path: &Path) -> AppResult<String> {
+    let metadata = quick_file_metadata(path)?;
+    let normalized = path
+        .to_string_lossy()
+        .replace('\\', "/")
+        .trim_end_matches('/')
+        .to_ascii_lowercase();
+    let mut hasher = Sha256::new();
+    hasher.update(normalized.as_bytes());
+    hasher.update(metadata.size.to_le_bytes());
+    hasher.update(metadata.modified_millis.to_le_bytes());
+    Ok(format!("quick-{:x}", hasher.finalize()))
 }
 
 pub fn is_supported_image(path: &Path) -> bool {

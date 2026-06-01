@@ -139,6 +139,49 @@ const menuLabels: Array<{ key: MenuKey; labelKey: string }> = [
 
 const annotationCancelledError = "annotation_cancelled";
 
+const cjkCharacterPattern = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]$/u;
+
+function lastNonSpaceCharacter(value: string) {
+  return value.trimEnd().at(-1) ?? "";
+}
+
+function isCjkCharacter(value: string) {
+  return cjkCharacterPattern.test(value);
+}
+
+function appendPrefixSeparator(value: string) {
+  if (!value) return value;
+  if (value.endsWith(". ") || value.endsWith("。")) return value;
+  const trimmed = value.trimEnd();
+  if (trimmed.endsWith(".")) return `${trimmed} `;
+  return `${trimmed}${isCjkCharacter(lastNonSpaceCharacter(trimmed)) ? "。" : ". "}`;
+}
+
+function appendSuffixSeparator(value: string) {
+  if (!value) return value;
+  if (value.endsWith(", ") || value.endsWith(". ") || value.endsWith("。")) return value;
+  const trimmed = value.trimEnd();
+  if (trimmed.endsWith(",") || trimmed.endsWith(".")) return `${trimmed} `;
+  return `${trimmed}${isCjkCharacter(lastNonSpaceCharacter(trimmed)) ? "。" : ". "}`;
+}
+
+function mergeGeneratedAnnotation(
+  existing: string,
+  generated: string,
+  strategy: AnnotationConflictStrategy
+) {
+  if (strategy === "overwrite") return generated;
+  if (!existing) return generated;
+  if (!generated) return existing;
+  if (strategy === "mergePrefix") {
+    return `${appendPrefixSeparator(generated)}${existing.trimStart()}`;
+  }
+  if (strategy === "mergeSuffix") {
+    return `${appendSuffixSeparator(existing)}${generated.trimStart()}`;
+  }
+  return generated;
+}
+
 function getAppOverlayRoot() {
   return document.getElementById("app-overlay-root") ?? document.body;
 }
@@ -1608,6 +1651,10 @@ export function TitleMenuBar({
     const conflictLabel =
       options.conflictStrategy === "overwrite"
         ? t("annotationRun.conflictOverwrite")
+        : options.conflictStrategy === "mergePrefix"
+        ? t("annotationRun.conflictMergePrefix")
+        : options.conflictStrategy === "mergeSuffix"
+        ? t("annotationRun.conflictMergeSuffix")
         : t("annotationRun.conflictSkip");
     addAppLog(t("appLog.annotationRequested"));
     addAppLog(
@@ -1660,12 +1707,14 @@ export function TitleMenuBar({
     );
 
     const applyGeneratedContent = (image: DatasetImage, content: string) => {
+      const current = getCurrentAnnotationDraft(image, selectedProfileId);
+      const nextContent = mergeGeneratedAnnotation(current, content, options.conflictStrategy);
       clearTableCellFailure(`${image.id}:annotation`);
-      applyGeneratedAnnotationDraft(selectedProfileId, image.id, content);
+      applyGeneratedAnnotationDraft(selectedProfileId, image.id, nextContent);
       generatedChanges.push({
         imageId: image.id,
         profileId: selectedProfileId,
-        content
+        content: nextContent
       });
     };
 

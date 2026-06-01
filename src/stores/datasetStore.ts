@@ -160,10 +160,20 @@ const sampleProjects: DatasetProject[] = [
 let unlistenImportProgress: UnlistenFn | undefined;
 let unlistenExportProgress: UnlistenFn | undefined;
 let unlistenDatabaseExportProgress: UnlistenFn | undefined;
+let unlistenThumbnailInvalidated: UnlistenFn | undefined;
+let unlistenThumbnailBatchReady: UnlistenFn | undefined;
+let unlistenThumbnailPrewarmLog: UnlistenFn | undefined;
 const thumbnailRequestsInFlight = new Set<number>();
-const thumbnailRequestQueue: number[] = [];
-let thumbnailQueueRunning = false;
-const thumbnailBatchSize = 64;
+const confirmedThumbnails = new Set<number>();
+
+async function fetchAllImages(): Promise<DatasetImage[]> {
+  return invokeCommand<DatasetImage[]>("list_images");
+}
+
+interface ThumbnailInvalidationEvent {
+  imageIds: number[];
+  paths: string[];
+}
 
 function normalizePath(path: string) {
   return path.replaceAll("\\", "/").replace(/\/+$/, "");
@@ -319,6 +329,74 @@ function applyThumbnailUpdates(images: DatasetImage[], updates: ThumbnailUpdate[
   });
 
   return changed ? nextImages : images;
+}
+
+function rememberConfirmedThumbnails(images: DatasetImage[]) {
+  confirmedThumbnails.clear();
+  for (const image of images) {
+    if (image.thumbnailPath) {
+      confirmedThumbnails.add(image.id);
+    }
+  }
+}
+
+function rememberThumbnailUpdates(updates: ThumbnailUpdate[]) {
+  for (const update of updates) {
+    if (update.thumbnailPath) {
+      confirmedThumbnails.add(update.imageId);
+    }
+  }
+}
+
+function clearQueuedThumbnailRequests() {
+  thumbnailRequestsInFlight.clear();
+}
+
+function applyThumbnailInvalidation(images: DatasetImage[], imageIds: number[]) {
+  if (imageIds.length === 0) return images;
+  const imageIdSet = new Set(imageIds);
+  let changed = false;
+  const nextImages = images.map((image) => {
+    if (!imageIdSet.has(image.id)) return image;
+    confirmedThumbnails.delete(image.id);
+    if (!image.thumbnailPath) return image;
+    changed = true;
+    return {
+      ...image,
+      thumbnailPath: undefined,
+      updatedAt: new Date().toISOString()
+    };
+  });
+  return changed ? nextImages : images;
+}
+
+function prewarmMissingThumbnails(images: DatasetImage[]) {
+  if (!hasTauriRuntime()) return;
+  const imageIds = images
+    .filter((image) => !image.sourceMissing && !image.thumbnailPath)
+    .map((image) => image.id);
+  if (imageIds.length === 0) return;
+  for (const id of imageIds) {
+    thumbnailRequestsInFlight.add(id);
+  }
+  const store = useDatasetStore.getState();
+  store.addAppLog(`后台缩略图预生成已排队：${imageIds.length} 张图片`);
+  void store
+    .initThumbnailEvents()
+    .then(() => invokeCommand<void>("prewarm_thumbnails", { imageIds }))
+    .catch((error) => {
+      useDatasetStore
+        .getState()
+        .addAppLog(
+          i18next.t("appLog.refreshImagesFailed", { message: formatAppError(error) }),
+          "error"
+        );
+    })
+    .finally(() => {
+      for (const id of imageIds) {
+        thumbnailRequestsInFlight.delete(id);
+      }
+    });
 }
 
 function createProjectTree(
@@ -537,12 +615,13 @@ interface DatasetState {
   showExportDatabaseDialog: boolean;
   showImportDatabaseDialog: boolean;
   annotationType: string;
+  initThumbnailEvents: () => Promise<void>;
   initImportEvents: () => Promise<void>;
   initExportEvents: () => Promise<void>;
   initDatabaseExportEvents: () => Promise<void>;
   load: () => Promise<void>;
   refreshImages: () => Promise<void>;
-  ensureThumbnails: (imageIds: number[]) => Promise<void>;
+  ensureThumbnails: (imageIds: number[]) => void;
   checkProblemItems: (project?: DatasetProject) => Promise<ProblemItemCheckSummary | undefined>;
   openImportWizard: () => void;
   closeImportWizard: () => void;
@@ -910,6 +989,38 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
   showExportDialog: false,
   showExportDatabaseDialog: false,
   showImportDatabaseDialog: false,
+  initThumbnailEvents: async () => {
+    if (
+      !hasTauriRuntime() ||
+      (unlistenThumbnailInvalidated && unlistenThumbnailBatchReady && unlistenThumbnailPrewarmLog)
+    ) {
+      return;
+    }
+
+    unlistenThumbnailInvalidated ??= await listen<ThumbnailInvalidationEvent>(
+      "thumbnail-invalidated",
+      (event) => {
+        const imageIds = event.payload.imageIds;
+        set((state) => ({
+          images: applyThumbnailInvalidation(state.images, imageIds)
+        }));
+      }
+    );
+    unlistenThumbnailBatchReady ??= await listen<ThumbnailUpdate[]>(
+      "thumbnail-batch-ready",
+      (event) => {
+        const updates = event.payload;
+        if (updates.length === 0) return;
+        rememberThumbnailUpdates(updates);
+        set((state) => ({
+          images: applyThumbnailUpdates(state.images, updates)
+        }));
+      }
+    );
+    unlistenThumbnailPrewarmLog ??= await listen<string>("thumbnail-prewarm-log", (event) => {
+      get().addAppLog(event.payload);
+    });
+  },
   initHistory: async () => {
     if (!hasTauriRuntime()) return;
     const historyState = await invokeCommand<HistoryState>("initialize_history_session");
@@ -941,7 +1052,7 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
         await invokeCommand(payload.undo.command, payload.undo.args);
         if (payload.refresh === "imagesAndProfiles") {
           const [images, profiles] = await Promise.all([
-            invokeCommand<DatasetImage[]>("list_images"),
+            fetchAllImages(),
             invokeCommand<AnnotationProfile[]>("list_annotation_profiles")
           ]);
           set({ images, profiles, projects: createProjectTree(images) });
@@ -992,7 +1103,7 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
         await invokeCommand(payload.redo.command, payload.redo.args);
         if (payload.refresh === "imagesAndProfiles") {
           const [images, profiles] = await Promise.all([
-            invokeCommand<DatasetImage[]>("list_images"),
+            fetchAllImages(),
             invokeCommand<AnnotationProfile[]>("list_annotation_profiles")
           ]);
           set({ images, profiles, projects: createProjectTree(images) });
@@ -1099,7 +1210,7 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
           })
         );
         const [images, profiles] = await Promise.all([
-          invokeCommand<DatasetImage[]>("list_images"),
+          fetchAllImages(),
           invokeCommand<AnnotationProfile[]>("list_annotation_profiles")
         ]);
         const projects = createProjectTree(
@@ -1121,6 +1232,14 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
           ...createImageSelection([]),
           previewImageId: undefined
         });
+      rememberConfirmedThumbnails(images);
+      void invokeCommand<number>("refresh_thumbnail_watchers").catch((error) => {
+        get().addAppLog(
+          i18next.t("appLog.refreshImagesFailed", { message: formatAppError(error) }),
+          "error"
+        );
+      });
+      prewarmMissingThumbnails(images);
         if (
           progress.report.sourceKind === "database" &&
           progress.report.databasePath &&
@@ -1241,7 +1360,7 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
     get().addAppLog(i18next.t("appLog.refreshStarting"));
     try {
       const [images, profiles] = await Promise.all([
-        invokeCommand<DatasetImage[]>("list_images"),
+        fetchAllImages(),
         invokeCommand<AnnotationProfile[]>("list_annotation_profiles")
       ]);
       set({
@@ -1254,6 +1373,14 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
         previewImageId: undefined,
         activeProfileId: profiles[0]?.id
       });
+      rememberConfirmedThumbnails(images);
+      void invokeCommand<number>("refresh_thumbnail_watchers").catch((error) => {
+        get().addAppLog(
+          i18next.t("appLog.refreshImagesFailed", { message: formatAppError(error) }),
+          "error"
+        );
+      });
+      prewarmMissingThumbnails(images);
       get().addAppLog(
         i18next.t("appLog.refreshCompleted", {
           imageCount: images.length,
@@ -1276,7 +1403,7 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
 
     try {
       await invokeCommand<void>("refresh_folder_indexes");
-      const images = await invokeCommand<DatasetImage[]>("list_images");
+      const images = await fetchAllImages();
       set((state) => {
         const imageIds = new Set(images.map((image) => image.id));
         const selectedImageIds = state.selectedImageIds.filter((imageId) => imageIds.has(imageId));
@@ -1299,6 +1426,14 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
               : undefined
         };
       });
+      rememberConfirmedThumbnails(images);
+      void invokeCommand<number>("refresh_thumbnail_watchers").catch((error) => {
+        get().addAppLog(
+          i18next.t("appLog.refreshImagesFailed", { message: formatAppError(error) }),
+          "error"
+        );
+      });
+      prewarmMissingThumbnails(images);
     } catch (error) {
       get().addAppLog(
         i18next.t("appLog.refreshImagesFailed", { message: formatAppError(error) }),
@@ -1306,54 +1441,35 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
       );
     }
   },
-  ensureThumbnails: async (imageIds) => {
+  ensureThumbnails: (imageIds) => {
     if (!hasTauriRuntime() || imageIds.length === 0) {
       return;
     }
 
-    const pendingImageIds = Array.from(new Set(imageIds)).filter((imageId) => {
-      if (thumbnailRequestsInFlight.has(imageId)) {
-        return false;
-      }
-      thumbnailRequestsInFlight.add(imageId);
-      return true;
-    });
-
-    thumbnailRequestQueue.push(...pendingImageIds);
-    if (thumbnailQueueRunning) {
+    const pendingImageIds = Array.from(new Set(imageIds)).filter(
+      (imageId) =>
+        !confirmedThumbnails.has(imageId) && !thumbnailRequestsInFlight.has(imageId)
+    );
+    if (pendingImageIds.length === 0) {
       return;
     }
 
-    thumbnailQueueRunning = true;
-    try {
-      while (thumbnailRequestQueue.length > 0) {
-        const batch = thumbnailRequestQueue.splice(0, thumbnailBatchSize);
-        let updates: ThumbnailUpdate[] = [];
-
-        try {
-          updates = await invokeCommand<ThumbnailUpdate[]>("ensure_thumbnails", {
-            imageIds: batch
-          });
-        } catch (error) {
-          get().addAppLog(
-            i18next.t("appLog.refreshImagesFailed", { message: formatAppError(error) }),
-            "error"
-          );
-        } finally {
-          for (const imageId of batch) {
-            thumbnailRequestsInFlight.delete(imageId);
-          }
-        }
-
-        if (updates.length > 0) {
-          set((state) => ({
-            images: applyThumbnailUpdates(state.images, updates)
-          }));
-        }
-      }
-    } finally {
-      thumbnailQueueRunning = false;
+    for (const id of pendingImageIds) {
+      thumbnailRequestsInFlight.add(id);
     }
+
+    invokeCommand<ThumbnailUpdate[]>("ensure_thumbnails", {
+      imageIds: pendingImageIds
+    }).catch((error) => {
+      get().addAppLog(
+        i18next.t("appLog.refreshImagesFailed", { message: formatAppError(error) }),
+        "error"
+      );
+    }).finally(() => {
+      for (const id of pendingImageIds) {
+        thumbnailRequestsInFlight.delete(id);
+      }
+    });
   },
   checkProblemItems: async (project) => {
     if (!hasTauriRuntime() || !project?.datasetId) {
@@ -1546,7 +1662,7 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
         }
       });
       const [images, profiles] = await Promise.all([
-        invokeCommand<DatasetImage[]>("list_images"),
+        fetchAllImages(),
         invokeCommand<AnnotationProfile[]>("list_annotation_profiles")
       ]);
       const projects = createProjectTree(images);
@@ -1680,7 +1796,7 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
     get().addAppLog(i18next.t("appLog.browseImportStarting"));
     try {
       const [images, profiles] = await Promise.all([
-        invokeCommand<DatasetImage[]>("list_images"),
+        fetchAllImages(),
         invokeCommand<AnnotationProfile[]>("list_annotation_profiles")
       ]);
       const projects = createProjectTree(images, report.rootName, report.rootPath);
@@ -1742,7 +1858,7 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
 
       try {
         const [images, profiles] = await Promise.all([
-          invokeCommand<DatasetImage[]>("list_images"),
+          fetchAllImages(),
           invokeCommand<AnnotationProfile[]>("list_annotation_profiles")
         ]);
         set({
@@ -1833,7 +1949,7 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
         datasetId: project.datasetId
       });
       const [images, profiles] = await Promise.all([
-        invokeCommand<DatasetImage[]>("list_images"),
+        fetchAllImages(),
         invokeCommand<AnnotationProfile[]>("list_annotation_profiles")
       ]);
       set((state) => ({
@@ -2304,7 +2420,7 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
     try {
       const result = await invokeCommand<DatabaseImportResult>("import_database", { request });
       const [images, profiles] = await Promise.all([
-        invokeCommand<DatasetImage[]>("list_images"),
+        fetchAllImages(),
         invokeCommand<AnnotationProfile[]>("list_annotation_profiles")
       ]);
       set({
@@ -2372,7 +2488,7 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
           level,
           message
         }
-      ].slice(-500)
+      ].slice(-10000)
     })),
   clearAppLogs: () => set({ appLogs: [] }),
   selectProject: (id) =>
@@ -2419,8 +2535,11 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
   openImagePreview: (id) =>
     set({ appView: "workspace", previewImageId: id, ...createImageSelection([id], id, id) }),
   closeImagePreview: () => set({ previewImageId: undefined }),
-  bumpThumbnailCacheKey: () =>
-    set((state) => ({ thumbnailCacheKey: state.thumbnailCacheKey + 1 })),
+  bumpThumbnailCacheKey: () => {
+    confirmedThumbnails.clear();
+    clearQueuedThumbnailRequests();
+    set((state) => ({ thumbnailCacheKey: state.thumbnailCacheKey + 1 }));
+  },
   setSearch: (search) => set({ search }),
   setViewFilter: (mode, projectId, imageIds = []) =>
     set({
@@ -2962,7 +3081,7 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
         await invokeCommand("save_annotation_changes", { changes: databaseChanges });
       }
 
-      const images = await invokeCommand<DatasetImage[]>("list_images");
+      const images = await fetchAllImages();
       set((current) => ({
         images,
         projects: createProjectTree(images),
@@ -3050,7 +3169,7 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
         imageIds
       });
       const [images, profiles] = await Promise.all([
-        invokeCommand<DatasetImage[]>("list_images"),
+        fetchAllImages(),
         invokeCommand<AnnotationProfile[]>("list_annotation_profiles")
       ]);
       set((current) => ({
@@ -3174,7 +3293,7 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
         newName
       });
       const [images, profiles] = await Promise.all([
-        invokeCommand<DatasetImage[]>("list_images"),
+        fetchAllImages(),
         invokeCommand<AnnotationProfile[]>("list_annotation_profiles")
       ]);
       set((current) => ({
@@ -3231,7 +3350,7 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
     if (hasTauriRuntime()) {
       await invokeCommand("delete_annotation_profile", { profileId });
       const [images, profiles] = await Promise.all([
-        invokeCommand<DatasetImage[]>("list_images"),
+        fetchAllImages(),
         invokeCommand<AnnotationProfile[]>("list_annotation_profiles")
       ]);
       set((current) => ({
@@ -3268,7 +3387,7 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
         return;
       }
       await invokeCommand("clear_annotation", { annotationId });
-      const images = await invokeCommand<DatasetImage[]>("list_images");
+      const images = await fetchAllImages();
       set((state) => ({
         images,
         projects: createProjectTree(images),
