@@ -462,7 +462,9 @@ function SettingsTreeIcon({ icon }: { icon: ChildIcon }) {
         role="img"
         style={{
           WebkitMask: `url("${icon.src}") center / contain no-repeat`,
-          mask: `url("${icon.src}") center / contain no-repeat`
+          mask: `url("${icon.src}") center / contain no-repeat`,
+          transform: "scale(1.3)",
+          transformOrigin: "center"
         }}
       />
     );
