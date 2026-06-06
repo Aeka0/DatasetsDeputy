@@ -58,6 +58,7 @@ type NetworkSectionKey =
   | "openai"
   | "anthropic"
   | "grok"
+  | "doubao"
   | "llmLoader"
   | "proxy"
   | "imageTransfer";
@@ -83,7 +84,8 @@ const providerIcons = {
   gemini: new URL("../../../assets/svg/googlegemini.svg", import.meta.url).href,
   openai: new URL("../../../assets/svg/openai.svg", import.meta.url).href,
   anthropic: new URL("../../../assets/svg/anthropic.svg", import.meta.url).href,
-  grok: new URL("../../../assets/svg/grok.svg", import.meta.url).href
+  grok: new URL("../../../assets/svg/grok.svg", import.meta.url).href,
+  doubao: new URL("../../../assets/svg/bytedance.svg", import.meta.url).href
 };
 
 const sections: SettingsSection[] = [
@@ -128,6 +130,8 @@ interface RemoteLlmSettings {
   availableModels: string[];
   rpmLimit: number;
 }
+
+type RemoteLlmProvider = "openai" | "anthropic" | "grok" | "doubao";
 
 interface ProxySettings {
   useProxy: boolean;
@@ -265,6 +269,14 @@ const defaultGrokSettings: RemoteLlmSettings = {
     "grok-4.20-non-reasoning-latest",
     "grok-4.20-0309-non-reasoning"
   ],
+  rpmLimit: 0
+};
+
+const defaultDoubaoSettings: RemoteLlmSettings = {
+  apiKey: "",
+  baseUrl: "",
+  model: "doubao-seed-2-0-lite-260215",
+  availableModels: ["doubao-seed-2-0-lite-260215"],
   rpmLimit: 0
 };
 
@@ -519,6 +531,11 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
   const [grokMessage, setGrokMessage] = useState("");
   const [isGrokBusy, setIsGrokBusy] = useState(false);
   const [hasLoadedGrokSettings, setHasLoadedGrokSettings] = useState(false);
+  const [doubaoSettings, setDoubaoSettings] =
+    useState<RemoteLlmSettings>(defaultDoubaoSettings);
+  const [doubaoMessage, setDoubaoMessage] = useState("");
+  const [isDoubaoBusy, setIsDoubaoBusy] = useState(false);
+  const [hasLoadedDoubaoSettings, setHasLoadedDoubaoSettings] = useState(false);
   const [pythonEnvSettings, setPythonEnvSettings] =
     useState<PythonEnvSettings>(defaultPythonEnvSettings);
   const [pythonEnvProbe, setPythonEnvProbe] = useState<PythonEnvProbeReport>();
@@ -580,6 +597,11 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
       key: "grok",
       label: t("settings.networkGrok"),
       icon: { kind: "svg", src: providerIcons.grok, alt: "Grok" }
+    },
+    {
+      key: "doubao",
+      label: t("settings.networkDoubao"),
+      icon: { kind: "svg", src: providerIcons.doubao, alt: "ByteDance" }
     },
     {
       key: "llmLoader",
@@ -695,6 +717,16 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
         setHasLoadedGrokSettings(true);
       })
       .catch((error) => setGrokMessage(formatAppError(error)));
+  }, []);
+  useEffect(() => {
+    if (!hasTauriRuntime()) return;
+
+    void invokeCommand<RemoteLlmSettings>("get_doubao_settings")
+      .then((settings) => {
+        setDoubaoSettings(settings);
+        setHasLoadedDoubaoSettings(true);
+      })
+      .catch((error) => setDoubaoMessage(formatAppError(error)));
   }, []);
   useEffect(() => {
     if (!hasTauriRuntime()) return;
@@ -817,6 +849,20 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
     return () => window.clearTimeout(saveTimer);
   }, [grokSettings, hasLoadedGrokSettings]);
   useEffect(() => {
+    if (!hasTauriRuntime() || !hasLoadedDoubaoSettings) return;
+
+    const saveTimer = window.setTimeout(() => {
+      void invokeCommand<RemoteLlmSettings>("save_doubao_settings", {
+        settings: doubaoSettings
+      }).catch((error) => {
+        const message = formatAppError(error);
+        setDoubaoMessage(t("settings.llmActionFailed", { message }));
+      });
+    }, 500);
+
+    return () => window.clearTimeout(saveTimer);
+  }, [doubaoSettings, hasLoadedDoubaoSettings]);
+  useEffect(() => {
     if (!hasTauriRuntime() || !hasLoadedPythonEnvSettings) return;
 
     const saveTimer = window.setTimeout(() => {
@@ -935,6 +981,10 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
     setGrokSettings((current) => ({ ...current, ...patch }));
   };
 
+  const patchDoubaoSettings = (patch: Partial<RemoteLlmSettings>) => {
+    setDoubaoSettings((current) => ({ ...current, ...patch }));
+  };
+
   const patchPythonEnvSettings = (patch: Partial<PythonEnvSettings>) => {
     setPythonEnvSettings((current) => ({ ...current, ...patch }));
     setPythonEnvProbe(undefined);
@@ -995,7 +1045,7 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
   };
 
   const runRemoteLlmAction = async (
-    provider: "openai" | "anthropic" | "grok",
+    provider: RemoteLlmProvider,
     action: "fetch" | "test"
   ) => {
     const isBusy =
@@ -1003,7 +1053,9 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
         ? isOpenAiBusy
         : provider === "anthropic"
           ? isAnthropicBusy
-          : isGrokBusy;
+          : provider === "grok"
+            ? isGrokBusy
+            : isDoubaoBusy;
     if (!hasTauriRuntime() || isBusy) return;
 
     const settings =
@@ -1011,27 +1063,41 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
         ? openAiSettings
         : provider === "anthropic"
           ? anthropicSettings
-          : grokSettings;
+          : provider === "grok"
+            ? grokSettings
+            : doubaoSettings;
     const setBusy =
       provider === "openai"
         ? setIsOpenAiBusy
         : provider === "anthropic"
           ? setIsAnthropicBusy
-          : setIsGrokBusy;
+          : provider === "grok"
+            ? setIsGrokBusy
+            : setIsDoubaoBusy;
     const setMessage =
       provider === "openai"
         ? setOpenAiMessage
         : provider === "anthropic"
           ? setAnthropicMessage
-          : setGrokMessage;
+          : provider === "grok"
+            ? setGrokMessage
+            : setDoubaoMessage;
     const setSettings =
       provider === "openai"
         ? setOpenAiSettings
         : provider === "anthropic"
           ? setAnthropicSettings
-          : setGrokSettings;
+          : provider === "grok"
+            ? setGrokSettings
+            : setDoubaoSettings;
     const commandPrefix =
-      provider === "openai" ? "openai" : provider === "anthropic" ? "anthropic" : "grok";
+      provider === "openai"
+        ? "openai"
+        : provider === "anthropic"
+          ? "anthropic"
+          : provider === "grok"
+            ? "grok"
+            : "doubao";
 
     setBusy(true);
     setMessage("");
@@ -1121,7 +1187,7 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
   };
 
   const renderRemoteLlmSettings = (
-    provider: "openai" | "anthropic" | "grok",
+    provider: RemoteLlmProvider,
     settings: RemoteLlmSettings,
     patchSettings: (patch: Partial<RemoteLlmSettings>) => void,
     message: string,
@@ -1132,19 +1198,25 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
         ? "settings.openAiApi"
         : provider === "anthropic"
           ? "settings.anthropicApi"
-          : "settings.grokApi";
+          : provider === "grok"
+            ? "settings.grokApi"
+            : "settings.doubaoApi";
     const descriptionKey =
       provider === "openai"
         ? "settings.openAiApiDescription"
         : provider === "anthropic"
           ? "settings.anthropicApiDescription"
-          : "settings.grokApiDescription";
+          : provider === "grok"
+            ? "settings.grokApiDescription"
+            : "settings.doubaoApiDescription";
     const placeholderKey =
       provider === "openai"
         ? "settings.openAiApiKeyPlaceholder"
         : provider === "anthropic"
           ? "settings.anthropicApiKeyPlaceholder"
-          : "settings.grokApiKeyPlaceholder";
+          : provider === "grok"
+            ? "settings.grokApiKeyPlaceholder"
+            : "settings.doubaoApiKeyPlaceholder";
     return (
       <div className="rounded-lg border border-neutral-200 bg-white">
         <div className="flex items-center justify-between gap-3 border-b border-neutral-100 px-4 py-3">
@@ -1179,7 +1251,9 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
                   ? "https://api.openai.com/v1"
                   : provider === "anthropic"
                     ? "https://api.anthropic.com"
-                    : "https://api.x.ai/v1"
+                    : provider === "grok"
+                      ? "https://api.x.ai/v1"
+                      : "https://ark.cn-beijing.volces.com/api/v3"
               }
               onChange={(event) => patchSettings({ baseUrl: event.target.value })}
             />
@@ -2350,6 +2424,16 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
                       patchGrokSettings,
                       grokMessage,
                       isGrokBusy
+                    )
+                  : null}
+
+                {activeNetworkSection === "doubao"
+                  ? renderRemoteLlmSettings(
+                      "doubao",
+                      doubaoSettings,
+                      patchDoubaoSettings,
+                      doubaoMessage,
+                      isDoubaoBusy
                     )
                   : null}
 

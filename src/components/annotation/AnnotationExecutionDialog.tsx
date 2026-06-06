@@ -13,6 +13,7 @@ export type AnnotationExecutionMode =
   | "openai"
   | "anthropic"
   | "grok"
+  | "doubao"
   | "lmStudio"
   | "ollama"
   | "textgen"
@@ -24,6 +25,7 @@ const modeOptions: Array<{ value: AnnotationExecutionMode; labelKey: string }> =
   { value: "openai", labelKey: "annotationRun.modeOpenAi" },
   { value: "anthropic", labelKey: "annotationRun.modeAnthropic" },
   { value: "grok", labelKey: "annotationRun.modeGrok" },
+  { value: "doubao", labelKey: "annotationRun.modeDoubao" },
   { value: "lmStudio", labelKey: "annotationRun.modeLmStudio" },
   { value: "ollama", labelKey: "annotationRun.modeOllama" },
   { value: "textgen", labelKey: "annotationRun.modeTextgen" }

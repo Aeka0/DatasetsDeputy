@@ -3,6 +3,7 @@ mod app_dirs;
 mod clip_similarity;
 mod commands;
 mod db;
+mod doubao;
 mod errors;
 mod export;
 mod file_watcher;
@@ -208,6 +209,12 @@ pub fn run() {
             commands::test_grok_connection,
             commands::generate_grok_annotation,
             commands::generate_grok_text,
+            commands::get_doubao_settings,
+            commands::save_doubao_settings,
+            commands::fetch_doubao_models,
+            commands::test_doubao_connection,
+            commands::generate_doubao_annotation,
+            commands::generate_doubao_text,
             commands::get_llm_loader_settings,
             commands::save_llm_loader_settings,
             commands::generate_lm_studio_annotation,

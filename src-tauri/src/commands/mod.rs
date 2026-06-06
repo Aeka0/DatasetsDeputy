@@ -24,6 +24,7 @@ use crate::{
     app_dirs,
     clip_similarity::{self, SimilarityScanOptions},
     db::{AnnotationChange, AnnotationProfile, Database, DatasetImage, ImageSourceMetadata},
+    doubao::{self, DoubaoSettings},
     errors::{AppError, AppResult},
     export::{self, ExportDatasetRequest, ExportItem, ExportPreview, PreparedExport},
     file_watcher,
@@ -2828,6 +2829,71 @@ pub async fn generate_grok_text(state: State<'_, AppState>, prompt: String) -> A
     let settings = grok::load_settings(&state.dirs)?;
     let proxy_settings = proxy_settings::load_settings(&state.dirs)?;
     grok::generate_text(&settings, &proxy_settings, &prompt).await
+}
+
+#[tauri::command]
+pub fn get_doubao_settings(state: State<'_, AppState>) -> AppResult<DoubaoSettings> {
+    doubao::load_settings(&state.dirs)
+}
+
+#[tauri::command]
+pub fn save_doubao_settings(
+    state: State<'_, AppState>,
+    settings: DoubaoSettings,
+) -> AppResult<DoubaoSettings> {
+    doubao::save_settings(&state.dirs, settings)
+}
+
+#[tauri::command]
+pub async fn fetch_doubao_models(
+    state: State<'_, AppState>,
+    settings: Option<DoubaoSettings>,
+) -> AppResult<Vec<String>> {
+    let settings = match settings {
+        Some(settings) => settings,
+        None => doubao::load_settings(&state.dirs)?,
+    };
+    let proxy_settings = proxy_settings::load_settings(&state.dirs)?;
+    doubao::fetch_models(&settings, &proxy_settings).await
+}
+
+#[tauri::command]
+pub async fn test_doubao_connection(
+    state: State<'_, AppState>,
+    settings: Option<DoubaoSettings>,
+) -> AppResult<usize> {
+    let settings = match settings {
+        Some(settings) => settings,
+        None => doubao::load_settings(&state.dirs)?,
+    };
+    let proxy_settings = proxy_settings::load_settings(&state.dirs)?;
+    doubao::fetch_models(&settings, &proxy_settings)
+        .await
+        .map(|models| models.len())
+}
+
+#[tauri::command]
+pub async fn generate_doubao_annotation(
+    state: State<'_, AppState>,
+    image_path: String,
+    prompt: String,
+) -> AppResult<String> {
+    let settings = doubao::load_settings(&state.dirs)?;
+    let proxy_settings = proxy_settings::load_settings(&state.dirs)?;
+    doubao::generate_annotation(
+        &settings,
+        &proxy_settings,
+        &PathBuf::from(image_path),
+        &prompt,
+    )
+    .await
+}
+
+#[tauri::command]
+pub async fn generate_doubao_text(state: State<'_, AppState>, prompt: String) -> AppResult<String> {
+    let settings = doubao::load_settings(&state.dirs)?;
+    let proxy_settings = proxy_settings::load_settings(&state.dirs)?;
+    doubao::generate_text(&settings, &proxy_settings, &prompt).await
 }
 
 #[tauri::command]
