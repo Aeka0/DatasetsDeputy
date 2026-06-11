@@ -20,6 +20,24 @@ export function hasTauriRuntime() {
   return isTauriRuntime;
 }
 
+export async function openExternalUrl(url: string) {
+  const href = url.trim();
+  if (!href) {
+    return;
+  }
+
+  if (!isTauriRuntime) {
+    window.open(href, "_blank", "noopener,noreferrer");
+    return;
+  }
+
+  try {
+    await invokeCommand("open_external_url", { url: href });
+  } catch {
+    window.open(href, "_blank", "noopener,noreferrer");
+  }
+}
+
 export function resolveAssetSrc(path?: string, cacheKey?: string | number) {
   if (!path) {
     return undefined;

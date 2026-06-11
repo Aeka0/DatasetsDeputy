@@ -293,6 +293,57 @@ struct ImageEmbedding {
     vector: Vec<f32>,
 }
 
+struct ProgressEvent {
+    phase: &'static str,
+    processed: usize,
+    total: usize,
+    current_path: Option<String>,
+    warning: Option<SimilarityWarning>,
+    done: bool,
+}
+
+impl ProgressEvent {
+    fn new(phase: &'static str, processed: usize, total: usize) -> Self {
+        Self {
+            phase,
+            processed,
+            total,
+            current_path: None,
+            warning: None,
+            done: false,
+        }
+    }
+
+    fn current_path(mut self, current_path: String) -> Self {
+        self.current_path = Some(current_path);
+        self
+    }
+
+    fn warning(mut self, warning: SimilarityWarning) -> Self {
+        self.warning = Some(warning);
+        self
+    }
+
+    fn done(mut self) -> Self {
+        self.done = true;
+        self
+    }
+}
+
+struct EmbeddingJob<'a> {
+    app: &'a AppHandle,
+    dirs: &'a AppDirs,
+    scan_id: &'a str,
+    model_dir: &'a Path,
+    images: &'a [SourceImage],
+    missing: &'a [usize],
+    model_fingerprint: &'a str,
+    cache: &'a mut SimilarityCache,
+    embeddings: &'a mut [Option<Vec<f32>>],
+    warnings: &'a mut Vec<SimilarityWarning>,
+    cancel: &'a AtomicBool,
+}
+
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct EmbeddingPayload {
@@ -387,10 +438,14 @@ fn run_scan(
     }
 
     let threshold = options.threshold.unwrap_or(0.96).clamp(0.80, 0.99);
-    emit_progress(app, scan_id, "scanning", 0, 0, None, None, false);
+    emit_progress(app, scan_id, ProgressEvent::new("scanning", 0, 0));
     let (mut images, mut warnings) = collect_source_images(&folder_path, cancel)?;
     images.sort_by_key(|image| image.normalized_path.to_ascii_lowercase());
-    emit_progress(app, scan_id, "scanning", images.len(), images.len(), None, None, false);
+    emit_progress(
+        app,
+        scan_id,
+        ProgressEvent::new("scanning", images.len(), images.len()),
+    );
     check_cancel(cancel)?;
 
     mark_exact_hashes(app, scan_id, &mut images, &mut warnings, cancel)?;
@@ -417,56 +472,46 @@ fn run_scan(
     emit_progress(
         app,
         scan_id,
-        "embedding",
-        cache_hits,
-        images.len(),
-        None,
-        None,
-        false,
+        ProgressEvent::new("embedding", cache_hits, images.len()),
     );
     let embedded = if missing.is_empty() {
         0
     } else {
-        embed_missing_images(
+        embed_missing_images(EmbeddingJob {
             app,
             dirs,
             scan_id,
-            &model_dir,
-            &images,
-            &missing,
-            &model_fingerprint,
-            &mut cache,
-            &mut embeddings,
-            &mut warnings,
+            model_dir: &model_dir,
+            images: &images,
+            missing: &missing,
+            model_fingerprint: &model_fingerprint,
+            cache: &mut cache,
+            embeddings: &mut embeddings,
+            warnings: &mut warnings,
             cancel,
-        )?
+        })?
     };
     check_cancel(cancel)?;
 
     let available = embeddings
         .into_iter()
         .enumerate()
-        .filter_map(|(image_index, vector)| vector.map(|vector| ImageEmbedding { image_index, vector }))
+        .filter_map(|(image_index, vector)| {
+            vector.map(|vector| ImageEmbedding {
+                image_index,
+                vector,
+            })
+        })
         .collect::<Vec<_>>();
 
     emit_progress(
         app,
         scan_id,
-        "comparing",
-        0,
-        available.len(),
-        None,
-        None,
-        false,
+        ProgressEvent::new("comparing", 0, available.len()),
     );
     let mut groups = exact_duplicate_groups(&images);
     groups.extend(compare_embeddings(
-        dirs,
-        scan_id,
-        &images,
-        &available,
-        threshold,
-        cancel,
+        dirs, scan_id, &images, &available, threshold, cancel,
     )?);
     groups.sort_by(|left, right| {
         right
@@ -492,12 +537,7 @@ fn run_scan(
     emit_progress(
         app,
         scan_id,
-        "done",
-        images.len(),
-        images.len(),
-        None,
-        None,
-        true,
+        ProgressEvent::new("done", images.len(), images.len()).done(),
     );
     Ok(())
 }
@@ -564,7 +604,11 @@ fn mark_exact_hashes(
     for (index, image) in images.iter().enumerate() {
         by_size.entry(image.size_bytes).or_default().push(index);
     }
-    let candidate_total = by_size.values().filter(|items| items.len() > 1).map(Vec::len).sum();
+    let candidate_total = by_size
+        .values()
+        .filter(|items| items.len() > 1)
+        .map(Vec::len)
+        .sum();
     let mut processed = 0;
     for indexes in by_size.values().filter(|items| items.len() > 1) {
         for index in indexes {
@@ -582,12 +626,8 @@ fn mark_exact_hashes(
                 emit_progress(
                     app,
                     scan_id,
-                    "hashing",
-                    processed,
-                    candidate_total,
-                    Some(image.normalized_path.clone()),
-                    None,
-                    false,
+                    ProgressEvent::new("hashing", processed, candidate_total)
+                        .current_path(image.normalized_path.clone()),
                 );
             }
         }
@@ -595,19 +635,21 @@ fn mark_exact_hashes(
     Ok(())
 }
 
-fn embed_missing_images(
-    app: &AppHandle,
-    dirs: &AppDirs,
-    scan_id: &str,
-    model_dir: &Path,
-    images: &[SourceImage],
-    missing: &[usize],
-    model_fingerprint: &str,
-    cache: &mut SimilarityCache,
-    embeddings: &mut [Option<Vec<f32>>],
-    warnings: &mut Vec<SimilarityWarning>,
-    cancel: &AtomicBool,
-) -> AppResult<usize> {
+fn embed_missing_images(job: EmbeddingJob<'_>) -> AppResult<usize> {
+    let EmbeddingJob {
+        app,
+        dirs,
+        scan_id,
+        model_dir,
+        images,
+        missing,
+        model_fingerprint,
+        cache,
+        embeddings,
+        warnings,
+        cancel,
+    } = job;
+
     let python_path = python_env::resolve_configured_python_path(dirs)?.ok_or_else(|| {
         AppError::InvalidInput("Python runtime is not configured or available".to_owned())
     })?;
@@ -654,9 +696,10 @@ fn embed_missing_images(
         text
     });
 
-    let stdout = child.stdout.take().ok_or_else(|| {
-        AppError::InvalidInput("CLIP process did not expose stdout".to_owned())
-    })?;
+    let stdout = child
+        .stdout
+        .take()
+        .ok_or_else(|| AppError::InvalidInput("CLIP process did not expose stdout".to_owned()))?;
     let mut embedded = 0;
     let mut provider = String::new();
     for line in BufReader::new(stdout).lines() {
@@ -676,12 +719,7 @@ fn embed_missing_images(
             emit_progress(
                 app,
                 scan_id,
-                "embedding",
-                embedded,
-                missing.len(),
-                None,
-                Some(warning.clone()),
-                false,
+                ProgressEvent::new("embedding", embedded, missing.len()).warning(warning.clone()),
             );
             warnings.push(warning);
         }
@@ -697,12 +735,7 @@ fn embed_missing_images(
         emit_progress(
             app,
             scan_id,
-            "embedding",
-            embedded,
-            missing.len(),
-            None,
-            None,
-            false,
+            ProgressEvent::new("embedding", embedded, missing.len()),
         );
     }
 
@@ -713,7 +746,9 @@ fn embed_missing_images(
     let stderr = stderr_reader.join().unwrap_or_default().trim().to_owned();
     let _ = fs::remove_file(request_path);
     if cancel.load(Ordering::Relaxed) {
-        return Err(AppError::InvalidInput("Similarity scan cancelled".to_owned()));
+        return Err(AppError::InvalidInput(
+            "Similarity scan cancelled".to_owned(),
+        ));
     }
     if !status.success() {
         return Err(AppError::InvalidInput(if stderr.is_empty() {
@@ -807,7 +842,9 @@ fn compare_embeddings(
         let mut image_indexes = group
             .member_indices
             .into_iter()
-            .filter_map(|embedding_index| embeddings.get(embedding_index).map(|item| item.image_index))
+            .filter_map(|embedding_index| {
+                embeddings.get(embedding_index).map(|item| item.image_index)
+            })
             .collect::<Vec<_>>();
         image_indexes.sort_unstable();
         image_indexes.dedup();
@@ -851,14 +888,20 @@ fn exact_duplicate_groups(images: &[SourceImage]) -> Vec<SimilarityGroupResult> 
         .filter(|(_, indexes)| indexes.len() > 1)
         .enumerate()
         .map(|(group_index, (_, indexes))| {
-            let pair_count = indexes.len().saturating_mul(indexes.len().saturating_sub(1)) / 2;
+            let pair_count = indexes
+                .len()
+                .saturating_mul(indexes.len().saturating_sub(1))
+                / 2;
             SimilarityGroupResult {
                 id: format!("exact-{group_index}"),
                 group_kind: "exact".to_owned(),
                 min_score: 1.0,
                 max_score: 1.0,
                 pair_count,
-                images: indexes.into_iter().map(|index| image_result(&images[index])).collect(),
+                images: indexes
+                    .into_iter()
+                    .map(|index| image_result(&images[index]))
+                    .collect(),
             }
         })
         .collect()
@@ -961,7 +1004,7 @@ fn encode_embedding(values: &[f32]) -> Vec<u8> {
 }
 
 fn decode_embedding(bytes: &[u8]) -> Option<Vec<f32>> {
-    if bytes.len() % 4 != 0 {
+    if !bytes.len().is_multiple_of(4) {
         return None;
     }
     Some(
@@ -1001,7 +1044,11 @@ fn model_fingerprint(model_dir: &Path) -> AppResult<String> {
     let canonical = dunce::canonicalize(model_dir)?;
     let mut newest = 0_i64;
     let mut count = 0_u64;
-    for entry in walkdir::WalkDir::new(&canonical).max_depth(3).into_iter().filter_map(Result::ok) {
+    for entry in walkdir::WalkDir::new(&canonical)
+        .max_depth(3)
+        .into_iter()
+        .filter_map(Result::ok)
+    {
         if !entry.path().is_file() {
             continue;
         }
@@ -1054,33 +1101,26 @@ fn temp_json_path(dirs: &AppDirs, scan_id: &str, label: &str) -> PathBuf {
         .join(format!("{label}-{safe_scan_id}-{nonce}.json"))
 }
 
-fn emit_progress(
-    app: &AppHandle,
-    scan_id: &str,
-    phase: &str,
-    processed: usize,
-    total: usize,
-    current_path: Option<String>,
-    warning: Option<SimilarityWarning>,
-    done: bool,
-) {
+fn emit_progress(app: &AppHandle, scan_id: &str, event: ProgressEvent) {
     let _ = app.emit(
         "similarity-scan-progress",
         SimilarityScanProgress {
             scan_id: scan_id.to_owned(),
-            phase: phase.to_owned(),
-            processed,
-            total,
-            current_path,
-            warning,
-            done,
+            phase: event.phase.to_owned(),
+            processed: event.processed,
+            total: event.total,
+            current_path: event.current_path,
+            warning: event.warning,
+            done: event.done,
         },
     );
 }
 
 fn check_cancel(cancel: &AtomicBool) -> AppResult<()> {
     if cancel.load(Ordering::Relaxed) {
-        return Err(AppError::InvalidInput("Similarity scan cancelled".to_owned()));
+        return Err(AppError::InvalidInput(
+            "Similarity scan cancelled".to_owned(),
+        ));
     }
     Ok(())
 }

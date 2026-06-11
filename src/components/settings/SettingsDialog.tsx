@@ -489,7 +489,7 @@ function SettingsTreeIcon({ icon }: { icon: ChildIcon }) {
         style={{
           WebkitMask: `url("${icon.src}") center / contain no-repeat`,
           mask: `url("${icon.src}") center / contain no-repeat`,
-          transform: "scale(1.3)",
+          transform: "scale(1.2)",
           transformOrigin: "center"
         }}
       />

@@ -37,7 +37,7 @@ import {
 import { formatDialogMenuLabel } from "../../lib/menuLabels";
 import { findProject, formatProjectPath, getProjectDisplayName } from "../../lib/projects";
 import { getUnsavedTableDraftState } from "../../lib/tableDrafts";
-import { hasTauriRuntime, invokeCommand } from "../../lib/tauri";
+import { hasTauriRuntime, invokeCommand, openExternalUrl } from "../../lib/tauri";
 import { useDatasetStore, type ViewFilterMode } from "../../stores/datasetStore";
 import type { AnnotationChange, DatasetImage, DatasetProject } from "../../types";
 import {
@@ -2250,6 +2250,10 @@ export function TitleMenuBar({
                     href="https://github.com/Aeka0/DatasetsDeputy"
                     target="_blank"
                     rel="noreferrer"
+                    onClick={(event) => {
+                      event.preventDefault();
+                      void openExternalUrl("https://github.com/Aeka0/DatasetsDeputy");
+                    }}
                   >
                     {t("menu.project")}
                   </a>

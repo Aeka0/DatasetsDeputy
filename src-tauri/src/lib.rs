@@ -176,6 +176,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::finish_startup,
+            commands::open_external_url,
             commands::list_images,
             commands::list_images_fast,
             commands::load_folder_annotations,
