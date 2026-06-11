@@ -103,7 +103,14 @@ interface MenuSeparator {
 
 type MenuEntry = MenuAction | MenuSubmenu | MenuSeparator;
 
-type LLMPromptSettings = AnnotationPromptSettings;
+type RemoteRequestMode = "queue" | "concurrent";
+type ScheduledRemoteBackend = "gemini" | "openai" | "anthropic" | "grok" | "doubao";
+type LLMPromptSettings = AnnotationPromptSettings & RemoteSchedulingSettings;
+
+interface RemoteSchedulingSettings {
+  targetRpm: number;
+  requestMode: RemoteRequestMode;
+}
 
 interface Wd14AnnotationProgress {
   start: number;
@@ -279,6 +286,82 @@ function getTextGenerationCommand(backend: LLMBackend) {
   if (backend === "ollama") return "generate_ollama_text";
   if (backend === "textgen") return "generate_textgen_text";
   return "generate_gemini_text";
+}
+
+function isScheduledRemoteBackend(
+  backend: AnnotationExecutionMode | LLMBackend
+): backend is ScheduledRemoteBackend {
+  return (
+    backend === "gemini" ||
+    backend === "openai" ||
+    backend === "anthropic" ||
+    backend === "grok" ||
+    backend === "doubao"
+  );
+}
+
+function getRemoteSettingsCommand(backend: ScheduledRemoteBackend) {
+  if (backend === "openai") return "get_openai_settings";
+  if (backend === "anthropic") return "get_anthropic_settings";
+  if (backend === "grok") return "get_grok_settings";
+  if (backend === "doubao") return "get_doubao_settings";
+  return "get_gemini_settings";
+}
+
+function normalizeRemoteSchedulingSettings(
+  settings: Partial<RemoteSchedulingSettings>
+): RemoteSchedulingSettings {
+  return {
+    targetRpm: Math.max(0, Number(settings.targetRpm) || 0),
+    requestMode: settings.requestMode === "concurrent" ? "concurrent" : "queue"
+  };
+}
+
+function delay(milliseconds: number) {
+  return new Promise<void>((resolve) => window.setTimeout(resolve, milliseconds));
+}
+
+async function waitForNextRequestStart(
+  previousStartTime: number | undefined,
+  intervalMs: number
+) {
+  if (previousStartTime === undefined || intervalMs <= 0) return;
+  const remaining = intervalMs - (Date.now() - previousStartTime);
+  if (remaining > 0) {
+    await delay(remaining);
+  }
+}
+
+async function runTargetRpmBatch<T>(
+  items: T[],
+  scheduling: RemoteSchedulingSettings,
+  isActive: () => boolean,
+  runItem: (item: T, index: number) => Promise<void>
+) {
+  const intervalMs = scheduling.targetRpm > 0 ? 60000 / scheduling.targetRpm : 0;
+  let previousStartTime: number | undefined;
+
+  if (scheduling.requestMode === "queue") {
+    for (const [index, item] of items.entries()) {
+      if (!isActive()) break;
+      await waitForNextRequestStart(previousStartTime, intervalMs);
+      if (!isActive()) break;
+      previousStartTime = Date.now();
+      await runItem(item, index);
+    }
+    return;
+  }
+
+  const inFlight: Promise<void>[] = [];
+  for (const [index, item] of items.entries()) {
+    if (!isActive()) break;
+    await waitForNextRequestStart(previousStartTime, intervalMs);
+    if (!isActive()) break;
+    previousStartTime = Date.now();
+    inFlight.push(runItem(item, index));
+  }
+
+  await Promise.all(inFlight);
 }
 
 function hasEffectiveAnnotation(image: DatasetImage, profileId: number | undefined) {
@@ -734,6 +817,8 @@ export function TitleMenuBar({
   const containerRef = useRef<HTMLDivElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const annotationCancelRef = useRef(false);
+  const annotationRunIdRef = useRef(0);
+  const activeAnnotationImageIdsRef = useRef<number[]>([]);
   const batchActionRunIdRef = useRef(0);
   const activeBatchActionImageIdsRef = useRef<number[]>([]);
   const selectedProject = findProject(projects, selectedProjectId);
@@ -855,6 +940,61 @@ export function TitleMenuBar({
     }
     return getAnnotationForProfile(image, profileId)?.instruction ?? "";
   };
+
+  const beginAnnotationRun = () => {
+    const runId = annotationRunIdRef.current + 1;
+    annotationRunIdRef.current = runId;
+    activeAnnotationImageIdsRef.current = [];
+    annotationCancelRef.current = false;
+    setIsAnnotationRunning(true);
+    return runId;
+  };
+
+  const isAnnotationRunActive = (runId: number) =>
+    annotationRunIdRef.current === runId && !annotationCancelRef.current;
+
+  const finishAnnotationRun = (runId: number) => {
+    if (annotationRunIdRef.current !== runId) return;
+    for (const imageId of activeAnnotationImageIdsRef.current) {
+      markImageAnnotating(imageId, false);
+    }
+    activeAnnotationImageIdsRef.current = [];
+    annotationCancelRef.current = false;
+    setIsAnnotationRunning(false);
+  };
+
+  const stopAnnotationRun = () => {
+    annotationCancelRef.current = true;
+    annotationRunIdRef.current += 1;
+    for (const imageId of activeAnnotationImageIdsRef.current) {
+      markImageAnnotating(imageId, false);
+    }
+    activeAnnotationImageIdsRef.current = [];
+    setIsAnnotationRunning(false);
+    addAppLog(t("appLog.annotationStopped"), "warning");
+  };
+
+  const markAnnotationImageActive = (imageId: number) => {
+    if (!activeAnnotationImageIdsRef.current.includes(imageId)) {
+      activeAnnotationImageIdsRef.current = [...activeAnnotationImageIdsRef.current, imageId];
+    }
+    markImageAnnotating(imageId, true);
+  };
+
+  const markAnnotationImageInactive = (runId: number, imageId: number) => {
+    if (annotationRunIdRef.current !== runId) return;
+    markImageAnnotating(imageId, false);
+    activeAnnotationImageIdsRef.current = activeAnnotationImageIdsRef.current.filter(
+      (activeImageId) => activeImageId !== imageId
+    );
+  };
+
+  const loadRemoteSchedulingSettings = async (backend: ScheduledRemoteBackend) =>
+    normalizeRemoteSchedulingSettings(
+      await invokeCommand<Partial<RemoteSchedulingSettings>>(
+        getRemoteSettingsCommand(backend)
+      )
+    );
 
   const beginBatchAction = () => {
     const runId = batchActionRunIdRef.current + 1;
@@ -1160,13 +1300,38 @@ export function TitleMenuBar({
       `Natural language rewrite started: ${targets.length} non-empty row(s), ${skippedCount} empty row(s) skipped. Backend: ${options.llmBackend}.`
     );
 
-    for (const [batchIndex, batch] of batches.entries()) {
-      if (!isBatchActionActive(runId)) break;
-      const batchLabel = `${batchIndex + 1}/${batches.length}`;
-      activeBatchActionImageIdsRef.current = batch.map((target) => target.image.id);
+    const scheduling = isScheduledRemoteBackend(options.llmBackend)
+      ? await loadRemoteSchedulingSettings(options.llmBackend)
+      : normalizeRemoteSchedulingSettings({ targetRpm: 0, requestMode: "queue" });
+    if (isScheduledRemoteBackend(options.llmBackend)) {
+      addAppLog(
+        `Remote rewrite request scheduling: ${scheduling.requestMode}, target RPM ${scheduling.targetRpm}.`
+      );
+    }
+
+    const markBatchActive = (batch: typeof batches[number]) => {
+      const nextActive = new Set(activeBatchActionImageIdsRef.current);
       for (const target of batch) {
+        nextActive.add(target.image.id);
         markImageAnnotating(target.image.id, true);
       }
+      activeBatchActionImageIdsRef.current = Array.from(nextActive);
+    };
+
+    const markBatchInactive = (batch: typeof batches[number]) => {
+      const completedIds = new Set(batch.map((target) => target.image.id));
+      for (const target of batch) {
+        markImageAnnotating(target.image.id, false);
+      }
+      activeBatchActionImageIdsRef.current = activeBatchActionImageIdsRef.current.filter(
+        (imageId) => !completedIds.has(imageId)
+      );
+    };
+
+    const processBatch = async (batch: typeof batches[number], batchIndex: number) => {
+      if (!isBatchActionActive(runId)) return;
+      const batchLabel = `${batchIndex + 1}/${batches.length}`;
+      markBatchActive(batch);
 
       try {
         const changes: Array<{ imageId: number; content: string }> = [];
@@ -1201,7 +1366,7 @@ export function TitleMenuBar({
           }
         } else {
           const target = batch[0];
-          if (!target) continue;
+          if (!target) return;
 
           const content = await invokeCommand<string>(llmCommand, {
             prompt: buildSingleNaturalLanguageRewritePrompt(userPrompt, target.current)
@@ -1242,13 +1407,17 @@ export function TitleMenuBar({
         );
       } finally {
         if (isBatchActionActive(runId)) {
-          for (const target of batch) {
-            markImageAnnotating(target.image.id, false);
-          }
-          activeBatchActionImageIdsRef.current = [];
+          markBatchInactive(batch);
         }
       }
-    }
+    };
+
+    await runTargetRpmBatch(
+      batches,
+      scheduling,
+      () => isBatchActionActive(runId),
+      processBatch
+    );
 
     if (isBatchActionActive(runId)) {
       if (completedChanges.length > 0) {
@@ -1418,11 +1587,7 @@ export function TitleMenuBar({
       {
         label: t("menu.stopAnnotation"),
         disabled: !isAnnotationRunning,
-        onSelect: () => {
-          annotationCancelRef.current = true;
-          setIsAnnotationRunning(false);
-          addAppLog(t("appLog.annotationStopped"), "warning");
-        }
+        onSelect: stopAnnotationRun
       },
       { type: "separator" },
       {
@@ -1625,8 +1790,7 @@ export function TitleMenuBar({
     conflictStrategy: AnnotationConflictStrategy;
   }) => {
     setDialog(undefined);
-    annotationCancelRef.current = false;
-    setIsAnnotationRunning(true);
+    const runId = beginAnnotationRun();
 
     const selectedProfileId = getProjectProfileId(selectedProject, images, activeProfileId);
     const hasValidProfile = isProfileInProject(selectedProject, selectedProfileId, profiles);
@@ -1664,22 +1828,22 @@ export function TitleMenuBar({
     addAppLog(t("appLog.annotationProfile", { profile: selectedProfileId ?? t("appLog.none") }));
     if (options.scope === "selected" && selectedTargetImageIds.length === 0) {
       addAppLog(t("appLog.annotationNoSelection"), "warning");
-      setIsAnnotationRunning(false);
+      finishAnnotationRun(runId);
       return;
     } else if (targetCount === 0) {
       addAppLog(t("appLog.annotationNoTargets"), "warning");
-      setIsAnnotationRunning(false);
+      finishAnnotationRun(runId);
       return;
     }
 
     if (!hasTauriRuntime()) {
       addAppLog(t("appLog.annotationTauriRequired"), "error");
-      setIsAnnotationRunning(false);
+      finishAnnotationRun(runId);
       return;
     }
     if (selectedProfileId === undefined || !hasValidProfile) {
       addAppLog(t("appLog.annotationProfileRequired"), "error");
-      setIsAnnotationRunning(false);
+      finishAnnotationRun(runId);
       return;
     }
 
@@ -1760,7 +1924,7 @@ export function TitleMenuBar({
     try {
       if (options.mode === "wd14") {
         for (const image of targets) {
-          markImageAnnotating(image.id, true);
+          markAnnotationImageActive(image.id);
         }
         const generatedContents = new Array<string | undefined>(targets.length);
         let loggedWd14Provider = "";
@@ -1770,7 +1934,7 @@ export function TitleMenuBar({
           unlistenWd14Progress = await listen<Wd14AnnotationProgress>(
             "wd14-annotation-progress",
             (event) => {
-              if (annotationCancelRef.current) return;
+              if (!isAnnotationRunActive(runId)) return;
               const { start, contents, executionProvider } = event.payload;
               if (executionProvider && executionProvider !== loggedWd14Provider) {
                 loggedWd14Provider = executionProvider;
@@ -1782,7 +1946,7 @@ export function TitleMenuBar({
                 if (!image) continue;
                 generatedContents[index] = content;
                 applyGeneratedContent(image, content);
-                markImageAnnotating(image.id, false);
+                markAnnotationImageInactive(runId, image.id);
                 addAppLog(`Generated draft annotation: ${image.fileName}`);
               }
             }
@@ -1794,7 +1958,7 @@ export function TitleMenuBar({
             markWd14MissingResultsFailed(generatedContents);
             throw new Error(`WD14 returned ${contents.length} results for ${targets.length} images.`);
           }
-          if (annotationCancelRef.current) {
+          if (!isAnnotationRunActive(runId)) {
             addAppLog("Discarded WD14 results returned after cancellation.", "warning");
             throw new Error(annotationCancelledError);
           }
@@ -1806,14 +1970,14 @@ export function TitleMenuBar({
             }
           }
         } catch (error) {
-          if (!annotationCancelRef.current) {
+          if (isAnnotationRunActive(runId)) {
             markWd14MissingResultsFailed(generatedContents);
           }
           throw error;
         } finally {
           unlistenWd14Progress?.();
           for (const image of targets) {
-            markImageAnnotating(image.id, false);
+            markAnnotationImageInactive(runId, image.id);
           }
         }
         addAppLog(`WD14 annotation completed: processed ${targets.length} images.`);
@@ -1821,18 +1985,24 @@ export function TitleMenuBar({
         return;
       }
 
-      const prompt = generateAnnotationPrompt(
-        await invokeCommand<LLMPromptSettings>("get_gemini_settings")
-      );
+      const promptSettings = await invokeCommand<LLMPromptSettings>("get_gemini_settings");
+      const prompt = generateAnnotationPrompt(promptSettings);
       const annotationCommand = getVisionAnnotationCommand(options.mode);
+      const scheduling = isScheduledRemoteBackend(options.mode)
+        ? options.mode === "gemini"
+          ? normalizeRemoteSchedulingSettings(promptSettings)
+          : await loadRemoteSchedulingSettings(options.mode)
+        : normalizeRemoteSchedulingSettings({ targetRpm: 0, requestMode: "queue" });
+      if (isScheduledRemoteBackend(options.mode)) {
+        addAppLog(
+          `Remote annotation request scheduling: ${scheduling.requestMode}, target RPM ${scheduling.targetRpm}.`
+        );
+      }
 
-      for (const image of targets) {
-        if (annotationCancelRef.current) {
-          addAppLog("Annotation task stopped.", "warning");
-          throw new Error(annotationCancelledError);
-        }
+      const processImage = async (image: DatasetImage) => {
+        if (!isAnnotationRunActive(runId)) return;
         addAppLog(`Annotating: ${image.fileName}`);
-        markImageAnnotating(image.id, true);
+        markAnnotationImageActive(image.id);
         try {
           const imagePath = image.storagePath ?? image.path;
           const content = await invokeCommand<string>(annotationCommand, {
@@ -1847,44 +2017,52 @@ export function TitleMenuBar({
               )
             )
           });
-          if (annotationCancelRef.current) {
+          if (!isAnnotationRunActive(runId)) {
             addAppLog(`Discarded annotation returned after cancellation: ${image.fileName}`, "warning");
-            throw new Error(annotationCancelledError);
+            return;
           }
           applyGeneratedContent(image, content);
           addAppLog(`Generated draft annotation: ${image.fileName}`);
         } catch (error) {
+          if (!isAnnotationRunActive(runId)) return;
           const message = formatAppError(error);
-          if (message === annotationCancelledError) {
-            throw error;
-          }
           markAnnotationFailed(image);
           addAppLog(`Annotation failed: ${image.fileName}: ${message}`, "error");
         } finally {
-          markImageAnnotating(image.id, false);
+          markAnnotationImageInactive(runId, image.id);
         }
-      }
+      };
 
-      addAppLog(`Annotation completed: processed ${targets.length} images.`);
-      if (annotationCancelRef.current) {
+      await runTargetRpmBatch(
+        targets,
+        scheduling,
+        () => isAnnotationRunActive(runId),
+        processImage
+      );
+      if (!isAnnotationRunActive(runId)) {
         return;
       }
+      addAppLog(`Annotation completed: processed ${targets.length} images.`);
       await saveGeneratedChanges();
     } catch (error) {
       const message = formatAppError(error);
-      try {
-        await saveGeneratedChanges();
-      } catch (saveError) {
-        addAppLog(`Saving completed annotations failed: ${formatAppError(saveError)}`, "error");
+      if (isAnnotationRunActive(runId)) {
+        try {
+          await saveGeneratedChanges();
+        } catch (saveError) {
+          addAppLog(`Saving completed annotations failed: ${formatAppError(saveError)}`, "error");
+        }
       }
       if (message === annotationCancelledError) {
+        return;
+      }
+      if (!isAnnotationRunActive(runId)) {
         return;
       }
       markUnfinishedAnnotationsFailed();
       addAppLog(`Annotation task failed: ${message}`, "error");
     } finally {
-      annotationCancelRef.current = false;
-      setIsAnnotationRunning(false);
+      finishAnnotationRun(runId);
     }
   };
 

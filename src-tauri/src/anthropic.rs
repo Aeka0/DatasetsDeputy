@@ -7,6 +7,7 @@ use crate::{
     app_dirs::AppDirs,
     errors::{AppError, AppResult},
     proxy_settings::{self, ProxySettings},
+    request_scheduling::{default_request_mode, default_target_rpm, normalize_request_mode},
 };
 
 const SETTINGS_FILE: &str = "anthropic-settings.json";
@@ -24,8 +25,10 @@ pub struct AnthropicSettings {
     pub base_url: String,
     pub model: String,
     pub available_models: Vec<String>,
-    #[serde(default)]
-    pub rpm_limit: u32,
+    #[serde(default = "default_target_rpm")]
+    pub target_rpm: u32,
+    #[serde(default = "default_request_mode")]
+    pub request_mode: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -87,7 +90,8 @@ pub fn default_settings() -> AnthropicSettings {
             .iter()
             .map(|model| (*model).to_owned())
             .collect(),
-        rpm_limit: 0,
+        target_rpm: default_target_rpm(),
+        request_mode: default_request_mode(),
     }
 }
 
@@ -116,6 +120,7 @@ fn normalize_settings(settings: &mut AnthropicSettings) {
     settings.api_key = settings.api_key.trim().to_owned();
     settings.base_url = normalize_base_url(&settings.base_url);
     settings.model = settings.model.trim().to_owned();
+    normalize_request_mode(&mut settings.request_mode);
     if settings.available_models.is_empty() || is_legacy_default_models(&settings.available_models)
     {
         settings.available_models = default_settings().available_models;

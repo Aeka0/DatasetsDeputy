@@ -7,6 +7,7 @@ use crate::{
     app_dirs::AppDirs,
     errors::{AppError, AppResult},
     proxy_settings::{self, ProxySettings},
+    request_scheduling::{default_request_mode, default_target_rpm, normalize_request_mode},
 };
 
 const SETTINGS_FILE: &str = "gemini-settings.json";
@@ -23,7 +24,10 @@ pub struct GeminiSettings {
     pub base_url: String,
     pub model: String,
     pub available_models: Vec<String>,
-    pub rpm_limit: u32,
+    #[serde(default = "default_target_rpm")]
+    pub target_rpm: u32,
+    #[serde(default = "default_request_mode")]
+    pub request_mode: String,
     pub image_resize_mode: String,
     pub image_convert_format: String,
     #[serde(default = "default_annotation_mode")]
@@ -115,7 +119,8 @@ pub fn default_settings() -> GeminiSettings {
             .iter()
             .map(|model| (*model).to_owned())
             .collect(),
-        rpm_limit: 0,
+        target_rpm: default_target_rpm(),
+        request_mode: default_request_mode(),
         image_resize_mode: "none".to_owned(),
         image_convert_format: "none".to_owned(),
         annotation_mode: default_annotation_mode(),
@@ -202,6 +207,7 @@ pub fn load_settings(dirs: &AppDirs) -> AppResult<GeminiSettings> {
     if settings.annotation_mode.trim().is_empty() {
         settings.annotation_mode = default_annotation_mode();
     }
+    normalize_request_mode(&mut settings.request_mode);
     Ok(settings)
 }
 
@@ -210,6 +216,7 @@ pub fn save_settings(dirs: &AppDirs, mut settings: GeminiSettings) -> AppResult<
     settings.base_url = normalize_base_url(&settings.base_url);
     settings.model = settings.model.trim().to_owned();
     settings.annotation_mode = settings.annotation_mode.trim().to_owned();
+    normalize_request_mode(&mut settings.request_mode);
     if settings.model.is_empty() {
         settings.model = default_settings().model;
     }

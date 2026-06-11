@@ -14,12 +14,15 @@ import { AnimatedPortal, useAnimatedPortalClose } from "../ui/AnimatedPortal";
 import { Button } from "../ui/Button";
 import { Switch } from "../ui/Switch";
 
+type RemoteRequestMode = "queue" | "concurrent";
+
 interface LLMPromptManagementSettings extends AnnotationPromptSettings {
   apiKey: string;
   baseUrl: string;
   model: string;
   availableModels: string[];
-  rpmLimit: number;
+  targetRpm: number;
+  requestMode: RemoteRequestMode;
   imageResizeMode: string;
   imageConvertFormat: string;
 }
@@ -30,7 +33,8 @@ const fallbackSettings: LLMPromptManagementSettings = {
   baseUrl: "",
   model: "gemini-flash-latest",
   availableModels: ["gemini-flash-latest", "gemini-pro-latest"],
-  rpmLimit: 0,
+  targetRpm: 5,
+  requestMode: "queue",
   imageResizeMode: "none",
   imageConvertFormat: "none"
 };

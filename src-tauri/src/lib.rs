@@ -20,6 +20,7 @@ mod openai;
 mod openai_compatible;
 mod proxy_settings;
 mod python_env;
+mod request_scheduling;
 mod tag_sheet;
 mod textgen;
 mod thumbnail;

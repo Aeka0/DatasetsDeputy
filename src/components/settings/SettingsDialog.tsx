@@ -113,12 +113,20 @@ const uiAnimationOptions: Array<{ value: UiAnimationPreference; labelKey: string
   { value: "off", labelKey: "settings.uiAnimationOff" }
 ];
 
+type RemoteRequestMode = "queue" | "concurrent";
+
+const requestModeOptions: Array<{ value: RemoteRequestMode; labelKey: string }> = [
+  { value: "queue", labelKey: "settings.requestModeQueue" },
+  { value: "concurrent", labelKey: "settings.requestModeConcurrent" }
+];
+
 interface GeminiSettings {
   apiKey: string;
   baseUrl: string;
   model: string;
   availableModels: string[];
-  rpmLimit: number;
+  targetRpm: number;
+  requestMode: RemoteRequestMode;
   imageResizeMode: string;
   imageConvertFormat: string;
 }
@@ -128,7 +136,8 @@ interface RemoteLlmSettings {
   baseUrl: string;
   model: string;
   availableModels: string[];
-  rpmLimit: number;
+  targetRpm: number;
+  requestMode: RemoteRequestMode;
 }
 
 type RemoteLlmProvider = "openai" | "anthropic" | "grok" | "doubao";
@@ -232,7 +241,8 @@ const defaultGeminiSettings: GeminiSettings = {
   baseUrl: "",
   model: "gemini-flash-latest",
   availableModels: ["gemini-flash-latest", "gemini-pro-latest"],
-  rpmLimit: 0,
+  targetRpm: 5,
+  requestMode: "queue",
   imageResizeMode: "none",
   imageConvertFormat: "none"
 };
@@ -242,7 +252,8 @@ const defaultOpenAiSettings: RemoteLlmSettings = {
   baseUrl: "",
   model: "gpt-5.5",
   availableModels: ["gpt-5.5", "gpt-5.4", "gpt-5.4-mini", "gpt-5.4-nano"],
-  rpmLimit: 0
+  targetRpm: 5,
+  requestMode: "queue"
 };
 
 const defaultAnthropicSettings: RemoteLlmSettings = {
@@ -250,7 +261,8 @@ const defaultAnthropicSettings: RemoteLlmSettings = {
   baseUrl: "",
   model: "claude-sonnet-4-6",
   availableModels: ["claude-opus-4-7", "claude-sonnet-4-6", "claude-haiku-4-5"],
-  rpmLimit: 0
+  targetRpm: 5,
+  requestMode: "queue"
 };
 
 const defaultGrokSettings: RemoteLlmSettings = {
@@ -269,7 +281,8 @@ const defaultGrokSettings: RemoteLlmSettings = {
     "grok-4.20-non-reasoning-latest",
     "grok-4.20-0309-non-reasoning"
   ],
-  rpmLimit: 0
+  targetRpm: 5,
+  requestMode: "queue"
 };
 
 const defaultDoubaoSettings: RemoteLlmSettings = {
@@ -277,7 +290,8 @@ const defaultDoubaoSettings: RemoteLlmSettings = {
   baseUrl: "",
   model: "doubao-seed-2-0-lite-260215",
   availableModels: ["doubao-seed-2-0-lite-260215"],
-  rpmLimit: 0
+  targetRpm: 5,
+  requestMode: "queue"
 };
 
 const defaultProxySettings: ProxySettings = {
@@ -1186,6 +1200,58 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
     );
   };
 
+  const renderRemoteRequestScheduling = (
+    settings: Pick<GeminiSettings, "targetRpm" | "requestMode">,
+    patchSettings: (patch: Partial<Pick<GeminiSettings, "targetRpm" | "requestMode">>) => void
+  ) => (
+    <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-3">
+      <label className="block min-w-0">
+        <span className="mb-1 block text-[12px] font-medium text-neutral-600">
+          {t("settings.targetRpm")}
+        </span>
+        <input
+          type="number"
+          min={0}
+          className="glass-input h-8 w-full px-2.5 text-[13px]"
+          value={settings.targetRpm}
+          onChange={(event) =>
+            patchSettings({
+              targetRpm: Math.max(0, Number(event.target.value) || 0)
+            })
+          }
+        />
+        <span className="mt-1 block text-[11px] text-neutral-500">
+          {t("settings.targetRpmDescription")}
+        </span>
+      </label>
+
+      <div className="min-w-0">
+        <div className="mb-1 text-[12px] font-medium text-neutral-600">
+          {t("settings.requestMode")}
+        </div>
+        <div className="grid h-8 grid-cols-2 rounded-md border border-neutral-200 bg-white p-0.5">
+          {requestModeOptions.map((option) => {
+            const isActive = settings.requestMode === option.value;
+            return (
+              <button
+                key={option.value}
+                type="button"
+                className={`no-drag rounded-[4px] px-2 text-[12px] font-medium transition ${
+                  isActive
+                    ? "bg-neutral-900 text-white"
+                    : "text-neutral-600 hover:bg-neutral-100"
+                }`}
+                onClick={() => patchSettings({ requestMode: option.value })}
+              >
+                {t(option.labelKey)}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+
   const renderRemoteLlmSettings = (
     provider: RemoteLlmProvider,
     settings: RemoteLlmSettings,
@@ -1293,25 +1359,7 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
             </button>
           </div>
 
-          <label className="block">
-            <span className="mb-1 block text-[12px] font-medium text-neutral-600">
-              {t("settings.rpmLimit")}
-            </span>
-            <input
-              type="number"
-              min={0}
-              className="glass-input h-8 w-full px-2.5 text-[13px]"
-              value={settings.rpmLimit}
-              onChange={(event) =>
-                patchSettings({
-                  rpmLimit: Math.max(0, Number(event.target.value) || 0)
-                })
-              }
-            />
-            <span className="mt-1 block text-[11px] text-neutral-500">
-              {t("settings.rpmLimitDescription")}
-            </span>
-          </label>
+          {renderRemoteRequestScheduling(settings, patchSettings)}
 
           {message ? (
             <div className="truncate text-[12px] text-neutral-500">
@@ -2368,25 +2416,7 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
                         </button>
                       </div>
 
-                      <label className="block">
-                        <span className="mb-1 block text-[12px] font-medium text-neutral-600">
-                          {t("settings.rpmLimit")}
-                        </span>
-                        <input
-                          type="number"
-                          min={0}
-                          className="glass-input h-8 w-full px-2.5 text-[13px]"
-                          value={geminiSettings.rpmLimit}
-                          onChange={(event) =>
-                            patchGeminiSettings({
-                              rpmLimit: Math.max(0, Number(event.target.value) || 0)
-                            })
-                          }
-                        />
-                        <span className="mt-1 block text-[11px] text-neutral-500">
-                          {t("settings.rpmLimitDescription")}
-                        </span>
-                      </label>
+                      {renderRemoteRequestScheduling(geminiSettings, patchGeminiSettings)}
 
                       {geminiMessage ? (
                         <div className="truncate text-[12px] text-neutral-500">
