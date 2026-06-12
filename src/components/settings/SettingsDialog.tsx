@@ -1794,100 +1794,105 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
             </h2>
           </div>
 
-          <nav className="flex-1 space-y-1 px-2 py-3" aria-label={t("settings.categoryLabel")}>
-            {sections.map((section) => {
-              const Icon = section.icon;
-              const isActive = section.key === activeSection;
-              const hasChildren = section.key === "network" || section.key === "localFiles";
-              const isExpanded = expandedSettingsSections.has(section.key);
-              const childItems =
-                section.key === "network"
-                  ? networkChildItems
-                  : section.key === "localFiles"
-                    ? localFilesChildItems
-                    : [];
+          <nav
+            className="hover-scrollbar min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-2 py-3"
+            aria-label={t("settings.categoryLabel")}
+          >
+            <div className="space-y-1">
+              {sections.map((section) => {
+                const Icon = section.icon;
+                const isActive = section.key === activeSection;
+                const hasChildren = section.key === "network" || section.key === "localFiles";
+                const isExpanded = expandedSettingsSections.has(section.key);
+                const childItems =
+                  section.key === "network"
+                    ? networkChildItems
+                    : section.key === "localFiles"
+                      ? localFilesChildItems
+                      : [];
 
-              return (
-                <div key={section.key}>
-                  <div
-                    className={cn(
-                      "sidebar-nav-button flex h-9 w-full items-center gap-1 rounded px-1.5 text-left text-[13px] transition",
-                      isActive && "sidebar-nav-button-active"
-                    )}
-                  >
-                    {hasChildren ? (
-                      <HierarchyDisclosureButton
-                        expanded={isExpanded}
-                        aria-label={isExpanded ? t("tree.collapse") : t("tree.expand")}
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          toggleSettingsSection(section.key);
-                        }}
-                      />
-                    ) : (
-                      <span className="w-6 shrink-0" aria-hidden />
-                    )}
-                    <button
-                      type="button"
-                      className="no-drag flex h-full min-w-0 flex-1 items-center gap-2 rounded border-0 bg-transparent px-1.5 text-left text-inherit outline-none focus-visible:ring-2 focus-visible:ring-black/20"
-                      aria-current={isActive && !hasChildren ? "page" : undefined}
-                      onClick={() => {
-                        setActiveSection(section.key);
-                        if (hasChildren && !isExpanded) {
-                          toggleSettingsSection(section.key);
-                        }
-                      }}
-                    >
-                      <Icon size={16} className="shrink-0" />
-                      <span className="truncate">{t(section.labelKey)}</span>
-                    </button>
-                  </div>
-                  {hasChildren ? (
+                return (
+                  <div key={section.key}>
                     <div
                       className={cn(
-                        "project-tree-children",
-                        isExpanded && "project-tree-children-open"
+                        "sidebar-nav-button flex h-9 w-full items-center gap-1 rounded px-1.5 text-left text-[13px] transition",
+                        isActive && "sidebar-nav-button-active"
                       )}
-                      aria-hidden={!isExpanded}
-                      inert={!isExpanded}
                     >
-                      <div className="min-h-0 overflow-hidden">
-                        <div className="ml-8 space-y-1 py-1 pl-3 pr-1">
-                          {childItems.map((item) => {
-                            const childActive =
-                              section.key === "network"
-                                ? activeSection === "network" && item.key === activeNetworkSection
-                                : activeSection === "localFiles" && item.key === activeLocalFilesSection;
-                            return (
-                              <button
-                                key={item.key}
-                                type="button"
-                                className={cn(
-                                  "sidebar-nav-button flex h-8 w-full items-center gap-2 rounded px-3 text-left text-[12px] transition",
-                                  childActive && "sidebar-nav-button-active"
-                                )}
-                                aria-current={childActive ? "page" : undefined}
-                                onClick={() => {
-                                  setActiveSection(section.key);
-                                  if (section.key === "network") {
-                                    setActiveNetworkSection(item.key as NetworkSectionKey);
-                                  } else {
-                                    setActiveLocalFilesSection(item.key as LocalFilesSectionKey);
-                                  }
-                                }}
-                              >
-                                <SettingsTreeIcon icon={item.icon} />
-                                <span className="truncate">{item.label}</span>
-                              </button>
-                            );
-                          })}
+                      {hasChildren ? (
+                        <HierarchyDisclosureButton
+                          expanded={isExpanded}
+                          aria-label={isExpanded ? t("tree.collapse") : t("tree.expand")}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            toggleSettingsSection(section.key);
+                          }}
+                        />
+                      ) : (
+                        <span className="w-6 shrink-0" aria-hidden />
+                      )}
+                      <button
+                        type="button"
+                        className="no-drag flex h-full min-w-0 flex-1 items-center gap-2 rounded border-0 bg-transparent px-1.5 text-left text-inherit outline-none focus-visible:ring-2 focus-visible:ring-black/20"
+                        aria-current={isActive && !hasChildren ? "page" : undefined}
+                        onClick={() => {
+                          setActiveSection(section.key);
+                          if (hasChildren && !isExpanded) {
+                            toggleSettingsSection(section.key);
+                          }
+                        }}
+                      >
+                        <Icon size={16} className="shrink-0" />
+                        <span className="truncate">{t(section.labelKey)}</span>
+                      </button>
+                    </div>
+                    {hasChildren ? (
+                      <div
+                        className={cn(
+                          "project-tree-children",
+                          isExpanded && "project-tree-children-open"
+                        )}
+                        aria-hidden={!isExpanded}
+                        inert={!isExpanded}
+                      >
+                        <div className="min-h-0 overflow-hidden">
+                          <div className="ml-8 space-y-1 py-1 pl-3 pr-1">
+                            {childItems.map((item) => {
+                              const childActive =
+                                section.key === "network"
+                                  ? activeSection === "network" && item.key === activeNetworkSection
+                                  : activeSection === "localFiles" && item.key === activeLocalFilesSection;
+                              return (
+                                <button
+                                  key={item.key}
+                                  type="button"
+                                  className={cn(
+                                    "sidebar-nav-button flex h-8 w-full items-center gap-2 rounded px-3 text-left text-[12px] transition",
+                                    childActive && "sidebar-nav-button-active"
+                                  )}
+                                  aria-current={childActive ? "page" : undefined}
+                                  onClick={() => {
+                                    setActiveSection(section.key);
+                                    if (section.key === "network") {
+                                      setActiveNetworkSection(item.key as NetworkSectionKey);
+                                    } else {
+                                      setActiveLocalFilesSection(item.key as LocalFilesSectionKey);
+                                    }
+                                  }}
+                                >
+                                  <SettingsTreeIcon icon={item.icon} />
+                                  <span className="truncate">{item.label}</span>
+                                </button>
+                              );
+                            })}
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  ) : null}
-                </div>
-              );
-            })}
+                    ) : null}
+                  </div>
+                );
+              })}
+            </div>
           </nav>
         </aside>
 
