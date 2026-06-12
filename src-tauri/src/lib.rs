@@ -20,6 +20,7 @@ mod openai;
 mod openai_compatible;
 mod proxy_settings;
 mod python_env;
+mod qwen;
 mod request_scheduling;
 mod tag_sheet;
 mod textgen;
@@ -29,6 +30,7 @@ mod wd14_tagger;
 #[cfg(target_os = "windows")]
 mod window_region;
 mod window_rendering;
+mod zhipu;
 
 use std::{
     collections::HashMap,
@@ -217,6 +219,18 @@ pub fn run() {
             commands::test_doubao_connection,
             commands::generate_doubao_annotation,
             commands::generate_doubao_text,
+            commands::get_qwen_settings,
+            commands::save_qwen_settings,
+            commands::fetch_qwen_models,
+            commands::test_qwen_connection,
+            commands::generate_qwen_annotation,
+            commands::generate_qwen_text,
+            commands::get_zhipu_settings,
+            commands::save_zhipu_settings,
+            commands::fetch_zhipu_models,
+            commands::test_zhipu_connection,
+            commands::generate_zhipu_annotation,
+            commands::generate_zhipu_text,
             commands::get_llm_loader_settings,
             commands::save_llm_loader_settings,
             commands::generate_lm_studio_annotation,

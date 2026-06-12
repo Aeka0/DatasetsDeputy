@@ -41,10 +41,12 @@ use crate::{
     openai::{self, OpenAiSettings},
     proxy_settings::{self, ProxySettings},
     python_env::{self, PythonEnvInstallResult, PythonEnvProbeReport, PythonEnvSettings},
+    qwen::{self, QwenSettings},
     tag_sheet, textgen, thumbnail,
     thumbnail_settings::{self, ThumbnailSettings},
     wd14_tagger,
     window_rendering::{self, WindowRenderingSettings},
+    zhipu::{self, ZhipuSettings},
     AppState, ID_NAMESPACE_SIZE,
 };
 
@@ -2929,6 +2931,136 @@ pub async fn generate_doubao_text(state: State<'_, AppState>, prompt: String) ->
     let settings = doubao::load_settings(&state.dirs)?;
     let proxy_settings = proxy_settings::load_settings(&state.dirs)?;
     doubao::generate_text(&settings, &proxy_settings, &prompt).await
+}
+
+#[tauri::command]
+pub fn get_qwen_settings(state: State<'_, AppState>) -> AppResult<QwenSettings> {
+    qwen::load_settings(&state.dirs)
+}
+
+#[tauri::command]
+pub fn save_qwen_settings(
+    state: State<'_, AppState>,
+    settings: QwenSettings,
+) -> AppResult<QwenSettings> {
+    qwen::save_settings(&state.dirs, settings)
+}
+
+#[tauri::command]
+pub async fn fetch_qwen_models(
+    state: State<'_, AppState>,
+    settings: Option<QwenSettings>,
+) -> AppResult<Vec<String>> {
+    let settings = match settings {
+        Some(settings) => settings,
+        None => qwen::load_settings(&state.dirs)?,
+    };
+    let proxy_settings = proxy_settings::load_settings(&state.dirs)?;
+    qwen::fetch_models(&settings, &proxy_settings).await
+}
+
+#[tauri::command]
+pub async fn test_qwen_connection(
+    state: State<'_, AppState>,
+    settings: Option<QwenSettings>,
+) -> AppResult<usize> {
+    let settings = match settings {
+        Some(settings) => settings,
+        None => qwen::load_settings(&state.dirs)?,
+    };
+    let proxy_settings = proxy_settings::load_settings(&state.dirs)?;
+    qwen::fetch_models(&settings, &proxy_settings)
+        .await
+        .map(|models| models.len())
+}
+
+#[tauri::command]
+pub async fn generate_qwen_annotation(
+    state: State<'_, AppState>,
+    image_path: String,
+    prompt: String,
+) -> AppResult<String> {
+    let settings = qwen::load_settings(&state.dirs)?;
+    let proxy_settings = proxy_settings::load_settings(&state.dirs)?;
+    qwen::generate_annotation(
+        &settings,
+        &proxy_settings,
+        &PathBuf::from(image_path),
+        &prompt,
+    )
+    .await
+}
+
+#[tauri::command]
+pub async fn generate_qwen_text(state: State<'_, AppState>, prompt: String) -> AppResult<String> {
+    let settings = qwen::load_settings(&state.dirs)?;
+    let proxy_settings = proxy_settings::load_settings(&state.dirs)?;
+    qwen::generate_text(&settings, &proxy_settings, &prompt).await
+}
+
+#[tauri::command]
+pub fn get_zhipu_settings(state: State<'_, AppState>) -> AppResult<ZhipuSettings> {
+    zhipu::load_settings(&state.dirs)
+}
+
+#[tauri::command]
+pub fn save_zhipu_settings(
+    state: State<'_, AppState>,
+    settings: ZhipuSettings,
+) -> AppResult<ZhipuSettings> {
+    zhipu::save_settings(&state.dirs, settings)
+}
+
+#[tauri::command]
+pub async fn fetch_zhipu_models(
+    state: State<'_, AppState>,
+    settings: Option<ZhipuSettings>,
+) -> AppResult<Vec<String>> {
+    let settings = match settings {
+        Some(settings) => settings,
+        None => zhipu::load_settings(&state.dirs)?,
+    };
+    let proxy_settings = proxy_settings::load_settings(&state.dirs)?;
+    zhipu::fetch_models(&settings, &proxy_settings).await
+}
+
+#[tauri::command]
+pub async fn test_zhipu_connection(
+    state: State<'_, AppState>,
+    settings: Option<ZhipuSettings>,
+) -> AppResult<usize> {
+    let settings = match settings {
+        Some(settings) => settings,
+        None => zhipu::load_settings(&state.dirs)?,
+    };
+    let proxy_settings = proxy_settings::load_settings(&state.dirs)?;
+    zhipu::fetch_models(&settings, &proxy_settings)
+        .await
+        .map(|models| models.len())
+}
+
+#[tauri::command]
+pub async fn generate_zhipu_annotation(
+    state: State<'_, AppState>,
+    image_path: String,
+    prompt: String,
+) -> AppResult<String> {
+    let settings = zhipu::load_settings(&state.dirs)?;
+    let proxy_settings = proxy_settings::load_settings(&state.dirs)?;
+    zhipu::generate_annotation(
+        &settings,
+        &proxy_settings,
+        &PathBuf::from(image_path),
+        &prompt,
+    )
+    .await
+}
+
+#[tauri::command]
+pub async fn generate_zhipu_text(state: State<'_, AppState>, prompt: String) -> AppResult<String> {
+    let settings = zhipu::load_settings(&state.dirs)?;
+    let proxy_settings = proxy_settings::load_settings(&state.dirs)?;
+    zhipu::generate_text(&settings, &proxy_settings, &prompt).await
 }
 
 #[tauri::command]

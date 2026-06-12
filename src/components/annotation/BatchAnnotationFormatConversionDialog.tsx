@@ -37,6 +37,8 @@ export type LLMBackend =
   | "anthropic"
   | "grok"
   | "doubao"
+  | "qwen"
+  | "zhipu"
   | "lmStudio"
   | "textgen"
   | "ollama";
@@ -247,6 +249,8 @@ function NaturalLanguageRewriteOptions({
     { value: "anthropic", label: t("annotationFormatConversion.llmBackendAnthropic") },
     { value: "grok", label: t("annotationFormatConversion.llmBackendGrok") },
     { value: "doubao", label: t("annotationFormatConversion.llmBackendDoubao") },
+    { value: "qwen", label: t("annotationFormatConversion.llmBackendQwen") },
+    { value: "zhipu", label: t("annotationFormatConversion.llmBackendZhipu") },
     { value: "lmStudio", label: t("annotationFormatConversion.llmBackendLmStudio") },
     { value: "textgen", label: t("annotationFormatConversion.llmBackendTextgen") },
     { value: "ollama", label: t("annotationFormatConversion.llmBackendOllama") }

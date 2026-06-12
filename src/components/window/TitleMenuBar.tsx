@@ -104,7 +104,14 @@ interface MenuSeparator {
 type MenuEntry = MenuAction | MenuSubmenu | MenuSeparator;
 
 type RemoteRequestMode = "queue" | "concurrent";
-type ScheduledRemoteBackend = "gemini" | "openai" | "anthropic" | "grok" | "doubao";
+type ScheduledRemoteBackend =
+  | "gemini"
+  | "openai"
+  | "anthropic"
+  | "grok"
+  | "doubao"
+  | "qwen"
+  | "zhipu";
 type LLMPromptSettings = AnnotationPromptSettings & RemoteSchedulingSettings;
 
 interface RemoteSchedulingSettings {
@@ -260,6 +267,8 @@ function getAnnotationModeLabel(
   if (mode === "anthropic") return t("annotationRun.modeAnthropic");
   if (mode === "grok") return t("annotationRun.modeGrok");
   if (mode === "doubao") return t("annotationRun.modeDoubao");
+  if (mode === "qwen") return t("annotationRun.modeQwen");
+  if (mode === "zhipu") return t("annotationRun.modeZhipu");
   if (mode === "lmStudio") return t("annotationRun.modeLmStudio");
   if (mode === "ollama") return t("annotationRun.modeOllama");
   if (mode === "textgen") return t("annotationRun.modeTextgen");
@@ -271,6 +280,8 @@ function getVisionAnnotationCommand(mode: AnnotationExecutionMode) {
   if (mode === "anthropic") return "generate_anthropic_annotation";
   if (mode === "grok") return "generate_grok_annotation";
   if (mode === "doubao") return "generate_doubao_annotation";
+  if (mode === "qwen") return "generate_qwen_annotation";
+  if (mode === "zhipu") return "generate_zhipu_annotation";
   if (mode === "lmStudio") return "generate_lm_studio_annotation";
   if (mode === "ollama") return "generate_ollama_annotation";
   if (mode === "textgen") return "generate_textgen_annotation";
@@ -282,6 +293,8 @@ function getTextGenerationCommand(backend: LLMBackend) {
   if (backend === "anthropic") return "generate_anthropic_text";
   if (backend === "grok") return "generate_grok_text";
   if (backend === "doubao") return "generate_doubao_text";
+  if (backend === "qwen") return "generate_qwen_text";
+  if (backend === "zhipu") return "generate_zhipu_text";
   if (backend === "lmStudio") return "generate_lm_studio_text";
   if (backend === "ollama") return "generate_ollama_text";
   if (backend === "textgen") return "generate_textgen_text";
@@ -296,7 +309,9 @@ function isScheduledRemoteBackend(
     backend === "openai" ||
     backend === "anthropic" ||
     backend === "grok" ||
-    backend === "doubao"
+    backend === "doubao" ||
+    backend === "qwen" ||
+    backend === "zhipu"
   );
 }
 
@@ -305,6 +320,8 @@ function getRemoteSettingsCommand(backend: ScheduledRemoteBackend) {
   if (backend === "anthropic") return "get_anthropic_settings";
   if (backend === "grok") return "get_grok_settings";
   if (backend === "doubao") return "get_doubao_settings";
+  if (backend === "qwen") return "get_qwen_settings";
+  if (backend === "zhipu") return "get_zhipu_settings";
   return "get_gemini_settings";
 }
 

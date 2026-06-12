@@ -59,6 +59,8 @@ type NetworkSectionKey =
   | "anthropic"
   | "grok"
   | "doubao"
+  | "qwen"
+  | "zhipu"
   | "llmLoader"
   | "proxy"
   | "imageTransfer";
@@ -85,7 +87,9 @@ const providerIcons = {
   openai: new URL("../../../assets/svg/openai.svg", import.meta.url).href,
   anthropic: new URL("../../../assets/svg/anthropic.svg", import.meta.url).href,
   grok: new URL("../../../assets/svg/grok.svg", import.meta.url).href,
-  doubao: new URL("../../../assets/svg/bytedance.svg", import.meta.url).href
+  doubao: new URL("../../../assets/svg/bytedance.svg", import.meta.url).href,
+  qwen: new URL("../../../assets/svg/qwen.svg", import.meta.url).href,
+  zhipu: new URL("../../../assets/svg/zhipu.svg", import.meta.url).href
 };
 
 const sections: SettingsSection[] = [
@@ -140,7 +144,7 @@ interface RemoteLlmSettings {
   requestMode: RemoteRequestMode;
 }
 
-type RemoteLlmProvider = "openai" | "anthropic" | "grok" | "doubao";
+type RemoteLlmProvider = "openai" | "anthropic" | "grok" | "doubao" | "qwen" | "zhipu";
 
 interface ProxySettings {
   useProxy: boolean;
@@ -292,6 +296,85 @@ const defaultDoubaoSettings: RemoteLlmSettings = {
   availableModels: ["doubao-seed-2-0-lite-260215"],
   targetRpm: 5,
   requestMode: "queue"
+};
+
+const defaultQwenSettings: RemoteLlmSettings = {
+  apiKey: "",
+  baseUrl: "",
+  model: "qwen3-vl-flash",
+  availableModels: [
+    "qwen3-vl-flash",
+    "qwen3-vl-plus",
+    "qwen-vl-plus",
+    "qwen-vl-plus-latest",
+    "qwen-vl-max",
+    "qwen-vl-max-latest"
+  ],
+  targetRpm: 5,
+  requestMode: "queue"
+};
+
+const defaultZhipuSettings: RemoteLlmSettings = {
+  apiKey: "",
+  baseUrl: "",
+  model: "glm-4.5v",
+  availableModels: [
+    "glm-4.5v",
+    "glm-4.6v",
+    "glm-4.6v-flash",
+    "glm-4.7",
+    "glm-4.7-flash",
+    "glm-4.5-flash"
+  ],
+  targetRpm: 5,
+  requestMode: "queue"
+};
+
+const remoteLlmProviderMetadata: Record<
+  RemoteLlmProvider,
+  {
+    titleKey: string;
+    descriptionKey: string;
+    apiKeyPlaceholderKey: string;
+    baseUrlPlaceholder: string;
+  }
+> = {
+  openai: {
+    titleKey: "settings.openAiApi",
+    descriptionKey: "settings.openAiApiDescription",
+    apiKeyPlaceholderKey: "settings.openAiApiKeyPlaceholder",
+    baseUrlPlaceholder: "https://api.openai.com/v1"
+  },
+  anthropic: {
+    titleKey: "settings.anthropicApi",
+    descriptionKey: "settings.anthropicApiDescription",
+    apiKeyPlaceholderKey: "settings.anthropicApiKeyPlaceholder",
+    baseUrlPlaceholder: "https://api.anthropic.com"
+  },
+  grok: {
+    titleKey: "settings.grokApi",
+    descriptionKey: "settings.grokApiDescription",
+    apiKeyPlaceholderKey: "settings.grokApiKeyPlaceholder",
+    baseUrlPlaceholder: "https://api.x.ai/v1"
+  },
+  doubao: {
+    titleKey: "settings.doubaoApi",
+    descriptionKey: "settings.doubaoApiDescription",
+    apiKeyPlaceholderKey: "settings.doubaoApiKeyPlaceholder",
+    baseUrlPlaceholder: "https://ark.cn-beijing.volces.com/api/v3"
+  },
+  qwen: {
+    titleKey: "settings.qwenApi",
+    descriptionKey: "settings.qwenApiDescription",
+    apiKeyPlaceholderKey: "settings.qwenApiKeyPlaceholder",
+    baseUrlPlaceholder: "https://dashscope.aliyuncs.com/compatible-mode/v1"
+  },
+  zhipu: {
+    titleKey: "settings.zhipuApi",
+    descriptionKey: "settings.zhipuApiDescription",
+    apiKeyPlaceholderKey: "settings.zhipuApiKeyPlaceholder",
+    baseUrlPlaceholder: "https://open.bigmodel.cn/api/paas/v4"
+  }
 };
 
 const defaultProxySettings: ProxySettings = {
@@ -550,6 +633,16 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
   const [doubaoMessage, setDoubaoMessage] = useState("");
   const [isDoubaoBusy, setIsDoubaoBusy] = useState(false);
   const [hasLoadedDoubaoSettings, setHasLoadedDoubaoSettings] = useState(false);
+  const [qwenSettings, setQwenSettings] =
+    useState<RemoteLlmSettings>(defaultQwenSettings);
+  const [qwenMessage, setQwenMessage] = useState("");
+  const [isQwenBusy, setIsQwenBusy] = useState(false);
+  const [hasLoadedQwenSettings, setHasLoadedQwenSettings] = useState(false);
+  const [zhipuSettings, setZhipuSettings] =
+    useState<RemoteLlmSettings>(defaultZhipuSettings);
+  const [zhipuMessage, setZhipuMessage] = useState("");
+  const [isZhipuBusy, setIsZhipuBusy] = useState(false);
+  const [hasLoadedZhipuSettings, setHasLoadedZhipuSettings] = useState(false);
   const [pythonEnvSettings, setPythonEnvSettings] =
     useState<PythonEnvSettings>(defaultPythonEnvSettings);
   const [pythonEnvProbe, setPythonEnvProbe] = useState<PythonEnvProbeReport>();
@@ -616,6 +709,16 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
       key: "doubao",
       label: t("settings.networkDoubao"),
       icon: { kind: "svg", src: providerIcons.doubao, alt: "ByteDance" }
+    },
+    {
+      key: "qwen",
+      label: t("settings.networkQwen"),
+      icon: { kind: "svg", src: providerIcons.qwen, alt: "Qwen" }
+    },
+    {
+      key: "zhipu",
+      label: t("settings.networkZhipu"),
+      icon: { kind: "svg", src: providerIcons.zhipu, alt: "Zhipu" }
     },
     {
       key: "llmLoader",
@@ -741,6 +844,26 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
         setHasLoadedDoubaoSettings(true);
       })
       .catch((error) => setDoubaoMessage(formatAppError(error)));
+  }, []);
+  useEffect(() => {
+    if (!hasTauriRuntime()) return;
+
+    void invokeCommand<RemoteLlmSettings>("get_qwen_settings")
+      .then((settings) => {
+        setQwenSettings(settings);
+        setHasLoadedQwenSettings(true);
+      })
+      .catch((error) => setQwenMessage(formatAppError(error)));
+  }, []);
+  useEffect(() => {
+    if (!hasTauriRuntime()) return;
+
+    void invokeCommand<RemoteLlmSettings>("get_zhipu_settings")
+      .then((settings) => {
+        setZhipuSettings(settings);
+        setHasLoadedZhipuSettings(true);
+      })
+      .catch((error) => setZhipuMessage(formatAppError(error)));
   }, []);
   useEffect(() => {
     if (!hasTauriRuntime()) return;
@@ -877,6 +1000,34 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
     return () => window.clearTimeout(saveTimer);
   }, [doubaoSettings, hasLoadedDoubaoSettings]);
   useEffect(() => {
+    if (!hasTauriRuntime() || !hasLoadedQwenSettings) return;
+
+    const saveTimer = window.setTimeout(() => {
+      void invokeCommand<RemoteLlmSettings>("save_qwen_settings", {
+        settings: qwenSettings
+      }).catch((error) => {
+        const message = formatAppError(error);
+        setQwenMessage(t("settings.llmActionFailed", { message }));
+      });
+    }, 500);
+
+    return () => window.clearTimeout(saveTimer);
+  }, [qwenSettings, hasLoadedQwenSettings]);
+  useEffect(() => {
+    if (!hasTauriRuntime() || !hasLoadedZhipuSettings) return;
+
+    const saveTimer = window.setTimeout(() => {
+      void invokeCommand<RemoteLlmSettings>("save_zhipu_settings", {
+        settings: zhipuSettings
+      }).catch((error) => {
+        const message = formatAppError(error);
+        setZhipuMessage(t("settings.llmActionFailed", { message }));
+      });
+    }, 500);
+
+    return () => window.clearTimeout(saveTimer);
+  }, [zhipuSettings, hasLoadedZhipuSettings]);
+  useEffect(() => {
     if (!hasTauriRuntime() || !hasLoadedPythonEnvSettings) return;
 
     const saveTimer = window.setTimeout(() => {
@@ -999,6 +1150,14 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
     setDoubaoSettings((current) => ({ ...current, ...patch }));
   };
 
+  const patchQwenSettings = (patch: Partial<RemoteLlmSettings>) => {
+    setQwenSettings((current) => ({ ...current, ...patch }));
+  };
+
+  const patchZhipuSettings = (patch: Partial<RemoteLlmSettings>) => {
+    setZhipuSettings((current) => ({ ...current, ...patch }));
+  };
+
   const patchPythonEnvSettings = (patch: Partial<PythonEnvSettings>) => {
     setPythonEnvSettings((current) => ({ ...current, ...patch }));
     setPythonEnvProbe(undefined);
@@ -1062,56 +1221,66 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
     provider: RemoteLlmProvider,
     action: "fetch" | "test"
   ) => {
-    const isBusy =
-      provider === "openai"
-        ? isOpenAiBusy
-        : provider === "anthropic"
-          ? isAnthropicBusy
-          : provider === "grok"
-            ? isGrokBusy
-            : isDoubaoBusy;
+    const runtime = (() => {
+      switch (provider) {
+        case "openai":
+          return {
+            isBusy: isOpenAiBusy,
+            settings: openAiSettings,
+            setBusy: setIsOpenAiBusy,
+            setMessage: setOpenAiMessage,
+            setSettings: setOpenAiSettings,
+            commandPrefix: "openai"
+          };
+        case "anthropic":
+          return {
+            isBusy: isAnthropicBusy,
+            settings: anthropicSettings,
+            setBusy: setIsAnthropicBusy,
+            setMessage: setAnthropicMessage,
+            setSettings: setAnthropicSettings,
+            commandPrefix: "anthropic"
+          };
+        case "grok":
+          return {
+            isBusy: isGrokBusy,
+            settings: grokSettings,
+            setBusy: setIsGrokBusy,
+            setMessage: setGrokMessage,
+            setSettings: setGrokSettings,
+            commandPrefix: "grok"
+          };
+        case "doubao":
+          return {
+            isBusy: isDoubaoBusy,
+            settings: doubaoSettings,
+            setBusy: setIsDoubaoBusy,
+            setMessage: setDoubaoMessage,
+            setSettings: setDoubaoSettings,
+            commandPrefix: "doubao"
+          };
+        case "qwen":
+          return {
+            isBusy: isQwenBusy,
+            settings: qwenSettings,
+            setBusy: setIsQwenBusy,
+            setMessage: setQwenMessage,
+            setSettings: setQwenSettings,
+            commandPrefix: "qwen"
+          };
+        case "zhipu":
+          return {
+            isBusy: isZhipuBusy,
+            settings: zhipuSettings,
+            setBusy: setIsZhipuBusy,
+            setMessage: setZhipuMessage,
+            setSettings: setZhipuSettings,
+            commandPrefix: "zhipu"
+          };
+      }
+    })();
+    const { isBusy, settings, setBusy, setMessage, setSettings, commandPrefix } = runtime;
     if (!hasTauriRuntime() || isBusy) return;
-
-    const settings =
-      provider === "openai"
-        ? openAiSettings
-        : provider === "anthropic"
-          ? anthropicSettings
-          : provider === "grok"
-            ? grokSettings
-            : doubaoSettings;
-    const setBusy =
-      provider === "openai"
-        ? setIsOpenAiBusy
-        : provider === "anthropic"
-          ? setIsAnthropicBusy
-          : provider === "grok"
-            ? setIsGrokBusy
-            : setIsDoubaoBusy;
-    const setMessage =
-      provider === "openai"
-        ? setOpenAiMessage
-        : provider === "anthropic"
-          ? setAnthropicMessage
-          : provider === "grok"
-            ? setGrokMessage
-            : setDoubaoMessage;
-    const setSettings =
-      provider === "openai"
-        ? setOpenAiSettings
-        : provider === "anthropic"
-          ? setAnthropicSettings
-          : provider === "grok"
-            ? setGrokSettings
-            : setDoubaoSettings;
-    const commandPrefix =
-      provider === "openai"
-        ? "openai"
-        : provider === "anthropic"
-          ? "anthropic"
-          : provider === "grok"
-            ? "grok"
-            : "doubao";
 
     setBusy(true);
     setMessage("");
@@ -1259,39 +1428,16 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
     message: string,
     isBusy: boolean
   ) => {
-    const titleKey =
-      provider === "openai"
-        ? "settings.openAiApi"
-        : provider === "anthropic"
-          ? "settings.anthropicApi"
-          : provider === "grok"
-            ? "settings.grokApi"
-            : "settings.doubaoApi";
-    const descriptionKey =
-      provider === "openai"
-        ? "settings.openAiApiDescription"
-        : provider === "anthropic"
-          ? "settings.anthropicApiDescription"
-          : provider === "grok"
-            ? "settings.grokApiDescription"
-            : "settings.doubaoApiDescription";
-    const placeholderKey =
-      provider === "openai"
-        ? "settings.openAiApiKeyPlaceholder"
-        : provider === "anthropic"
-          ? "settings.anthropicApiKeyPlaceholder"
-          : provider === "grok"
-            ? "settings.grokApiKeyPlaceholder"
-            : "settings.doubaoApiKeyPlaceholder";
+    const metadata = remoteLlmProviderMetadata[provider];
     return (
       <div className="rounded-lg border border-neutral-200 bg-white">
         <div className="flex items-center justify-between gap-3 border-b border-neutral-100 px-4 py-3">
           <div className="min-w-0">
             <div className="text-[13px] font-semibold text-neutral-900">
-              {t(titleKey)}
+              {t(metadata.titleKey)}
             </div>
             <div className="mt-0.5 text-[12px] text-neutral-500">
-              {t(descriptionKey)}
+              {t(metadata.descriptionKey)}
             </div>
           </div>
           <button
@@ -1312,15 +1458,7 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
             <input
               className="glass-input h-8 w-full px-2.5 text-[13px]"
               value={settings.baseUrl}
-              placeholder={
-                provider === "openai"
-                  ? "https://api.openai.com/v1"
-                  : provider === "anthropic"
-                    ? "https://api.anthropic.com"
-                    : provider === "grok"
-                      ? "https://api.x.ai/v1"
-                      : "https://ark.cn-beijing.volces.com/api/v3"
-              }
+              placeholder={metadata.baseUrlPlaceholder}
               onChange={(event) => patchSettings({ baseUrl: event.target.value })}
             />
           </label>
@@ -1333,7 +1471,7 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
               type="password"
               className="glass-input h-8 w-full px-2.5 text-[13px]"
               value={settings.apiKey}
-              placeholder={t(placeholderKey)}
+              placeholder={t(metadata.apiKeyPlaceholderKey)}
               onChange={(event) => patchSettings({ apiKey: event.target.value })}
             />
           </label>
@@ -2464,6 +2602,26 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
                       patchDoubaoSettings,
                       doubaoMessage,
                       isDoubaoBusy
+                    )
+                  : null}
+
+                {activeNetworkSection === "qwen"
+                  ? renderRemoteLlmSettings(
+                      "qwen",
+                      qwenSettings,
+                      patchQwenSettings,
+                      qwenMessage,
+                      isQwenBusy
+                    )
+                  : null}
+
+                {activeNetworkSection === "zhipu"
+                  ? renderRemoteLlmSettings(
+                      "zhipu",
+                      zhipuSettings,
+                      patchZhipuSettings,
+                      zhipuMessage,
+                      isZhipuBusy
                     )
                   : null}
 
