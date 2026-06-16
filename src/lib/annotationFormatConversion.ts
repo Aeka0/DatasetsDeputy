@@ -17,8 +17,10 @@ export type {
   AnnotationFormatConversionContext,
   AnnotationFormatConversionDependencies,
   AnnotationFormatConversionKey,
+  AnnotationFormatConversionMethod,
   AnnotationFormatConversionOptions,
   AnnotationFormatConverter,
+  NaturalLanguageOutputLanguage,
   QualityWordPlacement,
   UsableAnnotationFormat
 } from "./annotationFormatConversion/types";

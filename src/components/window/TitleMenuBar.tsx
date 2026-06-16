@@ -21,7 +21,8 @@ import {
 } from "../../lib/annotationXmlBatch";
 import {
   getAnnotationFormatConverter,
-  prepareAnnotationFormatConversion
+  prepareAnnotationFormatConversion,
+  type NaturalLanguageOutputLanguage
 } from "../../lib/annotationFormatConversion";
 import {
   normalizeAnnotation,
@@ -117,6 +118,24 @@ type LLMPromptSettings = AnnotationPromptSettings & RemoteSchedulingSettings;
 interface RemoteSchedulingSettings {
   targetRpm: number;
   requestMode: RemoteRequestMode;
+}
+
+type DanbooruTagCategory =
+  | "general"
+  | "artist"
+  | "copyright"
+  | "character"
+  | "meta"
+  | "unknown";
+
+interface DanbooruTagCategoryLookup {
+  tag: string;
+  category: DanbooruTagCategory;
+}
+
+interface LLMTextConversionTarget {
+  image: DatasetImage;
+  current: string;
 }
 
 interface Wd14AnnotationProgress {
@@ -416,6 +435,71 @@ function chunkArray<T>(items: T[], size: number) {
   return chunks;
 }
 
+const booruTagCategoryOrder: DanbooruTagCategory[] = [
+  "general",
+  "character",
+  "copyright",
+  "artist",
+  "meta",
+  "unknown"
+];
+
+function normalizeBooruTag(value: string) {
+  return value.trim().replace(/ /g, "_").toLowerCase();
+}
+
+function parseBooruTags(value: string) {
+  const seenTags = new Set<string>();
+  return value
+    .split(",")
+    .map((tag) => normalizeBooruTag(tag))
+    .filter((tag) => {
+      if (!tag || seenTags.has(tag)) return false;
+      seenTags.add(tag);
+      return true;
+    });
+}
+
+function collectBooruTags(targets: LLMTextConversionTarget[]) {
+  const tags = new Set<string>();
+  for (const target of targets) {
+    for (const tag of parseBooruTags(target.current)) {
+      tags.add(tag);
+    }
+  }
+  return Array.from(tags);
+}
+
+function formatBooruTagCategoryHints(
+  targets: LLMTextConversionTarget[],
+  categoryByTag: Map<string, DanbooruTagCategory>
+) {
+  return targets
+    .map((target) => {
+      const grouped = new Map<DanbooruTagCategory, string[]>(
+        booruTagCategoryOrder.map((category) => [category, []])
+      );
+      for (const tag of parseBooruTags(target.current)) {
+        const category = categoryByTag.get(tag) ?? "unknown";
+        grouped.get(category)?.push(tag);
+      }
+
+      const categoryText = booruTagCategoryOrder
+        .map((category) => {
+          const tags = grouped.get(category) ?? [];
+          return tags.length > 0 ? `${category}: ${tags.join(", ")}` : "";
+        })
+        .filter(Boolean)
+        .join("; ");
+      return `item ${target.image.id}: ${categoryText || "no recognized tags"}`;
+    })
+    .join("\n");
+}
+
+function getNaturalLanguageOutputLanguageName(language: NaturalLanguageOutputLanguage) {
+  return language === "zh-CN" ? "Simplified Chinese" : "English";
+}
+
 function buildSingleNaturalLanguageRewritePrompt(userPrompt: string, annotation: string) {
   return [
     "Rewrite the following dataset annotation according to the user instruction.",
@@ -441,6 +525,90 @@ function buildNaturalLanguageRewriteXmlPrompt(userPrompt: string, annotationXml:
     "",
     "Input XML:",
     annotationXml
+  ].join("\n");
+}
+
+function buildBooruTagToNaturalLanguageInstructions(
+  outputLanguage: NaturalLanguageOutputLanguage,
+  userPrompt: string
+) {
+  const instructions = [
+    "Convert Danbooru/Booru tags into a natural-language dataset caption.",
+    `Output language: ${getNaturalLanguageOutputLanguageName(outputLanguage)}.`,
+    "Return only the converted caption text for each item. Do not add explanations.",
+    "Use the tag category hints only to understand what each tag represents.",
+    "Turn tag syntax into readable phrases: remove underscores, drop tag-list formatting, and avoid comma-only tag output.",
+    "Preserve character, copyright, and artist/style names as named entities when present, but do not invent biographies or explanations for them.",
+    "Do not invent visual details that are not implied by the tags.",
+    "Ignore empty tags and isolated punctuation."
+  ];
+  const additionalInstruction = userPrompt.trim();
+
+  if (additionalInstruction) {
+    instructions.push(
+      "Additional user instruction follows. It may refine style, but it must not override the XML, output-only, or no-fabrication rules.",
+      additionalInstruction
+    );
+  }
+
+  return instructions.join("\n");
+}
+
+function buildSingleBooruTagToNaturalLanguagePrompt(
+  annotation: string,
+  tagCategoryHints: string,
+  outputLanguage: NaturalLanguageOutputLanguage,
+  userPrompt: string
+) {
+  return [
+    buildBooruTagToNaturalLanguageInstructions(outputLanguage, userPrompt),
+    "",
+    "Tag category hints:",
+    tagCategoryHints,
+    "",
+    "Input Booru tags:",
+    annotation
+  ].join("\n");
+}
+
+function buildBooruTagToNaturalLanguageXmlPrompt(
+  annotationXml: string,
+  tagCategoryHints: string,
+  outputLanguage: NaturalLanguageOutputLanguage,
+  userPrompt: string
+) {
+  return [
+    "You are converting dataset annotation text contained in XML.",
+    "The XML root is <annotations>. Each <item> has a stable id attribute and one <text> child.",
+    "Keep the XML structure exactly: preserve every item id, preserve the same number of items, and only replace the text inside <text> with the converted caption.",
+    "Return only valid XML. Do not wrap it in Markdown. Do not add explanations.",
+    "",
+    buildBooruTagToNaturalLanguageInstructions(outputLanguage, userPrompt),
+    "",
+    "Tag category hints:",
+    tagCategoryHints,
+    "",
+    "Input XML:",
+    annotationXml
+  ].join("\n");
+}
+
+function buildVisionBooruTagToNaturalLanguagePrompt(
+  annotation: string,
+  tagCategoryHints: string,
+  outputLanguage: NaturalLanguageOutputLanguage,
+  userPrompt: string
+) {
+  return [
+    buildBooruTagToNaturalLanguageInstructions(outputLanguage, userPrompt),
+    "The image being annotated is provided with this request. Use the image together with the Booru tags, and prefer the image when a tag is ambiguous.",
+    "Do not describe visual details that contradict the provided image.",
+    "",
+    "Tag category hints:",
+    tagCategoryHints,
+    "",
+    "Input Booru tags:",
+    annotation
   ].join("\n");
 }
 
@@ -1221,6 +1389,18 @@ export function TitleMenuBar({
         return;
       }
 
+      if (
+        options.currentFormat === "booruTag" &&
+        options.targetFormat === "naturalLanguage"
+      ) {
+        if (options.conversionMethod === "vision") {
+          await applyBooruTagToNaturalLanguageVision(options);
+        } else {
+          await applyBooruTagToNaturalLanguage(options);
+        }
+        return;
+      }
+
       runId = beginBatchAction();
       const converter = getAnnotationFormatConverter(
         options.currentFormat,
@@ -1269,18 +1449,22 @@ export function TitleMenuBar({
     }
   };
 
-  const applyNaturalLanguageRewrite = async (
-    options: BatchAnnotationFormatConversionOptions
+  const applyLLMTextConversion = async (
+    options: BatchAnnotationFormatConversionOptions,
+    config: {
+      operationName: string;
+      emptySkippedMessage: string;
+      historyLabelKey: string;
+      historyLabelFallback: string;
+      buildSinglePrompt: (target: LLMTextConversionTarget) => Promise<string> | string;
+      buildXmlPrompt: (
+        batch: LLMTextConversionTarget[],
+        xml: string
+      ) => Promise<string> | string;
+    }
   ) => {
     if (selectedProfileId === undefined) {
       setDialog(undefined);
-      return;
-    }
-    setDialog(undefined);
-
-    const userPrompt = options.llmPrompt.trim();
-    if (!userPrompt) {
-      addAppLog("Natural language rewrite skipped: prompt is empty.", "warning");
       return;
     }
     if (!hasTauriRuntime()) {
@@ -1289,90 +1473,122 @@ export function TitleMenuBar({
     }
 
     const runId = beginBatchAction();
-    setWorkspaceTab("table");
-    const llmCommand = getTextGenerationCommand(options.llmBackend);
-    const targets = getBatchTargetImages("all")
-      .map((image) => ({
+    let finished = false;
+    const finishOnce = () => {
+      if (!finished) {
+        finishBatchAction(runId);
+        finished = true;
+      }
+    };
+
+    try {
+      setWorkspaceTab("table");
+      const llmCommand = getTextGenerationCommand(options.llmBackend);
+      const allTargets = getBatchTargetImages("all").map((image) => ({
         image,
         current: getCurrentAnnotationDraft(image, selectedProfileId)
-      }))
-      .filter((target) => target.current.trim().length > 0);
-    const skippedCount = getBatchTargetImages("all").length - targets.length;
-    if (targets.length === 0) {
-      addAppLog("Natural language rewrite skipped: no non-empty annotations.", "warning");
-      finishBatchAction(runId);
-      return;
-    }
+      }));
+      const targets = allTargets.filter((target) => target.current.trim().length > 0);
+      const skippedCount = allTargets.length - targets.length;
+      if (targets.length === 0) {
+        addAppLog(config.emptySkippedMessage, "warning");
+        return;
+      }
 
-    const batchSize = clampXmlBatchSize(options.xmlBatchSize);
-    const batches = options.xmlBatchEnabled
-      ? chunkArray(targets, batchSize)
-      : targets.map((target) => [target]);
-    const completedChanges: Array<{ imageId: number; content: string }> = [];
-    let changedCount = 0;
-    let processedCount = 0;
-    let failedCount = 0;
+      const batchSize = clampXmlBatchSize(options.xmlBatchSize);
+      const batches = options.xmlBatchEnabled
+        ? chunkArray(targets, batchSize)
+        : targets.map((target) => [target]);
+      const completedChanges: Array<{ imageId: number; content: string }> = [];
+      let changedCount = 0;
+      let processedCount = 0;
+      let failedCount = 0;
 
-    addAppLog(
-      `Natural language rewrite started: ${targets.length} non-empty row(s), ${skippedCount} empty row(s) skipped. Backend: ${options.llmBackend}.`
-    );
-
-    const scheduling = isScheduledRemoteBackend(options.llmBackend)
-      ? await loadRemoteSchedulingSettings(options.llmBackend)
-      : normalizeRemoteSchedulingSettings({ targetRpm: 0, requestMode: "queue" });
-    if (isScheduledRemoteBackend(options.llmBackend)) {
       addAppLog(
-        `Remote rewrite request scheduling: ${scheduling.requestMode}, target RPM ${scheduling.targetRpm}.`
+        `${config.operationName} started: ${targets.length} non-empty row(s), ${skippedCount} empty row(s) skipped. Backend: ${options.llmBackend}.`
       );
-    }
 
-    const markBatchActive = (batch: typeof batches[number]) => {
-      const nextActive = new Set(activeBatchActionImageIdsRef.current);
-      for (const target of batch) {
-        nextActive.add(target.image.id);
-        markImageAnnotating(target.image.id, true);
+      const scheduling = isScheduledRemoteBackend(options.llmBackend)
+        ? await loadRemoteSchedulingSettings(options.llmBackend)
+        : normalizeRemoteSchedulingSettings({ targetRpm: 0, requestMode: "queue" });
+      if (isScheduledRemoteBackend(options.llmBackend)) {
+        addAppLog(
+          `Remote ${config.operationName} request scheduling: ${scheduling.requestMode}, target RPM ${scheduling.targetRpm}.`
+        );
       }
-      activeBatchActionImageIdsRef.current = Array.from(nextActive);
-    };
 
-    const markBatchInactive = (batch: typeof batches[number]) => {
-      const completedIds = new Set(batch.map((target) => target.image.id));
-      for (const target of batch) {
-        markImageAnnotating(target.image.id, false);
-      }
-      activeBatchActionImageIdsRef.current = activeBatchActionImageIdsRef.current.filter(
-        (imageId) => !completedIds.has(imageId)
-      );
-    };
+      const markBatchActive = (batch: typeof batches[number]) => {
+        const nextActive = new Set(activeBatchActionImageIdsRef.current);
+        for (const target of batch) {
+          nextActive.add(target.image.id);
+          markImageAnnotating(target.image.id, true);
+        }
+        activeBatchActionImageIdsRef.current = Array.from(nextActive);
+      };
 
-    const processBatch = async (batch: typeof batches[number], batchIndex: number) => {
-      if (!isBatchActionActive(runId)) return;
-      const batchLabel = `${batchIndex + 1}/${batches.length}`;
-      markBatchActive(batch);
+      const markBatchInactive = (batch: typeof batches[number]) => {
+        const completedIds = new Set(batch.map((target) => target.image.id));
+        for (const target of batch) {
+          markImageAnnotating(target.image.id, false);
+        }
+        activeBatchActionImageIdsRef.current = activeBatchActionImageIdsRef.current.filter(
+          (imageId) => !completedIds.has(imageId)
+        );
+      };
 
-      try {
-        const changes: Array<{ imageId: number; content: string }> = [];
-        if (options.xmlBatchEnabled) {
-          const xml = buildAnnotationXmlBatch(
-            batch.map((target) => ({
-              id: target.image.id,
-              text: target.current
-            }))
-          );
-          const response = await invokeCommand<string>(llmCommand, {
-            prompt: buildNaturalLanguageRewriteXmlPrompt(userPrompt, xml)
-          });
-          if (!isBatchActionActive(runId)) {
-            addAppLog(`Discarded natural language rewrite batch ${batchLabel} after stop.`, "warning");
-            return;
-          }
-          const rewrittenById = parseAnnotationXmlBatchResponse(
-            response,
-            batch.map((target) => target.image.id)
-          );
+      const processBatch = async (batch: typeof batches[number], batchIndex: number) => {
+        if (!isBatchActionActive(runId)) return;
+        const batchLabel = `${batchIndex + 1}/${batches.length}`;
+        markBatchActive(batch);
 
-          for (const target of batch) {
-            const content = rewrittenById.get(target.image.id) ?? "";
+        try {
+          const changes: Array<{ imageId: number; content: string }> = [];
+          if (options.xmlBatchEnabled) {
+            const xml = buildAnnotationXmlBatch(
+              batch.map((target) => ({
+                id: target.image.id,
+                text: target.current
+              }))
+            );
+            const response = await invokeCommand<string>(llmCommand, {
+              prompt: await config.buildXmlPrompt(batch, xml)
+            });
+            if (!isBatchActionActive(runId)) {
+              addAppLog(
+                `Discarded ${config.operationName} batch ${batchLabel} after stop.`,
+                "warning"
+              );
+              return;
+            }
+            const rewrittenById = parseAnnotationXmlBatchResponse(
+              response,
+              batch.map((target) => target.image.id)
+            );
+
+            for (const target of batch) {
+              const content = rewrittenById.get(target.image.id) ?? "";
+              clearTableCellFailure(`${target.image.id}:annotation`);
+              if (content !== target.current) {
+                changes.push({
+                  imageId: target.image.id,
+                  content
+                });
+              }
+            }
+          } else {
+            const target = batch[0];
+            if (!target) return;
+
+            const content = await invokeCommand<string>(llmCommand, {
+              prompt: await config.buildSinglePrompt(target)
+            });
+            if (!isBatchActionActive(runId)) {
+              addAppLog(
+                `Discarded ${config.operationName} batch ${batchLabel} after stop.`,
+                "warning"
+              );
+              return;
+            }
             clearTableCellFailure(`${target.image.id}:annotation`);
             if (content !== target.current) {
               changes.push({
@@ -1381,81 +1597,264 @@ export function TitleMenuBar({
               });
             }
           }
-        } else {
-          const target = batch[0];
-          if (!target) return;
 
-          const content = await invokeCommand<string>(llmCommand, {
-            prompt: buildSingleNaturalLanguageRewritePrompt(userPrompt, target.current)
-          });
-          if (!isBatchActionActive(runId)) {
-            addAppLog(`Discarded natural language rewrite batch ${batchLabel} after stop.`, "warning");
-            return;
+          processedCount += batch.length;
+          changedCount += changes.length;
+          if (isBatchActionActive(runId) && changes.length > 0) {
+            completedChanges.push(...changes);
           }
-          clearTableCellFailure(`${target.image.id}:annotation`);
-          if (content !== target.current) {
-            changes.push({
-              imageId: target.image.id,
-              content
-            });
+          if (isBatchActionActive(runId)) {
+            addAppLog(
+              `${config.operationName} batch ${batchLabel} completed: ${batch.length} row(s), ${changes.length} changed.`
+            );
+          }
+        } catch (error) {
+          if (!isBatchActionActive(runId)) return;
+          const message = formatAppError(error);
+          failedCount += batch.length;
+          for (const target of batch) {
+            markTableCellFailed(`${target.image.id}:annotation`);
+          }
+          addAppLog(`${config.operationName} batch ${batchLabel} failed: ${message}`, "error");
+        } finally {
+          if (isBatchActionActive(runId)) {
+            markBatchInactive(batch);
           }
         }
+      };
 
-        processedCount += batch.length;
-        changedCount += changes.length;
-        if (isBatchActionActive(runId) && changes.length > 0) {
-          completedChanges.push(...changes);
-        }
-        if (isBatchActionActive(runId)) {
-          addAppLog(
-            `Natural language rewrite batch ${batchLabel} completed: ${batch.length} row(s), ${changes.length} changed.`
+      await runTargetRpmBatch(
+        batches,
+        scheduling,
+        () => isBatchActionActive(runId),
+        processBatch
+      );
+
+      if (isBatchActionActive(runId)) {
+        if (completedChanges.length > 0) {
+          applyBatchTableDrafts(
+            selectedProfileId,
+            completedChanges,
+            autoSaveAfterBatch
+              ? undefined
+              : historyLabel(config.historyLabelKey, config.historyLabelFallback)
           );
-        }
-      } catch (error) {
-        if (!isBatchActionActive(runId)) return;
-        const message = formatAppError(error);
-        failedCount += batch.length;
-        for (const target of batch) {
-          markTableCellFailed(`${target.image.id}:annotation`);
+          if (autoSaveAfterBatch) {
+            await saveAnnotationChanges(
+              completedChanges.map((change) => ({ ...change, profileId: selectedProfileId }))
+            );
+          }
         }
         addAppLog(
-          `Natural language rewrite batch ${batchLabel} failed: ${message}`,
-          "error"
+          `${config.operationName} completed: ${processedCount} row(s) processed, ${changedCount} changed, ${failedCount} failed.`
         );
-      } finally {
-        if (isBatchActionActive(runId)) {
-          markBatchInactive(batch);
-        }
+      }
+    } finally {
+      finishOnce();
+    }
+  };
+
+  const applyNaturalLanguageRewrite = async (
+    options: BatchAnnotationFormatConversionOptions
+  ) => {
+    const userPrompt = options.llmPrompt.trim();
+    if (!userPrompt) {
+      addAppLog("Natural language rewrite skipped: prompt is empty.", "warning");
+      return;
+    }
+
+    await applyLLMTextConversion(options, {
+      operationName: "Natural language rewrite",
+      emptySkippedMessage: "Natural language rewrite skipped: no non-empty annotations.",
+      historyLabelKey: "history.labels.rewriteAnnotations",
+      historyLabelFallback: "Rewrite annotations",
+      buildSinglePrompt: (target) =>
+        buildSingleNaturalLanguageRewritePrompt(userPrompt, target.current),
+      buildXmlPrompt: (_batch, xml) => buildNaturalLanguageRewriteXmlPrompt(userPrompt, xml)
+    });
+  };
+
+  const loadBooruTagCategoryHintText = async (batch: LLMTextConversionTarget[]) => {
+    const tags = collectBooruTags(batch);
+    const lookups =
+      tags.length > 0
+        ? await invokeCommand<DanbooruTagCategoryLookup[]>(
+            "lookup_danbooru_tag_categories",
+            { tags }
+          )
+        : [];
+    const categoryByTag = new Map<DanbooruTagCategoryLookup["tag"], DanbooruTagCategory>(
+      lookups.map((lookup) => [lookup.tag, lookup.category])
+    );
+    return formatBooruTagCategoryHints(batch, categoryByTag);
+  };
+
+  const applyBooruTagToNaturalLanguage = async (
+    options: BatchAnnotationFormatConversionOptions
+  ) => {
+    await applyLLMTextConversion(options, {
+      operationName: "Booru tag to natural language conversion",
+      emptySkippedMessage:
+        "Booru tag to natural language conversion skipped: no non-empty annotations.",
+      historyLabelKey: "history.labels.convertAnnotationFormat",
+      historyLabelFallback: "Convert annotation format",
+      buildSinglePrompt: async (target) =>
+        buildSingleBooruTagToNaturalLanguagePrompt(
+          target.current,
+          await loadBooruTagCategoryHintText([target]),
+          options.naturalLanguageOutputLanguage,
+          options.llmPrompt
+        ),
+      buildXmlPrompt: async (batch, xml) =>
+        buildBooruTagToNaturalLanguageXmlPrompt(
+          xml,
+          await loadBooruTagCategoryHintText(batch),
+          options.naturalLanguageOutputLanguage,
+          options.llmPrompt
+        )
+    });
+  };
+
+  const applyBooruTagToNaturalLanguageVision = async (
+    options: BatchAnnotationFormatConversionOptions
+  ) => {
+    if (selectedProfileId === undefined) {
+      setDialog(undefined);
+      return;
+    }
+    if (!hasTauriRuntime()) {
+      addAppLog(t("appLog.annotationTauriRequired"), "error");
+      return;
+    }
+
+    const runId = beginBatchAction();
+    let finished = false;
+    const finishOnce = () => {
+      if (!finished) {
+        finishBatchAction(runId);
+        finished = true;
       }
     };
 
-    await runTargetRpmBatch(
-      batches,
-      scheduling,
-      () => isBatchActionActive(runId),
-      processBatch
-    );
-
-    if (isBatchActionActive(runId)) {
-      if (completedChanges.length > 0) {
-        applyBatchTableDrafts(
-          selectedProfileId,
-          completedChanges,
-          autoSaveAfterBatch
-            ? undefined
-            : historyLabel("history.labels.rewriteAnnotations", "Rewrite annotations")
+    try {
+      setWorkspaceTab("table");
+      const allTargets = getBatchTargetImages("all").map((image) => ({
+        image,
+        current: getCurrentAnnotationDraft(image, selectedProfileId)
+      }));
+      const targets = allTargets.filter((target) => target.current.trim().length > 0);
+      const skippedCount = allTargets.length - targets.length;
+      if (targets.length === 0) {
+        addAppLog(
+          "Booru tag vision conversion skipped: no non-empty annotations.",
+          "warning"
         );
-        if (autoSaveAfterBatch) {
-          await saveAnnotationChanges(
-            completedChanges.map((change) => ({ ...change, profileId: selectedProfileId }))
+        return;
+      }
+
+      const annotationCommand = getVisionAnnotationCommand(options.llmBackend);
+      const scheduling = isScheduledRemoteBackend(options.llmBackend)
+        ? await loadRemoteSchedulingSettings(options.llmBackend)
+        : normalizeRemoteSchedulingSettings({ targetRpm: 0, requestMode: "queue" });
+      const completedChanges: Array<{ imageId: number; content: string }> = [];
+      let changedCount = 0;
+      let processedCount = 0;
+      let failedCount = 0;
+
+      addAppLog(
+        `Booru tag vision conversion started: ${targets.length} non-empty row(s), ${skippedCount} empty row(s) skipped. Backend: ${options.llmBackend}.`
+      );
+      if (isScheduledRemoteBackend(options.llmBackend)) {
+        addAppLog(
+          `Remote Booru tag vision conversion request scheduling: ${scheduling.requestMode}, target RPM ${scheduling.targetRpm}.`
+        );
+      }
+
+      const processTarget = async (target: LLMTextConversionTarget, index: number) => {
+        if (!isBatchActionActive(runId)) return;
+        const batchLabel = `${index + 1}/${targets.length}`;
+        markImageAnnotating(target.image.id, true);
+        activeBatchActionImageIdsRef.current = Array.from(
+          new Set([...activeBatchActionImageIdsRef.current, target.image.id])
+        );
+
+        try {
+          const imagePath = target.image.storagePath ?? target.image.path;
+          const content = await invokeCommand<string>(annotationCommand, {
+            imagePath,
+            prompt: buildVisionBooruTagToNaturalLanguagePrompt(
+              target.current,
+              await loadBooruTagCategoryHintText([target]),
+              options.naturalLanguageOutputLanguage,
+              options.llmPrompt
+            )
+          });
+          if (!isBatchActionActive(runId)) {
+            addAppLog(
+              `Discarded Booru tag vision conversion batch ${batchLabel} after stop.`,
+              "warning"
+            );
+            return;
+          }
+
+          processedCount += 1;
+          clearTableCellFailure(`${target.image.id}:annotation`);
+          if (content !== target.current) {
+            completedChanges.push({
+              imageId: target.image.id,
+              content
+            });
+            changedCount += 1;
+          }
+          addAppLog(
+            `Booru tag vision conversion batch ${batchLabel} completed: 1 row, ${content !== target.current ? 1 : 0} changed.`
+          );
+        } catch (error) {
+          if (!isBatchActionActive(runId)) return;
+          const message = formatAppError(error);
+          failedCount += 1;
+          markTableCellFailed(`${target.image.id}:annotation`);
+          addAppLog(
+            `Booru tag vision conversion batch ${batchLabel} failed: ${message}`,
+            "error"
+          );
+        } finally {
+          markImageAnnotating(target.image.id, false);
+          activeBatchActionImageIdsRef.current = activeBatchActionImageIdsRef.current.filter(
+            (imageId) => imageId !== target.image.id
           );
         }
-      }
-      addAppLog(
-        `Natural language rewrite completed: ${processedCount} row(s) processed, ${changedCount} changed, ${failedCount} failed.`
+      };
+
+      await runTargetRpmBatch(
+        targets,
+        scheduling,
+        () => isBatchActionActive(runId),
+        processTarget
       );
+
+      if (isBatchActionActive(runId)) {
+        if (completedChanges.length > 0) {
+          applyBatchTableDrafts(
+            selectedProfileId,
+            completedChanges,
+            autoSaveAfterBatch
+              ? undefined
+              : historyLabel("history.labels.convertAnnotationFormat", "Convert annotation format")
+          );
+          if (autoSaveAfterBatch) {
+            await saveAnnotationChanges(
+              completedChanges.map((change) => ({ ...change, profileId: selectedProfileId }))
+            );
+          }
+        }
+        addAppLog(
+          `Booru tag vision conversion completed: ${processedCount} row(s) processed, ${changedCount} changed, ${failedCount} failed.`
+        );
+      }
+    } finally {
+      finishOnce();
     }
-    finishBatchAction(runId);
   };
 
   const applyBatchAnnotationNormalization = async (

@@ -13,13 +13,15 @@ interface AppSelectProps<T extends string = string> {
   options: AppSelectOption<T>[];
   onChange: (value: T) => void;
   className?: string;
+  disabled?: boolean;
 }
 
 export function AppSelect<T extends string = string>({
   value,
   options,
   onChange,
-  className
+  className,
+  disabled = false
 }: AppSelectProps<T>) {
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -56,19 +58,30 @@ export function AppSelect<T extends string = string>({
     <div ref={containerRef} className={cn("no-drag relative", className)}>
       <button
         type="button"
-        className="glass-input flex h-8 w-full items-center justify-between gap-2 px-2.5 text-left text-[13px]"
+        className={cn(
+          "glass-input flex h-8 w-full items-center justify-between gap-2 px-2.5 text-left text-[13px]",
+          disabled && "cursor-not-allowed opacity-60"
+        )}
         aria-haspopup="listbox"
         aria-expanded={open}
-        onClick={() => setOpen((current) => !current)}
+        disabled={disabled}
+        onClick={() => {
+          if (disabled) return;
+          setOpen((current) => !current);
+        }}
       >
         <span className="truncate">{selectedOption?.label}</span>
         <ChevronDown
           size={14}
-          className={cn("shrink-0 text-neutral-400 transition", open && "rotate-180")}
+          className={cn(
+            "shrink-0 text-neutral-400 transition",
+            open && "rotate-180",
+            disabled && "opacity-50"
+          )}
         />
       </button>
 
-      {open ? (
+      {open && !disabled ? (
         <div className="app-dropdown-menu absolute left-0 top-9 z-[70] min-w-full rounded-lg py-2">
           <div className="app-dropdown-backdrop" />
           {options.map((option) => {

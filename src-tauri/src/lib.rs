@@ -242,6 +242,7 @@ pub fn run() {
             commands::generate_wd14_annotation,
             commands::generate_wd14_annotations,
             commands::list_danbooru_style_tags,
+            commands::lookup_danbooru_tag_categories,
             commands::get_python_env_settings,
             commands::save_python_env_settings,
             commands::get_model_settings,

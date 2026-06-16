@@ -4,9 +4,18 @@ export type AnnotationFormatConversionKey =
   `${UsableAnnotationFormat}->${UsableAnnotationFormat}`;
 
 export type QualityWordPlacement = "none" | "keep" | "prefix" | "suffix" | "off";
+export type NaturalLanguageOutputLanguage = "en" | "zh-CN";
+export type AnnotationFormatConversionMethod =
+  | "standard"
+  | "text"
+  | "vision"
+  | "rewrite"
+  | "unsupported";
 
 export interface AnnotationFormatConversionOptions {
   qualityWordPlacement: QualityWordPlacement;
+  naturalLanguageOutputLanguage: NaturalLanguageOutputLanguage;
+  conversionMethod: AnnotationFormatConversionMethod;
 }
 
 export interface AnnotationFormatConversionDependencies {

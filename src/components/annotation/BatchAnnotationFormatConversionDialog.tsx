@@ -11,6 +11,8 @@ import {
   buildAnnotationFormatConversionKey,
   type AnnotationFormat,
   type AnnotationFormatConversionKey,
+  type AnnotationFormatConversionMethod,
+  type NaturalLanguageOutputLanguage,
   type QualityWordPlacement,
   type UsableAnnotationFormat
 } from "../../lib/annotationFormatConversion";
@@ -29,6 +31,8 @@ export interface BatchAnnotationFormatConversionOptions {
   xmlBatchSize: number;
   llmBackend: LLMBackend;
   llmPrompt: string;
+  naturalLanguageOutputLanguage: NaturalLanguageOutputLanguage;
+  conversionMethod: AnnotationFormatConversionMethod;
 }
 
 export type LLMBackend =
@@ -51,6 +55,7 @@ interface BatchAnnotationFormatConversionDialogProps {
 
 interface ConversionRule {
   descriptionKey: string;
+  executable?: boolean;
   renderOptions?: (context: ConversionRuleContext) => ReactNode;
 }
 
@@ -65,6 +70,9 @@ interface ConversionRuleContext {
   setLLMBackend: (backend: LLMBackend) => void;
   llmPrompt: string;
   setLLMPrompt: (prompt: string) => void;
+  naturalLanguageOutputLanguage: NaturalLanguageOutputLanguage;
+  setNaturalLanguageOutputLanguage: (language: NaturalLanguageOutputLanguage) => void;
+  conversionMethod: AnnotationFormatConversionMethod;
 }
 
 const conversionRules: Partial<Record<AnnotationFormatConversionKey, ConversionRule>> = {
@@ -81,16 +89,23 @@ const conversionRules: Partial<Record<AnnotationFormatConversionKey, ConversionR
     renderOptions: () => <AnimaToBooruTagOptions />
   },
   "booruTag->naturalLanguage": {
-    descriptionKey: "annotationFormatConversion.descriptionBooruTagToNaturalLanguage"
+    descriptionKey: "annotationFormatConversion.descriptionBooruTagToNaturalLanguage",
+    renderOptions: (context) => <BooruTagToNaturalLanguageOptions {...context} />
   },
   "naturalLanguage->booruTag": {
-    descriptionKey: "annotationFormatConversion.descriptionNaturalLanguageToBooruTag"
+    descriptionKey: "annotationFormatConversion.descriptionNaturalLanguageToBooruTag",
+    executable: false,
+    renderOptions: () => <UnsupportedNaturalLanguageConversionOptions />
   },
   "anima->naturalLanguage": {
-    descriptionKey: "annotationFormatConversion.descriptionAnimaToNaturalLanguage"
+    descriptionKey: "annotationFormatConversion.descriptionAnimaToNaturalLanguage",
+    executable: false,
+    renderOptions: () => <UnsupportedNaturalLanguageConversionOptions />
   },
   "naturalLanguage->anima": {
-    descriptionKey: "annotationFormatConversion.descriptionNaturalLanguageToAnima"
+    descriptionKey: "annotationFormatConversion.descriptionNaturalLanguageToAnima",
+    executable: false,
+    renderOptions: () => <UnsupportedNaturalLanguageConversionOptions />
   },
   "naturalLanguage->naturalLanguage": {
     descriptionKey: "annotationFormatConversion.descriptionNaturalLanguageRewrite",
@@ -100,6 +115,114 @@ const conversionRules: Partial<Record<AnnotationFormatConversionKey, ConversionR
 
 function isUsableFormat(value: AnnotationFormat): value is UsableAnnotationFormat {
   return value !== "unset";
+}
+
+function getConversionMethodOptions(
+  currentFormat: AnnotationFormat,
+  targetFormat: AnnotationFormat,
+  t: (key: string) => string
+): AppSelectOption<AnnotationFormatConversionMethod>[] {
+  if (!isUsableFormat(currentFormat) || !isUsableFormat(targetFormat)) {
+    return [
+      {
+        value: "standard",
+        label: t("annotationFormatConversion.methodUnset")
+      }
+    ];
+  }
+
+  if (currentFormat === "booruTag" && targetFormat === "naturalLanguage") {
+    return [
+      {
+        value: "text",
+        label: t("annotationFormatConversion.methodBooruNlText")
+      },
+      {
+        value: "vision",
+        label: t("annotationFormatConversion.methodBooruNlVision")
+      }
+    ];
+  }
+
+  if (currentFormat === "naturalLanguage" && targetFormat === "naturalLanguage") {
+    return [
+      {
+        value: "rewrite",
+        label: t("annotationFormatConversion.methodNaturalLanguageRewrite")
+      }
+    ];
+  }
+
+  const key = buildAnnotationFormatConversionKey(currentFormat, targetFormat);
+  if (conversionRules[key]?.executable === false) {
+    return [
+      {
+        value: "unsupported",
+        label: t("annotationFormatConversion.methodUnsupported")
+      }
+    ];
+  }
+
+  return [
+    {
+      value: "standard",
+      label: t("annotationFormatConversion.methodStandard")
+    }
+  ];
+}
+
+function getLLMBackendOptions(
+  t: (key: string) => string
+): AppSelectOption<LLMBackend>[] {
+  return [
+    { value: "gemini", label: t("annotationFormatConversion.llmBackendGemini") },
+    { value: "openai", label: t("annotationFormatConversion.llmBackendOpenAi") },
+    { value: "anthropic", label: t("annotationFormatConversion.llmBackendAnthropic") },
+    { value: "grok", label: t("annotationFormatConversion.llmBackendGrok") },
+    { value: "doubao", label: t("annotationFormatConversion.llmBackendDoubao") },
+    { value: "qwen", label: t("annotationFormatConversion.llmBackendQwen") },
+    { value: "zhipu", label: t("annotationFormatConversion.llmBackendZhipu") },
+    { value: "lmStudio", label: t("annotationFormatConversion.llmBackendLmStudio") },
+    { value: "textgen", label: t("annotationFormatConversion.llmBackendTextgen") },
+    { value: "ollama", label: t("annotationFormatConversion.llmBackendOllama") }
+  ];
+}
+
+function XmlBatchOptions({
+  xmlBatchEnabled,
+  setXmlBatchEnabled,
+  xmlBatchSize,
+  setXmlBatchSize
+}: Pick<
+  ConversionRuleContext,
+  "xmlBatchEnabled" | "setXmlBatchEnabled" | "xmlBatchSize" | "setXmlBatchSize"
+>) {
+  const { t } = useTranslation();
+
+  return (
+    <div className="space-y-3 px-4 py-3">
+      <Switch
+        checked={xmlBatchEnabled}
+        label={t("annotationFormatConversion.xmlBatchEnabled")}
+        onCheckedChange={setXmlBatchEnabled}
+      />
+      <label className={xmlBatchEnabled ? "block" : "block opacity-45"}>
+        <div className="mb-2 flex items-center justify-between gap-3 text-[13px] text-neutral-700">
+          <span>{t("annotationFormatConversion.xmlBatchSize")}</span>
+          <span className="font-medium text-neutral-900">{xmlBatchSize}</span>
+        </div>
+        <Slider
+          min={MIN_XML_BATCH_SIZE}
+          max={MAX_XML_BATCH_SIZE}
+          step={1}
+          value={xmlBatchSize}
+          disabled={!xmlBatchEnabled}
+          className="w-full"
+          onChange={(event) => setXmlBatchSize(clampXmlBatchSize(Number(event.target.value)))}
+        />
+      </label>
+    </div>
+  );
 }
 
 function BooruTagToAnimaOptions({
@@ -232,6 +355,141 @@ function AnimaToBooruTagOptions() {
   );
 }
 
+function BooruTagToNaturalLanguageOptions({
+  xmlBatchEnabled,
+  setXmlBatchEnabled,
+  xmlBatchSize,
+  setXmlBatchSize,
+  llmBackend,
+  setLLMBackend,
+  llmPrompt,
+  setLLMPrompt,
+  naturalLanguageOutputLanguage,
+  setNaturalLanguageOutputLanguage,
+  conversionMethod
+}: ConversionRuleContext) {
+  const { t } = useTranslation();
+  const llmBackendOptions = getLLMBackendOptions(t);
+  const languageOptions: AppSelectOption<NaturalLanguageOutputLanguage>[] = [
+    {
+      value: "en",
+      label: t("annotationFormatConversion.outputLanguageEnglish")
+    },
+    {
+      value: "zh-CN",
+      label: t("annotationFormatConversion.outputLanguageSimplifiedChinese")
+    }
+  ];
+
+  const renderLanguageBackendAndPrompt = (textareaClassName: string) => (
+    <>
+      <label className="block">
+        <span className="mb-1 block text-[12px] font-medium text-neutral-600">
+          {t("annotationFormatConversion.outputLanguage")}
+        </span>
+        <AppSelect
+          value={naturalLanguageOutputLanguage}
+          options={languageOptions}
+          onChange={setNaturalLanguageOutputLanguage}
+        />
+      </label>
+      <label className="block">
+        <span className="mb-1 block text-[12px] font-medium text-neutral-600">
+          {t("annotationFormatConversion.llmBackend")}
+        </span>
+        <AppSelect
+          value={llmBackend}
+          options={llmBackendOptions}
+          onChange={setLLMBackend}
+        />
+      </label>
+      <textarea
+        value={llmPrompt}
+        onChange={(event) => setLLMPrompt(event.target.value)}
+        placeholder={t("annotationFormatConversion.booruNlPromptPlaceholder")}
+        className={textareaClassName}
+      />
+    </>
+  );
+
+  if (conversionMethod === "vision") {
+    return (
+      <div className="space-y-3">
+        <section className="rounded-lg border border-neutral-200 bg-white">
+          <div className="border-b border-neutral-100 px-4 py-3 text-[13px] font-semibold text-neutral-900">
+            {t("annotationFormatConversion.booruNlVisionStepOneTitle")}
+          </div>
+          <div className="space-y-3 px-4 py-3">
+            <div className="text-[13px] leading-6 text-neutral-700">
+              {t("annotationFormatConversion.booruNlVisionStepOneDescription")}
+            </div>
+            {renderLanguageBackendAndPrompt(
+              "batch-edit-textarea annotation-format-llm-textarea glass-input h-28 w-full resize-none px-3 py-2"
+            )}
+          </div>
+        </section>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      <section className="rounded-lg border border-neutral-200 bg-white">
+        <div className="border-b border-neutral-100 px-4 py-3 text-[13px] font-semibold text-neutral-900">
+          {t("annotationFormatConversion.booruNlStepOneTitle")}
+        </div>
+        <XmlBatchOptions
+          xmlBatchEnabled={xmlBatchEnabled}
+          setXmlBatchEnabled={setXmlBatchEnabled}
+          xmlBatchSize={xmlBatchSize}
+          setXmlBatchSize={setXmlBatchSize}
+        />
+      </section>
+
+      <section className="rounded-lg border border-neutral-200 bg-white">
+        <div className="border-b border-neutral-100 px-4 py-3 text-[13px] font-semibold text-neutral-900">
+          {t("annotationFormatConversion.booruNlStepTwoTitle")}
+        </div>
+        <div className="space-y-3 px-4 py-3">
+          {renderLanguageBackendAndPrompt(
+            "batch-edit-textarea annotation-format-llm-textarea glass-input h-28 w-full resize-none px-3 py-2"
+          )}
+        </div>
+      </section>
+
+      <section className="rounded-lg border border-neutral-200 bg-white">
+        <div className="border-b border-neutral-100 px-4 py-3 text-[13px] font-semibold text-neutral-900">
+          {t("annotationFormatConversion.booruNlStepThreeTitle")}
+        </div>
+        <div className="px-4 py-3 text-[13px] leading-6 text-neutral-700">
+          {t("annotationFormatConversion.booruNlStepThreeDescription")}
+        </div>
+      </section>
+
+      <section className="rounded-lg border border-neutral-200 bg-white">
+        <div className="border-b border-neutral-100 px-4 py-3 text-[13px] font-semibold text-neutral-900">
+          {t("annotationFormatConversion.booruNlStepFourTitle")}
+        </div>
+        <div className="px-4 py-3 text-[13px] leading-6 text-neutral-700">
+          {xmlBatchEnabled
+            ? t("annotationFormatConversion.booruNlStepFourXml")
+            : t("annotationFormatConversion.booruNlStepFourDisabled")}
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function UnsupportedNaturalLanguageConversionOptions() {
+  const { t } = useTranslation();
+
+  return (
+    <div className="w-full rounded-lg border border-neutral-200 bg-white px-4 py-3 text-[13px] leading-6 text-neutral-600">
+      {t("annotationFormatConversion.unsupportedNaturalLanguageConversion")}
+    </div>
+  );
+}
+
 function NaturalLanguageRewriteOptions({
   xmlBatchEnabled,
   setXmlBatchEnabled,
@@ -243,18 +501,7 @@ function NaturalLanguageRewriteOptions({
   setLLMPrompt
 }: ConversionRuleContext) {
   const { t } = useTranslation();
-  const llmBackendOptions: AppSelectOption<LLMBackend>[] = [
-    { value: "gemini", label: t("annotationFormatConversion.llmBackendGemini") },
-    { value: "openai", label: t("annotationFormatConversion.llmBackendOpenAi") },
-    { value: "anthropic", label: t("annotationFormatConversion.llmBackendAnthropic") },
-    { value: "grok", label: t("annotationFormatConversion.llmBackendGrok") },
-    { value: "doubao", label: t("annotationFormatConversion.llmBackendDoubao") },
-    { value: "qwen", label: t("annotationFormatConversion.llmBackendQwen") },
-    { value: "zhipu", label: t("annotationFormatConversion.llmBackendZhipu") },
-    { value: "lmStudio", label: t("annotationFormatConversion.llmBackendLmStudio") },
-    { value: "textgen", label: t("annotationFormatConversion.llmBackendTextgen") },
-    { value: "ollama", label: t("annotationFormatConversion.llmBackendOllama") }
-  ];
+  const llmBackendOptions = getLLMBackendOptions(t);
 
   return (
     <div className="space-y-3">
@@ -262,28 +509,12 @@ function NaturalLanguageRewriteOptions({
         <div className="border-b border-neutral-100 px-4 py-3 text-[13px] font-semibold text-neutral-900">
           {t("annotationFormatConversion.nlRewriteStepOneTitle")}
         </div>
-        <div className="space-y-3 px-4 py-3">
-          <Switch
-            checked={xmlBatchEnabled}
-            label={t("annotationFormatConversion.xmlBatchEnabled")}
-            onCheckedChange={setXmlBatchEnabled}
-          />
-          <label className={xmlBatchEnabled ? "block" : "block opacity-45"}>
-            <div className="mb-2 flex items-center justify-between gap-3 text-[13px] text-neutral-700">
-              <span>{t("annotationFormatConversion.xmlBatchSize")}</span>
-              <span className="font-medium text-neutral-900">{xmlBatchSize}</span>
-            </div>
-            <Slider
-              min={MIN_XML_BATCH_SIZE}
-              max={MAX_XML_BATCH_SIZE}
-              step={1}
-              value={xmlBatchSize}
-              disabled={!xmlBatchEnabled}
-              className="w-full"
-              onChange={(event) => setXmlBatchSize(clampXmlBatchSize(Number(event.target.value)))}
-            />
-          </label>
-        </div>
+        <XmlBatchOptions
+          xmlBatchEnabled={xmlBatchEnabled}
+          setXmlBatchEnabled={setXmlBatchEnabled}
+          xmlBatchSize={xmlBatchSize}
+          setXmlBatchSize={setXmlBatchSize}
+        />
       </section>
 
       <section className="rounded-lg border border-neutral-200 bg-white">
@@ -305,7 +536,7 @@ function NaturalLanguageRewriteOptions({
             value={llmPrompt}
             onChange={(event) => setLLMPrompt(event.target.value)}
             placeholder={t("annotationFormatConversion.llmPromptPlaceholder")}
-            className="batch-edit-textarea glass-input h-32 w-full resize-none px-3 py-2 text-[13px]"
+            className="batch-edit-textarea annotation-format-llm-textarea glass-input h-32 w-full resize-none px-3 py-2"
           />
         </div>
       </section>
@@ -339,17 +570,31 @@ export function BatchAnnotationFormatConversionDialog({
   const [xmlBatchSize, setXmlBatchSize] = useState(8);
   const [llmBackend, setLLMBackend] = useState<LLMBackend>("gemini");
   const [llmPrompt, setLLMPrompt] = useState("");
+  const [naturalLanguageOutputLanguage, setNaturalLanguageOutputLanguage] =
+    useState<NaturalLanguageOutputLanguage>("en");
+  const [conversionMethod, setConversionMethod] =
+    useState<AnnotationFormatConversionMethod>("standard");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const isMountedRef = useRef(true);
   const hasFormatsSelected =
     isUsableFormat(currentFormat) && isUsableFormat(targetFormat);
   const isNaturalLanguageRewrite =
     currentFormat === "naturalLanguage" && targetFormat === "naturalLanguage";
+  const isBooruTagToNaturalLanguage =
+    currentFormat === "booruTag" && targetFormat === "naturalLanguage";
   const activeRule = hasFormatsSelected
     ? conversionRules[buildAnnotationFormatConversionKey(currentFormat, targetFormat)]
     : undefined;
+  const methodOptions = getConversionMethodOptions(currentFormat, targetFormat, t);
+  const resolvedConversionMethod = methodOptions.some(
+    (option) => option.value === conversionMethod
+  )
+    ? conversionMethod
+    : methodOptions[0].value;
   const canExecute =
     hasFormatsSelected &&
+    activeRule?.executable !== false &&
+    Boolean(activeRule) &&
     !isSubmitting &&
     (!isNaturalLanguageRewrite || llmPrompt.trim().length > 0);
 
@@ -377,6 +622,12 @@ export function BatchAnnotationFormatConversionDialog({
       isMountedRef.current = false;
     };
   }, []);
+
+  useEffect(() => {
+    if (resolvedConversionMethod !== conversionMethod) {
+      setConversionMethod(resolvedConversionMethod);
+    }
+  }, [conversionMethod, resolvedConversionMethod]);
 
   useEffect(() => {
     if (currentFormat === "anima" && targetFormat === "anima") {
@@ -452,6 +703,19 @@ export function BatchAnnotationFormatConversionDialog({
                     onChange={setTargetFormat}
                   />
                 </label>
+
+                <label className="block">
+                  <span className="text-[12px] font-medium text-neutral-600">
+                    {t("annotationFormatConversion.method")}
+                  </span>
+                  <AppSelect
+                    className="mt-1"
+                    value={resolvedConversionMethod}
+                    options={methodOptions}
+                    disabled={methodOptions.length <= 1}
+                    onChange={setConversionMethod}
+                  />
+                </label>
               </div>
 
               <div className="mt-5 rounded-lg border border-neutral-200 bg-white text-[12px] leading-5 text-neutral-600">
@@ -467,7 +731,7 @@ export function BatchAnnotationFormatConversionDialog({
                     : t("annotationFormatConversion.selectFormatsHint")}
                 </p>
               </div>
-              {isNaturalLanguageRewrite ? (
+              {isNaturalLanguageRewrite || isBooruTagToNaturalLanguage ? (
                 <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-[12px] leading-5 text-amber-900">
                   {t("annotationFormatConversion.lowQualityModelWarning")}
                 </div>
@@ -492,7 +756,10 @@ export function BatchAnnotationFormatConversionDialog({
                     llmBackend,
                     setLLMBackend,
                     llmPrompt,
-                    setLLMPrompt
+                    setLLMPrompt,
+                    naturalLanguageOutputLanguage,
+                    setNaturalLanguageOutputLanguage,
+                    conversionMethod: resolvedConversionMethod
                   })}
                 </div>
               ) : null}
@@ -522,7 +789,9 @@ export function BatchAnnotationFormatConversionDialog({
                     xmlBatchEnabled,
                     xmlBatchSize: clampXmlBatchSize(xmlBatchSize),
                     llmBackend,
-                    llmPrompt
+                    llmPrompt,
+                    naturalLanguageOutputLanguage,
+                    conversionMethod: resolvedConversionMethod
                   });
                 } finally {
                   if (isMountedRef.current) {

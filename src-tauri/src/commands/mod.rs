@@ -3192,6 +3192,13 @@ pub fn list_danbooru_style_tags() -> AppResult<Vec<String>> {
 }
 
 #[tauri::command]
+pub fn lookup_danbooru_tag_categories(
+    tags: Vec<String>,
+) -> AppResult<Vec<tag_sheet::DanbooruTagCategoryLookup>> {
+    tag_sheet::lookup_danbooru_tag_categories(tags)
+}
+
+#[tauri::command]
 pub fn get_python_env_settings(state: State<'_, AppState>) -> AppResult<PythonEnvSettings> {
     python_env::load_settings(&state.dirs)
 }
