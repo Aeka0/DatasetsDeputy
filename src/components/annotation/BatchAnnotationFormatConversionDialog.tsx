@@ -42,6 +42,7 @@ export type LLMBackend =
   | "grok"
   | "doubao"
   | "qwen"
+  | "deepseek"
   | "zhipu"
   | "lmStudio"
   | "textgen"
@@ -181,6 +182,7 @@ function getLLMBackendOptions(
     { value: "grok", label: t("annotationFormatConversion.llmBackendGrok") },
     { value: "doubao", label: t("annotationFormatConversion.llmBackendDoubao") },
     { value: "qwen", label: t("annotationFormatConversion.llmBackendQwen") },
+    { value: "deepseek", label: t("annotationFormatConversion.llmBackendDeepSeek") },
     { value: "zhipu", label: t("annotationFormatConversion.llmBackendZhipu") },
     { value: "lmStudio", label: t("annotationFormatConversion.llmBackendLmStudio") },
     { value: "textgen", label: t("annotationFormatConversion.llmBackendTextgen") },

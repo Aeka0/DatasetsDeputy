@@ -3,6 +3,7 @@ mod app_dirs;
 mod clip_similarity;
 mod commands;
 mod db;
+mod deepseek;
 mod doubao;
 mod errors;
 mod export;
@@ -225,6 +226,12 @@ pub fn run() {
             commands::test_qwen_connection,
             commands::generate_qwen_annotation,
             commands::generate_qwen_text,
+            commands::get_deepseek_settings,
+            commands::save_deepseek_settings,
+            commands::fetch_deepseek_models,
+            commands::test_deepseek_connection,
+            commands::generate_deepseek_annotation,
+            commands::generate_deepseek_text,
             commands::get_zhipu_settings,
             commands::save_zhipu_settings,
             commands::fetch_zhipu_models,

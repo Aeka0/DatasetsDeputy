@@ -112,6 +112,7 @@ type ScheduledRemoteBackend =
   | "grok"
   | "doubao"
   | "qwen"
+  | "deepseek"
   | "zhipu";
 type LLMPromptSettings = AnnotationPromptSettings & RemoteSchedulingSettings;
 
@@ -287,6 +288,7 @@ function getAnnotationModeLabel(
   if (mode === "grok") return t("annotationRun.modeGrok");
   if (mode === "doubao") return t("annotationRun.modeDoubao");
   if (mode === "qwen") return t("annotationRun.modeQwen");
+  if (mode === "deepseek") return t("annotationRun.modeDeepSeek");
   if (mode === "zhipu") return t("annotationRun.modeZhipu");
   if (mode === "lmStudio") return t("annotationRun.modeLmStudio");
   if (mode === "ollama") return t("annotationRun.modeOllama");
@@ -300,6 +302,7 @@ function getVisionAnnotationCommand(mode: AnnotationExecutionMode) {
   if (mode === "grok") return "generate_grok_annotation";
   if (mode === "doubao") return "generate_doubao_annotation";
   if (mode === "qwen") return "generate_qwen_annotation";
+  if (mode === "deepseek") return "generate_deepseek_annotation";
   if (mode === "zhipu") return "generate_zhipu_annotation";
   if (mode === "lmStudio") return "generate_lm_studio_annotation";
   if (mode === "ollama") return "generate_ollama_annotation";
@@ -313,6 +316,7 @@ function getTextGenerationCommand(backend: LLMBackend) {
   if (backend === "grok") return "generate_grok_text";
   if (backend === "doubao") return "generate_doubao_text";
   if (backend === "qwen") return "generate_qwen_text";
+  if (backend === "deepseek") return "generate_deepseek_text";
   if (backend === "zhipu") return "generate_zhipu_text";
   if (backend === "lmStudio") return "generate_lm_studio_text";
   if (backend === "ollama") return "generate_ollama_text";
@@ -330,6 +334,7 @@ function isScheduledRemoteBackend(
     backend === "grok" ||
     backend === "doubao" ||
     backend === "qwen" ||
+    backend === "deepseek" ||
     backend === "zhipu"
   );
 }
@@ -340,6 +345,7 @@ function getRemoteSettingsCommand(backend: ScheduledRemoteBackend) {
   if (backend === "grok") return "get_grok_settings";
   if (backend === "doubao") return "get_doubao_settings";
   if (backend === "qwen") return "get_qwen_settings";
+  if (backend === "deepseek") return "get_deepseek_settings";
   if (backend === "zhipu") return "get_zhipu_settings";
   return "get_gemini_settings";
 }

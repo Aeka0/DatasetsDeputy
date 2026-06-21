@@ -25,6 +25,7 @@ use crate::{
     app_dirs,
     clip_similarity::{self, SimilarityScanOptions},
     db::{AnnotationChange, AnnotationProfile, Database, DatasetImage, ImageSourceMetadata},
+    deepseek::{self, DeepSeekSettings},
     doubao::{self, DoubaoSettings},
     errors::{AppError, AppResult},
     export::{self, ExportDatasetRequest, ExportItem, ExportPreview, PreparedExport},
@@ -2996,6 +2997,74 @@ pub async fn generate_qwen_text(state: State<'_, AppState>, prompt: String) -> A
     let settings = qwen::load_settings(&state.dirs)?;
     let proxy_settings = proxy_settings::load_settings(&state.dirs)?;
     qwen::generate_text(&settings, &proxy_settings, &prompt).await
+}
+
+#[tauri::command]
+pub fn get_deepseek_settings(state: State<'_, AppState>) -> AppResult<DeepSeekSettings> {
+    deepseek::load_settings(&state.dirs)
+}
+
+#[tauri::command]
+pub fn save_deepseek_settings(
+    state: State<'_, AppState>,
+    settings: DeepSeekSettings,
+) -> AppResult<DeepSeekSettings> {
+    deepseek::save_settings(&state.dirs, settings)
+}
+
+#[tauri::command]
+pub async fn fetch_deepseek_models(
+    state: State<'_, AppState>,
+    settings: Option<DeepSeekSettings>,
+) -> AppResult<Vec<String>> {
+    let settings = match settings {
+        Some(settings) => settings,
+        None => deepseek::load_settings(&state.dirs)?,
+    };
+    let proxy_settings = proxy_settings::load_settings(&state.dirs)?;
+    deepseek::fetch_models(&settings, &proxy_settings).await
+}
+
+#[tauri::command]
+pub async fn test_deepseek_connection(
+    state: State<'_, AppState>,
+    settings: Option<DeepSeekSettings>,
+) -> AppResult<usize> {
+    let settings = match settings {
+        Some(settings) => settings,
+        None => deepseek::load_settings(&state.dirs)?,
+    };
+    let proxy_settings = proxy_settings::load_settings(&state.dirs)?;
+    deepseek::fetch_models(&settings, &proxy_settings)
+        .await
+        .map(|models| models.len())
+}
+
+#[tauri::command]
+pub async fn generate_deepseek_annotation(
+    state: State<'_, AppState>,
+    image_path: String,
+    prompt: String,
+) -> AppResult<String> {
+    let settings = deepseek::load_settings(&state.dirs)?;
+    let proxy_settings = proxy_settings::load_settings(&state.dirs)?;
+    deepseek::generate_annotation(
+        &settings,
+        &proxy_settings,
+        &PathBuf::from(image_path),
+        &prompt,
+    )
+    .await
+}
+
+#[tauri::command]
+pub async fn generate_deepseek_text(
+    state: State<'_, AppState>,
+    prompt: String,
+) -> AppResult<String> {
+    let settings = deepseek::load_settings(&state.dirs)?;
+    let proxy_settings = proxy_settings::load_settings(&state.dirs)?;
+    deepseek::generate_text(&settings, &proxy_settings, &prompt).await
 }
 
 #[tauri::command]

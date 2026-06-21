@@ -15,6 +15,7 @@ export type AnnotationExecutionMode =
   | "grok"
   | "doubao"
   | "qwen"
+  | "deepseek"
   | "zhipu"
   | "lmStudio"
   | "ollama"
@@ -29,6 +30,7 @@ const modeOptions: Array<{ value: AnnotationExecutionMode; labelKey: string }> =
   { value: "grok", labelKey: "annotationRun.modeGrok" },
   { value: "doubao", labelKey: "annotationRun.modeDoubao" },
   { value: "qwen", labelKey: "annotationRun.modeQwen" },
+  { value: "deepseek", labelKey: "annotationRun.modeDeepSeek" },
   { value: "zhipu", labelKey: "annotationRun.modeZhipu" },
   { value: "lmStudio", labelKey: "annotationRun.modeLmStudio" },
   { value: "ollama", labelKey: "annotationRun.modeOllama" },

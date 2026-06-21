@@ -60,6 +60,7 @@ type NetworkSectionKey =
   | "grok"
   | "doubao"
   | "qwen"
+  | "deepseek"
   | "zhipu"
   | "llmLoader"
   | "proxy"
@@ -89,6 +90,7 @@ const providerIcons = {
   grok: new URL("../../../assets/svg/grok.svg", import.meta.url).href,
   doubao: new URL("../../../assets/svg/bytedance.svg", import.meta.url).href,
   qwen: new URL("../../../assets/svg/qwen.svg", import.meta.url).href,
+  deepseek: new URL("../../../assets/svg/deepseek.svg", import.meta.url).href,
   zhipu: new URL("../../../assets/svg/zhipu.svg", import.meta.url).href
 };
 
@@ -144,7 +146,14 @@ interface RemoteLlmSettings {
   requestMode: RemoteRequestMode;
 }
 
-type RemoteLlmProvider = "openai" | "anthropic" | "grok" | "doubao" | "qwen" | "zhipu";
+type RemoteLlmProvider =
+  | "openai"
+  | "anthropic"
+  | "grok"
+  | "doubao"
+  | "qwen"
+  | "deepseek"
+  | "zhipu";
 
 interface ProxySettings {
   useProxy: boolean;
@@ -314,6 +323,15 @@ const defaultQwenSettings: RemoteLlmSettings = {
   requestMode: "queue"
 };
 
+const defaultDeepSeekSettings: RemoteLlmSettings = {
+  apiKey: "",
+  baseUrl: "",
+  model: "deepseek-v4-flash",
+  availableModels: ["deepseek-v4-flash", "deepseek-v4-pro"],
+  targetRpm: 5,
+  requestMode: "queue"
+};
+
 const defaultZhipuSettings: RemoteLlmSettings = {
   apiKey: "",
   baseUrl: "",
@@ -368,6 +386,12 @@ const remoteLlmProviderMetadata: Record<
     descriptionKey: "settings.qwenApiDescription",
     apiKeyPlaceholderKey: "settings.qwenApiKeyPlaceholder",
     baseUrlPlaceholder: "https://dashscope.aliyuncs.com/compatible-mode/v1"
+  },
+  deepseek: {
+    titleKey: "settings.deepseekApi",
+    descriptionKey: "settings.deepseekApiDescription",
+    apiKeyPlaceholderKey: "settings.deepseekApiKeyPlaceholder",
+    baseUrlPlaceholder: "https://api.deepseek.com"
   },
   zhipu: {
     titleKey: "settings.zhipuApi",
@@ -638,6 +662,11 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
   const [qwenMessage, setQwenMessage] = useState("");
   const [isQwenBusy, setIsQwenBusy] = useState(false);
   const [hasLoadedQwenSettings, setHasLoadedQwenSettings] = useState(false);
+  const [deepSeekSettings, setDeepSeekSettings] =
+    useState<RemoteLlmSettings>(defaultDeepSeekSettings);
+  const [deepSeekMessage, setDeepSeekMessage] = useState("");
+  const [isDeepSeekBusy, setIsDeepSeekBusy] = useState(false);
+  const [hasLoadedDeepSeekSettings, setHasLoadedDeepSeekSettings] = useState(false);
   const [zhipuSettings, setZhipuSettings] =
     useState<RemoteLlmSettings>(defaultZhipuSettings);
   const [zhipuMessage, setZhipuMessage] = useState("");
@@ -714,6 +743,11 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
       key: "qwen",
       label: t("settings.networkQwen"),
       icon: { kind: "svg", src: providerIcons.qwen, alt: "Qwen" }
+    },
+    {
+      key: "deepseek",
+      label: t("settings.networkDeepSeek"),
+      icon: { kind: "svg", src: providerIcons.deepseek, alt: "DeepSeek" }
     },
     {
       key: "zhipu",
@@ -854,6 +888,16 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
         setHasLoadedQwenSettings(true);
       })
       .catch((error) => setQwenMessage(formatAppError(error)));
+  }, []);
+  useEffect(() => {
+    if (!hasTauriRuntime()) return;
+
+    void invokeCommand<RemoteLlmSettings>("get_deepseek_settings")
+      .then((settings) => {
+        setDeepSeekSettings(settings);
+        setHasLoadedDeepSeekSettings(true);
+      })
+      .catch((error) => setDeepSeekMessage(formatAppError(error)));
   }, []);
   useEffect(() => {
     if (!hasTauriRuntime()) return;
@@ -1014,6 +1058,20 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
     return () => window.clearTimeout(saveTimer);
   }, [qwenSettings, hasLoadedQwenSettings]);
   useEffect(() => {
+    if (!hasTauriRuntime() || !hasLoadedDeepSeekSettings) return;
+
+    const saveTimer = window.setTimeout(() => {
+      void invokeCommand<RemoteLlmSettings>("save_deepseek_settings", {
+        settings: deepSeekSettings
+      }).catch((error) => {
+        const message = formatAppError(error);
+        setDeepSeekMessage(t("settings.llmActionFailed", { message }));
+      });
+    }, 500);
+
+    return () => window.clearTimeout(saveTimer);
+  }, [deepSeekSettings, hasLoadedDeepSeekSettings]);
+  useEffect(() => {
     if (!hasTauriRuntime() || !hasLoadedZhipuSettings) return;
 
     const saveTimer = window.setTimeout(() => {
@@ -1154,6 +1212,10 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
     setQwenSettings((current) => ({ ...current, ...patch }));
   };
 
+  const patchDeepSeekSettings = (patch: Partial<RemoteLlmSettings>) => {
+    setDeepSeekSettings((current) => ({ ...current, ...patch }));
+  };
+
   const patchZhipuSettings = (patch: Partial<RemoteLlmSettings>) => {
     setZhipuSettings((current) => ({ ...current, ...patch }));
   };
@@ -1267,6 +1329,15 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
             setMessage: setQwenMessage,
             setSettings: setQwenSettings,
             commandPrefix: "qwen"
+          };
+        case "deepseek":
+          return {
+            isBusy: isDeepSeekBusy,
+            settings: deepSeekSettings,
+            setBusy: setIsDeepSeekBusy,
+            setMessage: setDeepSeekMessage,
+            setSettings: setDeepSeekSettings,
+            commandPrefix: "deepseek"
           };
         case "zhipu":
           return {
@@ -2617,6 +2688,16 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
                       patchQwenSettings,
                       qwenMessage,
                       isQwenBusy
+                    )
+                  : null}
+
+                {activeNetworkSection === "deepseek"
+                  ? renderRemoteLlmSettings(
+                      "deepseek",
+                      deepSeekSettings,
+                      patchDeepSeekSettings,
+                      deepSeekMessage,
+                      isDeepSeekBusy
                     )
                   : null}
 
