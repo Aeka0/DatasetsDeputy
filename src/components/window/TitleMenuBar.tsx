@@ -1,7 +1,6 @@
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { Check, ChevronRight } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import { useShallow } from "zustand/react/shallow";
 
@@ -61,7 +60,9 @@ import { FormatValidatorDialog } from "../tools/FormatValidatorDialog";
 import { TrainingCacheCleanerDialog } from "../tools/TrainingCacheCleanerDialog";
 import { AnimatedPortal } from "../ui/AnimatedPortal";
 import { DialogTitleWithDataset } from "../ui/DialogTitleWithDataset";
+import { AnimatedLayer, AnimatedLayerPortal, useUiAnimationEnabled } from "../ui/layerMotion";
 import { Switch } from "../ui/Switch";
+import { useFloatingDropdown } from "../ui/useFloatingDropdown";
 
 type MenuKey = "file" | "edit" | "annotation" | "view" | "tools" | "settings" | "about";
 type DialogKey =
@@ -77,11 +78,6 @@ type DialogKey =
   | "formatValidator"
   | "trainingCacheCleaner"
   | "about";
-
-interface MenuPosition {
-  left: number;
-  top: number;
-}
 
 interface MenuAction {
   type?: "action";
@@ -1004,9 +1000,11 @@ export function TitleMenuBar({
   const [isAnnotationRunning, setIsAnnotationRunning] = useState(false);
   const [isBatchActionRunning, setIsBatchActionRunning] = useState(false);
   const [isSavingChanges, setIsSavingChanges] = useState(false);
-  const [menuPosition, setMenuPosition] = useState<MenuPosition>();
   const containerRef = useRef<HTMLDivElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const activeFloatingMenuRef = useRef<MenuKey | null>(null);
+  const shouldAnimateUi = useUiAnimationEnabled();
+  const { refs, floatingStyles } = useFloatingDropdown({});
   const annotationCancelRef = useRef(false);
   const annotationRunIdRef = useRef(0);
   const activeAnnotationImageIdsRef = useRef<number[]>([]);
@@ -1058,14 +1056,12 @@ export function TitleMenuBar({
         return;
       }
       setOpenMenu(undefined);
-      setMenuPosition(undefined);
       setActiveSubmenu(undefined);
     };
 
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         setOpenMenu(undefined);
-        setMenuPosition(undefined);
         setActiveSubmenu(undefined);
       }
     };
@@ -2111,7 +2107,6 @@ export function TitleMenuBar({
   const selectAction = (action: MenuAction) => {
     if (action.disabled) return;
     setOpenMenu(undefined);
-    setMenuPosition(undefined);
     setActiveSubmenu(undefined);
     Promise.resolve(action.onSelect()).catch((error) => {
       addAppLog(t("appLog.menuActionFailed", { message: formatAppError(error) }), "error");
@@ -2185,23 +2180,17 @@ export function TitleMenuBar({
   const toggleMenu = (menu: MenuKey, button: HTMLButtonElement) => {
     if (menus[menu].length === 0) {
       setOpenMenu(undefined);
-      setMenuPosition(undefined);
       setActiveSubmenu(undefined);
       return;
     }
 
     if (openMenu === menu) {
       setOpenMenu(undefined);
-      setMenuPosition(undefined);
       setActiveSubmenu(undefined);
       return;
     }
 
-    const rect = button.getBoundingClientRect();
-    setMenuPosition({
-      left: Math.min(rect.left, window.innerWidth - 188),
-      top: rect.bottom + 4
-    });
+    refs.setReference(button);
     setActiveSubmenu(undefined);
     setOpenMenu(menu);
   };
@@ -2512,80 +2501,105 @@ export function TitleMenuBar({
         ))}
       </nav>
 
-      {openMenu && menuPosition && menus[openMenu].length > 0
-        ? createPortal(
-        <div
-          ref={dropdownRef}
-          className="app-dropdown-menu no-drag pointer-events-auto fixed z-0 min-w-[180px] rounded-lg py-2"
-          style={{ left: menuPosition.left, top: menuPosition.top }}
-        >
-          <div className="app-dropdown-backdrop" />
-          {menus[openMenu].map((entry, index) =>
-            entry.type === "separator" ? (
-              <div
-                key={`${openMenu}-separator-${index}`}
-                className="app-dropdown-separator my-1.5 h-px bg-neutral-200/90"
-              />
-            ) : entry.type === "submenu" ? (
-              <div
-                key={entry.label}
-                className="relative"
-                onMouseEnter={() => setActiveSubmenu(entry.label)}
-              >
-                <button
-                  type="button"
-                  className="app-dropdown-item flex h-9 w-full items-center gap-2 px-3.5 text-left text-[12px] font-medium leading-4 text-neutral-700 transition hover:bg-neutral-100"
-                  onClick={() =>
-                    setActiveSubmenu((current) =>
-                      current === entry.label ? undefined : entry.label
-                    )
-                  }
+      <AnimatedLayerPortal root={getAppOverlayRoot()}>
+        {openMenu && menus[openMenu].length > 0 ? (
+          <AnimatedLayer
+            key={`title-menu:${openMenu}`}
+            ref={(node) => {
+              const menuKey = openMenu;
+              if (node) {
+                activeFloatingMenuRef.current = menuKey;
+                dropdownRef.current = node;
+                refs.setFloating(node);
+                return;
+              }
+
+              if (activeFloatingMenuRef.current === menuKey) {
+                activeFloatingMenuRef.current = null;
+                dropdownRef.current = null;
+                refs.setFloating(null);
+              }
+            }}
+            className="app-dropdown-menu no-drag pointer-events-auto fixed z-0"
+            style={floatingStyles}
+            animateUi={shouldAnimateUi}
+            preset="menu"
+          >
+            <div className="app-dropdown-backdrop" />
+            {menus[openMenu].map((entry, index) =>
+              entry.type === "separator" ? (
+                <div
+                  key={`${openMenu}-separator-${index}`}
+                  className="app-dropdown-separator my-1.5 h-px"
+                />
+              ) : entry.type === "submenu" ? (
+                <div
+                  key={entry.label}
+                  className="relative"
+                  onMouseEnter={() => setActiveSubmenu(entry.label)}
                 >
-                  <span className="flex w-4 shrink-0 justify-center" />
-                  <span className="min-w-0 flex-1 truncate">{entry.label}</span>
-                  <ChevronRight size={14} className="shrink-0 text-neutral-400" />
+                  <button
+                    type="button"
+                    className={cn(
+                      "app-dropdown-item flex h-9 w-full items-center gap-2 px-3.5 text-left text-[12px] font-medium leading-4 transition",
+                      activeSubmenu === entry.label && "app-dropdown-item-selected"
+                    )}
+                    onClick={() =>
+                      setActiveSubmenu((current) =>
+                        current === entry.label ? undefined : entry.label
+                      )
+                    }
+                  >
+                    <span className="flex w-4 shrink-0 justify-center" />
+                    <span className="min-w-0 flex-1 truncate">{entry.label}</span>
+                    <ChevronRight size={14} className="shrink-0 text-neutral-400" />
+                  </button>
+                  {activeSubmenu === entry.label ? (
+                    <div className="app-dropdown-menu no-drag absolute left-[calc(100%-4px)] top-0 z-[60]">
+                      <div className="app-dropdown-backdrop" />
+                      {entry.entries.map((subEntry) => (
+                        <button
+                          key={subEntry.label}
+                          type="button"
+                          className={cn(
+                            "app-dropdown-item flex h-9 w-full items-center gap-2 px-3.5 text-left text-[12px] font-medium leading-4 transition",
+                            subEntry.checked && "app-dropdown-item-selected"
+                          )}
+                          disabled={subEntry.disabled}
+                          onClick={() => selectAction(subEntry)}
+                        >
+                          <span className="flex w-4 shrink-0 justify-center">
+                            {subEntry.checked ? <Check size={14} /> : null}
+                          </span>
+                          <span className="min-w-0 flex-1 truncate">
+                            {formatMenuActionLabel(subEntry)}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+              ) : (
+                <button
+                  key={entry.label}
+                  type="button"
+                  className={cn(
+                    "app-dropdown-item flex h-9 w-full items-center gap-2 px-3.5 text-left text-[12px] font-medium leading-4 transition",
+                    entry.checked && "app-dropdown-item-selected"
+                  )}
+                  disabled={entry.disabled}
+                  onClick={() => selectAction(entry)}
+                >
+                  <span className="flex w-4 shrink-0 justify-center">
+                    {entry.checked ? <Check size={14} /> : null}
+                  </span>
+                  <span className="truncate">{formatMenuActionLabel(entry)}</span>
                 </button>
-                {activeSubmenu === entry.label ? (
-                  <div className="app-dropdown-menu no-drag absolute left-[calc(100%-4px)] top-0 z-[60] min-w-[180px] rounded-lg py-2">
-                    <div className="app-dropdown-backdrop" />
-                    {entry.entries.map((subEntry) => (
-                      <button
-                        key={subEntry.label}
-                        type="button"
-                        className="app-dropdown-item flex h-9 w-full items-center gap-2 px-3.5 text-left text-[12px] font-medium leading-4 text-neutral-700 transition hover:bg-neutral-100 disabled:cursor-not-allowed disabled:text-neutral-400 disabled:hover:bg-transparent"
-                        disabled={subEntry.disabled}
-                        onClick={() => selectAction(subEntry)}
-                      >
-                        <span className="flex w-4 shrink-0 justify-center">
-                          {subEntry.checked ? <Check size={14} /> : null}
-                        </span>
-                        <span className="min-w-0 flex-1 truncate">
-                          {formatMenuActionLabel(subEntry)}
-                        </span>
-                      </button>
-                    ))}
-                  </div>
-                ) : null}
-              </div>
-            ) : (
-              <button
-                key={entry.label}
-                type="button"
-                className="app-dropdown-item flex h-9 w-full items-center gap-2 px-3.5 text-left text-[12px] font-medium leading-4 text-neutral-700 transition hover:bg-neutral-100 disabled:cursor-not-allowed disabled:text-neutral-400 disabled:hover:bg-transparent"
-                disabled={entry.disabled}
-                onClick={() => selectAction(entry)}
-              >
-                <span className="flex w-4 shrink-0 justify-center">
-                  {entry.checked ? <Check size={14} /> : null}
-                </span>
-                <span className="truncate">{formatMenuActionLabel(entry)}</span>
-              </button>
-            )
-          )}
-        </div>,
-          getAppOverlayRoot()
-        )
-        : null}
+              )
+            )}
+          </AnimatedLayer>
+        ) : null}
+      </AnimatedLayerPortal>
 
       {dialog === "settings" ? <SettingsDialog onClose={() => setDialog(undefined)} /> : null}
       {dialog === "batchAdd" ? (

@@ -35,6 +35,21 @@
   --app-chrome-border: rgba(255, 255, 255, 0.6);
   --app-scrollbar-thumb: rgba(28, 28, 28, 0.18);
   --app-scrollbar-thumb-hover: rgba(28, 28, 28, 0.3);
+  --app-overlay-scrollbar-track-width: 10px;
+  --app-overlay-scrollbar-thumb-width: 6px;
+  --app-menu-bg:
+    linear-gradient(180deg, rgb(255 255 255 / 0.9), rgb(246 246 246 / 0.8)),
+    rgb(255 255 255 / 0.72);
+  --app-menu-border: rgba(28, 28, 28, 0.13);
+  --app-menu-shadow:
+    0 18px 48px rgba(23, 23, 23, 0.18),
+    0 4px 14px rgba(23, 23, 23, 0.1);
+  --app-menu-width: 188px;
+  --app-menu-text: var(--app-text-muted);
+  --app-menu-text-strong: var(--app-text);
+  --app-menu-hover: rgba(28, 28, 28, 0.08);
+  --app-menu-separator: rgba(28, 28, 28, 0.13);
+  --app-menu-disabled: rgba(28, 28, 28, 0.34);
   --app-sidebar-width: 248px;
   --app-motion-duration-fast: 150ms;
   --app-motion-duration: 220ms;
@@ -750,14 +765,15 @@ html[data-window-render-mode="acrylic"] .fluent-titlebar {
 
 .app-dropdown-menu {
   isolation: isolate;
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.42), rgba(255, 255, 255, 0.2)),
-    rgba(255, 255, 255, 0.62);
-  -webkit-backdrop-filter: blur(32px) saturate(1.45);
-  backdrop-filter: blur(32px) saturate(1.45);
-  box-shadow:
-    0 10px 24px rgba(23, 23, 23, 0.12),
-    0 2px 8px rgba(23, 23, 23, 0.08);
+  border: 1px solid var(--app-menu-border);
+  border-radius: var(--app-radius-lg);
+  background: var(--app-menu-bg);
+  -webkit-backdrop-filter: blur(36px) saturate(1.35);
+  backdrop-filter: blur(36px) saturate(1.35);
+  box-shadow: var(--app-menu-shadow);
+  min-width: var(--app-menu-width);
+  overflow: hidden;
+  padding: 6px;
 }
 
 .app-dropdown-backdrop {
@@ -776,10 +792,27 @@ html[data-window-render-mode="acrylic"] .fluent-titlebar {
 
 .app-dropdown-item {
   border-radius: var(--app-radius-md);
+  min-height: 32px;
+  color: var(--app-menu-text);
+}
+
+.app-dropdown-item:hover,
+.app-dropdown-item-selected {
+  background-color: var(--app-menu-hover);
+  color: var(--app-menu-text-strong);
 }
 
 .app-dropdown-item:disabled {
-  color: rgba(115, 115, 115, 0.72);
+  color: var(--app-menu-disabled);
+}
+
+.app-dropdown-item:disabled:hover {
+  background-color: transparent;
+  color: var(--app-menu-disabled);
+}
+
+.app-dropdown-separator {
+  background: var(--app-menu-separator);
 }
 
 .dialog-transition-root {
@@ -1252,12 +1285,8 @@ html[data-theme="dark"] .import-wizard-option-attention {
 }
 
 html[data-theme="dark"] .app-dropdown-menu {
-  background:
-    linear-gradient(180deg, rgba(58, 58, 58, 0.34), rgba(22, 22, 22, 0.2)),
-    rgba(36, 36, 36, 0.56);
-  box-shadow:
-    0 12px 28px rgba(0, 0, 0, 0.32),
-    0 2px 10px rgba(0, 0, 0, 0.2);
+  background: var(--app-menu-bg);
+  box-shadow: var(--app-menu-shadow);
 }
 
 html[data-theme="dark"] .app-dropdown-backdrop {
@@ -1265,16 +1294,16 @@ html[data-theme="dark"] .app-dropdown-backdrop {
 }
 
 html[data-theme="dark"] .app-dropdown-separator {
-  background-color: rgba(255, 255, 255, 0.08);
+  background-color: var(--app-menu-separator);
 }
 
 html[data-theme="dark"] .app-dropdown-item:disabled {
-  color: rgba(232, 232, 232, 0.34);
+  color: var(--app-menu-disabled);
 }
 
 html[data-theme="dark"] .app-dropdown-item:disabled:hover {
   background-color: transparent;
-  color: rgba(232, 232, 232, 0.34);
+  color: var(--app-menu-disabled);
 }
 
 html[data-theme="dark"] .table-column-resizer::after {
@@ -1284,4 +1313,14 @@ html[data-theme="dark"] .table-column-resizer::after {
 html[data-theme="dark"] {
   --app-scrollbar-thumb: rgba(190, 190, 190, 0.42);
   --app-scrollbar-thumb-hover: rgba(220, 220, 220, 0.6);
+  --app-menu-bg:
+    linear-gradient(180deg, rgb(47 47 47 / 0.92), rgb(28 28 28 / 0.82)),
+    rgb(34 34 34 / 0.72);
+  --app-menu-border: rgba(255, 255, 255, 0.16);
+  --app-menu-shadow: 0 18px 48px rgba(0, 0, 0, 0.34);
+  --app-menu-text: rgba(232, 232, 232, 0.72);
+  --app-menu-text-strong: rgba(245, 245, 245, 0.96);
+  --app-menu-hover: rgba(255, 255, 255, 0.1);
+  --app-menu-separator: rgba(255, 255, 255, 0.12);
+  --app-menu-disabled: rgba(232, 232, 232, 0.34);
 }

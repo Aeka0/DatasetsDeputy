@@ -20,7 +20,6 @@ import {
 } from "lucide-react";
 import type { MouseEvent as ReactMouseEvent } from "react";
 import { useEffect, useMemo, useState } from "react";
-import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import { useShallow } from "zustand/react/shallow";
 
@@ -28,6 +27,7 @@ import { cn } from "../../lib/cn";
 import { formatAppError } from "../../lib/errors";
 import { formatBytes } from "../../lib/format";
 import { formatDialogMenuLabel } from "../../lib/menuLabels";
+import { clampContextMenuPosition } from "../../lib/menuPosition";
 import { findProjectTrail, flattenProjects, getProjectDisplayName } from "../../lib/projects";
 import { hasTauriRuntime, invokeCommand } from "../../lib/tauri";
 import { useDatasetStore, type ViewFilterMode } from "../../stores/datasetStore";
@@ -42,6 +42,7 @@ import type {
 import { DatasetGrid } from "../grid/DatasetGrid";
 import { DatasetTable } from "../table/DatasetTable";
 import { AnimatedPortal, useAnimatedPortalClose } from "../ui/AnimatedPortal";
+import { AnimatedLayer, AnimatedLayerPortal, useUiAnimationEnabled } from "../ui/layerMotion";
 
 type WorkspaceTab = "overview" | "grid" | "table";
 type ImageContextMenuState = {
@@ -1295,6 +1296,7 @@ export function DatasetWorkspace() {
   const [isPreparingFolderImport, setIsPreparingFolderImport] = useState(false);
   const [isImportingImages, setIsImportingImages] = useState(false);
   const [imageContextMenu, setImageContextMenu] = useState<ImageContextMenuState>();
+  const shouldAnimateUi = useUiAnimationEnabled();
   const [renameImage, setRenameImage] = useState<DatasetImage>();
   const [renameName, setRenameName] = useState("");
   const [renameError, setRenameError] = useState("");
@@ -1447,10 +1449,14 @@ export function DatasetWorkspace() {
     event.preventDefault();
     event.stopPropagation();
     selectImage(image.id);
+    const position = clampContextMenuPosition(event.clientX, event.clientY, {
+      width: 188,
+      height: 192
+    });
     setImageContextMenu({
       image,
-      left: Math.min(event.clientX, window.innerWidth - 180),
-      top: Math.min(event.clientY, window.innerHeight - 168)
+      left: position.x,
+      top: position.y
     });
   };
 
@@ -1738,18 +1744,20 @@ export function DatasetWorkspace() {
         )}
       </div>
 
-      {imageContextMenu
-        ? createPortal(
-            <div
-              className="app-dropdown-menu no-drag fixed z-50 min-w-[184px] rounded-lg py-2"
+      <AnimatedLayerPortal>
+        {imageContextMenu ? (
+            <AnimatedLayer
+              className="app-dropdown-menu no-drag pointer-events-auto fixed z-50"
               style={{ left: imageContextMenu.left, top: imageContextMenu.top }}
+              animateUi={shouldAnimateUi}
+              preset="menu"
               onMouseDown={(event) => event.stopPropagation()}
               onContextMenu={(event) => event.preventDefault()}
             >
               <div className="app-dropdown-backdrop" />
               <button
                 type="button"
-                className="app-dropdown-item flex h-9 w-full items-center px-3.5 text-left text-[12px] font-medium text-neutral-700 transition hover:bg-neutral-100 disabled:cursor-not-allowed disabled:text-neutral-400 disabled:hover:bg-transparent"
+                className="app-dropdown-item flex h-9 w-full items-center px-3.5 text-left text-[12px] font-medium transition disabled:cursor-not-allowed"
                 disabled={!contextMenuImageIsDirty || isSavingImageChanges || !contextMenuImage}
                 onClick={() => {
                   if (contextMenuImage) {
@@ -1761,7 +1769,7 @@ export function DatasetWorkspace() {
               </button>
               <button
                 type="button"
-                className="app-dropdown-item flex h-9 w-full items-center px-3.5 text-left text-[12px] font-medium text-neutral-700 transition hover:bg-neutral-100 disabled:cursor-not-allowed disabled:text-neutral-400 disabled:hover:bg-transparent"
+                className="app-dropdown-item flex h-9 w-full items-center px-3.5 text-left text-[12px] font-medium transition disabled:cursor-not-allowed"
                 disabled={!contextMenuImageIsDirty || isSavingImageChanges || !contextMenuImage}
                 onClick={() => {
                   if (contextMenuImage) {
@@ -1771,26 +1779,25 @@ export function DatasetWorkspace() {
               >
                 <span>{t("itemMenu.saveChanges")}</span>
               </button>
-              <div className="app-dropdown-separator my-1.5 h-px bg-neutral-200" />
+              <div className="app-dropdown-separator my-1.5 h-px" />
               <button
                 type="button"
-                className="app-dropdown-item flex h-9 w-full items-center px-3.5 text-left text-[12px] font-medium text-neutral-700 transition hover:bg-neutral-100"
+                className="app-dropdown-item flex h-9 w-full items-center px-3.5 text-left text-[12px] font-medium transition"
                 onClick={() => startRenameImage(imageContextMenu.image)}
               >
                 <span>{formatDialogMenuLabel(t("itemMenu.rename"))}</span>
               </button>
-              <div className="app-dropdown-separator my-1.5 h-px bg-neutral-200" />
+              <div className="app-dropdown-separator my-1.5 h-px" />
               <button
                 type="button"
-                className="app-dropdown-item flex h-9 w-full items-center px-3.5 text-left text-[12px] font-medium text-neutral-700 transition hover:bg-neutral-100"
+                className="app-dropdown-item flex h-9 w-full items-center px-3.5 text-left text-[12px] font-medium transition"
                 onClick={() => startDeleteImage(imageContextMenu.image)}
               >
                 <span>{formatDialogMenuLabel(t("itemMenu.delete"))}</span>
               </button>
-            </div>,
-            document.body
-          )
-        : null}
+            </AnimatedLayer>
+        ) : null}
+      </AnimatedLayerPortal>
 
       {renameImage ? (
         <ImageRenameDialog

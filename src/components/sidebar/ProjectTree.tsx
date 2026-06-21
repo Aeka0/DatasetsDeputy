@@ -10,16 +10,17 @@ import {
 } from "lucide-react";
 import type { CSSProperties, MouseEvent, PointerEvent as ReactPointerEvent } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import { useShallow } from "zustand/react/shallow";
 
 import { cn } from "../../lib/cn";
 import { formatAppError } from "../../lib/errors";
 import { formatDialogMenuLabel } from "../../lib/menuLabels";
+import { clampContextMenuPosition } from "../../lib/menuPosition";
 import { useDatasetStore } from "../../stores/datasetStore";
 import type { DatasetProject, DatasetSourceKind } from "../../types";
 import { AnimatedPortal } from "../ui/AnimatedPortal";
+import { AnimatedLayer, AnimatedLayerPortal, useUiAnimationEnabled } from "../ui/layerMotion";
 import { HierarchyDisclosureButton } from "../ui/HierarchyDisclosureButton";
 
 const sidebarLabelClass = "text-[12px] leading-4";
@@ -487,6 +488,7 @@ export function ProjectTree() {
     y: number;
     project: DatasetProject;
   }>();
+  const shouldAnimateUi = useUiAnimationEnabled();
   const [pendingRemoval, setPendingRemoval] = useState<DatasetProject>();
   const [pendingRename, setPendingRename] = useState<DatasetProject>();
   const [pendingNewChild, setPendingNewChild] = useState<DatasetProject>();
@@ -825,11 +827,13 @@ export function ProjectTree() {
   const openContextMenu = (event: MouseEvent, project: DatasetProject) => {
     event.preventDefault();
     event.stopPropagation();
-    const menuWidth = 184;
-    const menuHeight = 80;
+    const position = clampContextMenuPosition(event.clientX, event.clientY, {
+      width: 188,
+      height: isVirtualRoot(project) || isDatasetRoot(project) ? 176 : 298
+    });
     setContextMenu({
-      x: Math.max(8, Math.min(event.clientX, window.innerWidth - menuWidth - 8)),
-      y: Math.max(8, Math.min(event.clientY, window.innerHeight - menuHeight - 8)),
+      x: position.x,
+      y: position.y,
       project
     });
   };
@@ -1085,11 +1089,13 @@ export function ProjectTree() {
           />
         </div>
       </div>
-      {contextMenu
-        ? createPortal(
-            <div
-              className="app-dropdown-menu no-drag fixed z-50 min-w-[184px] rounded-lg py-2"
+      <AnimatedLayerPortal>
+        {contextMenu ? (
+            <AnimatedLayer
+              className="app-dropdown-menu no-drag pointer-events-auto fixed z-50"
               style={{ left: contextMenu.x, top: contextMenu.y }}
+              animateUi={shouldAnimateUi}
+              preset="menu"
               onClick={(event) => event.stopPropagation()}
               onContextMenu={(event) => event.preventDefault()}
             >
@@ -1201,10 +1207,9 @@ export function ProjectTree() {
                   </button>
                 </>
               )}
-            </div>,
-            document.body
-          )
-        : null}
+            </AnimatedLayer>
+        ) : null}
+      </AnimatedLayerPortal>
       <AnimatedPortal open={Boolean(pendingRename)}>
         {pendingRename ? (
           <div

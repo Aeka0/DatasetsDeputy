@@ -17,6 +17,7 @@
   "license": "UNLICENSED",
   "type": "module",
   "dependencies": {
+    "@floating-ui/react-dom": "^2.1.8",
     "@tanstack/react-table": "^8.21.3",
     "@tanstack/react-virtual": "^3.13.24",
     "@tauri-apps/api": "^2.10.1",

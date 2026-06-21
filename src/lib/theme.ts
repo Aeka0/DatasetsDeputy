@@ -154,6 +154,20 @@ export function watchUiAnimationPreference(
   return () => window.removeEventListener(uiAnimationPreferenceChangedEvent, handler);
 }
 
+export function isUiAnimationEnabled() {
+  return resolveUiAnimation(getUiAnimationPreference()) !== "off";
+}
+
+export function watchUiAnimation(callback: () => void) {
+  const unwatchPreference = watchUiAnimationPreference(callback);
+  const unwatchSystem = watchSystemUiAnimation();
+
+  return () => {
+    unwatchPreference();
+    unwatchSystem();
+  };
+}
+
 export function getWindowRenderMode() {
   return defaultWindowRenderMode;
 }

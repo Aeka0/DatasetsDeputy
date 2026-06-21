@@ -4,6 +4,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useTranslation } from "react-i18next";
 
+import { useAppBootstrap } from "./app/useAppBootstrap";
+import { useGlobalAppEvents } from "./app/useGlobalAppEvents";
 import { AnnotationLogView } from "./components/content/AnnotationLogView";
 import { ImagePreviewView } from "./components/content/ImagePreviewView";
 import { DatasetWorkspace } from "./components/content/DatasetWorkspace";
@@ -21,16 +23,12 @@ import { WindowControls } from "./components/window/WindowControls";
 import { AnimatedPortal } from "./components/ui/AnimatedPortal";
 import { useDatasetStore } from "./stores/datasetStore";
 import { cn } from "./lib/cn";
-import { hasTauriRuntime, invokeCommand } from "./lib/tauri";
-import { setWindowRenderMode, type WindowRenderingSettings } from "./lib/theme";
+import { hasTauriRuntime } from "./lib/tauri";
 import { formatAppError } from "./lib/errors";
-import { installOverlayScrollbars } from "./lib/overlayScrollbars";
 import {
   getUnsavedTableDraftState,
   type UnsavedTableDraftItem
 } from "./lib/tableDrafts";
-
-const STARTUP_PRELOAD_TIMEOUT_MS = 8000;
 
 interface UnsavedExitItem extends UnsavedTableDraftItem {
   profileName: string;
@@ -84,7 +82,9 @@ export default function App() {
   const showImportWizard = useDatasetStore((state) => state.showImportWizard);
   const images = useDatasetStore((state) => state.images);
 
-  useEffect(() => installOverlayScrollbars(), []);
+  useAppBootstrap();
+  useGlobalAppEvents();
+
   const profiles = useDatasetStore((state) => state.profiles);
   const tableDraftProfileId = useDatasetStore((state) => state.tableDraftProfileId);
   const tableAnnotationDrafts = useDatasetStore((state) => state.tableAnnotationDrafts);
@@ -152,66 +152,6 @@ export default function App() {
 
   useEffect(() => {
     if (!hasTauriRuntime()) return;
-
-    const store = useDatasetStore.getState();
-    const loadWindowRendering = invokeCommand<WindowRenderingSettings>(
-      "get_window_rendering_settings"
-    )
-      .then((settings) => setWindowRenderMode(settings.mode))
-      .catch((error) => {
-        console.error(t("appConsole.windowRenderingFallback"), error);
-      });
-    const preload = (async () => {
-      await Promise.all([
-        loadWindowRendering,
-        store.initThumbnailEvents(),
-        store.initImportEvents(),
-        store.initExportEvents(),
-        store.initDatabaseExportEvents(),
-        store.initHistory()
-      ]);
-      await store.load();
-    })().catch((error) => {
-      console.error(t("appConsole.startupPreloadFailed"), error);
-    });
-    const timeout = new Promise<void>((resolve) =>
-      window.setTimeout(resolve, STARTUP_PRELOAD_TIMEOUT_MS)
-    );
-
-    void Promise.race([preload, timeout])
-      .then(() => invokeCommand<void>("finish_startup"))
-      .catch((error) => {
-        console.error(t("appConsole.finishStartupFailed"), error);
-      });
-  }, []);
-
-  useEffect(() => {
-    const applyHistoryShortcut = (event: KeyboardEvent) => {
-      const target = event.target;
-      if (
-        target instanceof HTMLElement &&
-        (target.isContentEditable || target.closest("input, textarea, [contenteditable='true']"))
-      ) {
-        return;
-      }
-      if (!(event.ctrlKey || event.metaKey) || event.altKey) return;
-      const key = event.key.toLowerCase();
-      const store = useDatasetStore.getState();
-      if (key === "z" && !event.shiftKey) {
-        event.preventDefault();
-        void store.undo();
-      } else if (key === "y" || (key === "z" && event.shiftKey)) {
-        event.preventDefault();
-        void store.redo();
-      }
-    };
-
-    window.addEventListener("keydown", applyHistoryShortcut);
-    return () => window.removeEventListener("keydown", applyHistoryShortcut);
-  }, []);
-
-  useEffect(() => {
-    if (!hasTauriRuntime()) return;
     if (unsavedExitItems.length === 0) return;
 
     const currentWindow = getCurrentWindow();
@@ -238,23 +178,6 @@ export default function App() {
 
     window.addEventListener("beforeunload", blockBrowserClose);
     return () => window.removeEventListener("beforeunload", blockBrowserClose);
-  }, []);
-
-  useEffect(() => {
-    const blockNativeContextMenu = (event: globalThis.MouseEvent) => {
-      const target = event.target;
-      if (
-        target instanceof Element &&
-        target.closest("[data-native-context-menu='true']")
-      ) {
-        return;
-      }
-
-      event.preventDefault();
-    };
-
-    window.addEventListener("contextmenu", blockNativeContextMenu);
-    return () => window.removeEventListener("contextmenu", blockNativeContextMenu);
   }, []);
 
   const startTitlebarDrag = (event: ReactMouseEvent<HTMLElement>) => {
