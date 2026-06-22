@@ -421,7 +421,7 @@ export function ImagePreviewView() {
                   {t("image.annotationTypes")}
                 </div>
               <button
-                className="no-drag inline-flex h-7 w-7 items-center justify-center rounded-md text-neutral-600 transition hover:bg-neutral-100"
+                className="app-button-icon no-drag inline-flex h-7 w-7 items-center justify-center rounded-md"
                 onClick={startNewAnnotationType}
                 title={t("image.newAnnotation")}
               >

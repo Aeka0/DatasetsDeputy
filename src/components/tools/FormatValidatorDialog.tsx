@@ -157,7 +157,7 @@ export function FormatValidatorDialog({ onClose }: FormatValidatorDialogProps) {
           </div>
           <button
             type="button"
-            className="flex h-7 w-7 items-center justify-center rounded-md text-neutral-500 transition hover:bg-neutral-100 hover:text-neutral-700"
+            className="app-button-icon flex h-7 w-7 items-center justify-center rounded-md"
             onClick={close}
           >
             <X size={16} />

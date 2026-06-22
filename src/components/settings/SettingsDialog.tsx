@@ -544,7 +544,7 @@ function EditableModelSelect({
         />
         <button
           type="button"
-          className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-neutral-400 transition hover:bg-neutral-900/5 hover:text-neutral-700"
+          className="app-button-icon flex h-6 w-6 shrink-0 items-center justify-center rounded"
           aria-haspopup="listbox"
           aria-expanded={open}
           onClick={() => setOpen((current) => !current)}

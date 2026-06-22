@@ -20,7 +20,7 @@ export function HierarchyDisclosureButton({
       {...props}
       type="button"
       className={cn(
-        "hierarchy-disclosure-button no-drag flex h-full w-6 shrink-0 items-center justify-center rounded border-0 bg-transparent p-0 outline-none focus-visible:ring-2 focus-visible:ring-black/20",
+        "app-button-icon hierarchy-disclosure-button no-drag flex h-full w-6 shrink-0 items-center justify-center rounded border-0 bg-transparent p-0",
         className
       )}
       aria-expanded={expanded}

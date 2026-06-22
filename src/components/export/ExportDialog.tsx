@@ -192,7 +192,7 @@ export function ExportDialog() {
           </div>
           <button
             type="button"
-            className="no-drag inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-neutral-500 transition hover:bg-neutral-100 hover:text-neutral-900 disabled:cursor-not-allowed disabled:opacity-45"
+            className="app-button-icon no-drag inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md disabled:cursor-not-allowed disabled:opacity-45"
             aria-label={t("menu.close")}
             title={t("menu.close")}
             disabled={isExporting}

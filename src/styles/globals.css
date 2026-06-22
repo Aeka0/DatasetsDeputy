@@ -23,6 +23,12 @@
   --app-slider-thumb: #525252;
   --app-slider-thumb-hover: #333333;
   --app-slider-focus-ring: rgba(28, 28, 28, 0.18);
+  --app-icon-button-bg: transparent;
+  --app-icon-button-color: var(--app-text-muted);
+  --app-icon-button-hover-bg: var(--app-hover);
+  --app-icon-button-hover-color: var(--app-text);
+  --app-icon-button-active-bg: rgba(28, 28, 28, 0.1);
+  --app-icon-button-focus-ring: rgba(28, 28, 28, 0.18);
   --app-radius-sm: 4px;
   --app-radius-md: 6px;
   --app-radius-lg: 8px;
@@ -767,6 +773,41 @@ html[data-window-render-mode="acrylic"] .fluent-titlebar {
   color: #1c1c1c;
 }
 
+.app-button-icon {
+  border-color: transparent;
+  background: var(--app-icon-button-bg);
+  color: var(--app-icon-button-color);
+  transition:
+    background-color var(--app-motion-duration-fast) var(--app-motion-ease),
+    color var(--app-motion-duration-fast) var(--app-motion-ease),
+    box-shadow var(--app-motion-duration-fast) var(--app-motion-ease);
+}
+
+.app-button-icon:not(:disabled):hover {
+  background: var(--app-icon-button-hover-bg);
+  color: var(--app-icon-button-hover-color);
+}
+
+.app-button-icon:not(:disabled):active {
+  background: var(--app-icon-button-active-bg);
+  color: var(--app-icon-button-hover-color);
+}
+
+.app-button-icon-active {
+  background: var(--app-icon-button-active-bg);
+  color: var(--app-icon-button-hover-color);
+}
+
+.app-button-icon:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--app-icon-button-focus-ring);
+}
+
+.app-button-icon:disabled {
+  background: var(--app-icon-button-bg);
+  color: var(--app-icon-button-color);
+}
+
 .hierarchy-disclosure-button {
   color: var(--app-text-muted);
 }
@@ -980,6 +1021,8 @@ html[data-theme="dark"] {
   --app-slider-thumb: #d6d6d6;
   --app-slider-thumb-hover: #f2f2f2;
   --app-slider-focus-ring: rgba(255, 255, 255, 0.22);
+  --app-icon-button-active-bg: rgba(255, 255, 255, 0.14);
+  --app-icon-button-focus-ring: rgba(255, 255, 255, 0.18);
   --app-chrome-rgb: 20 20 20;
   --app-surface-rgb: 32 32 32;
   --app-chrome-bg: rgb(var(--app-chrome-rgb) / var(--app-bottom-opacity));

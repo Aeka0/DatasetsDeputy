@@ -392,7 +392,7 @@ function FolderImageImportDialog({
           </div>
           <button
             type="button"
-            className="inline-flex h-8 w-8 items-center justify-center rounded-md text-neutral-500 transition hover:bg-neutral-100 hover:text-neutral-900"
+            className="app-button-icon inline-flex h-8 w-8 items-center justify-center rounded-md"
             onClick={close}
             disabled={isImporting}
           >
@@ -539,7 +539,7 @@ function ImageRenameDialog({
           </div>
           <button
             type="button"
-            className="inline-flex h-8 w-8 items-center justify-center rounded-md text-neutral-500 transition hover:bg-neutral-100 hover:text-neutral-900"
+            className="app-button-icon inline-flex h-8 w-8 items-center justify-center rounded-md"
             onClick={close}
             disabled={isSaving}
           >
@@ -931,7 +931,7 @@ function DatasetOverview({
             </div>
             <button
               type="button"
-              className="no-drag ml-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded text-neutral-400 transition hover:bg-neutral-100 hover:text-neutral-900 disabled:cursor-wait disabled:opacity-50"
+              className="app-button-icon no-drag ml-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded disabled:cursor-wait disabled:opacity-50"
               disabled={isCheckingProblemItems || !canCheckProblemItems}
               onClick={() => void checkProblemItems(selectedProject)}
               title={t("workspace.checkProblemItems")}
@@ -997,7 +997,7 @@ function DatasetOverview({
                         </button>
                         <button
                           type="button"
-                          className="no-drag inline-flex h-7 w-7 items-center justify-center rounded-md text-neutral-400 transition hover:bg-neutral-100 hover:text-neutral-900"
+                          className="app-button-icon no-drag inline-flex h-7 w-7 items-center justify-center rounded-md"
                           onClick={() => {
                             setRenamingProfileId(undefined);
                             setRenameError("");
@@ -1037,8 +1037,8 @@ function DatasetOverview({
                             <button
                               type="button"
                               className={cn(
-                                "no-drag inline-flex h-6 w-6 items-center justify-center rounded text-neutral-400 transition hover:bg-neutral-100 hover:text-neutral-900",
-                                isMenuOpen ? "bg-neutral-100 text-neutral-900" : "opacity-0 group-hover:opacity-100"
+                                "app-button-icon no-drag inline-flex h-6 w-6 items-center justify-center rounded",
+                                isMenuOpen ? "app-button-icon-active opacity-100" : "opacity-0 group-hover:opacity-100"
                               )}
                               onMouseDown={(e) => e.stopPropagation()}
                               onClick={(e) => {
@@ -1142,7 +1142,7 @@ function DatasetOverview({
                   </button>
                   <button
                     type="button"
-                    className="no-drag inline-flex h-7 w-7 items-center justify-center rounded-md text-neutral-400 transition hover:bg-neutral-100 hover:text-neutral-900"
+                    className="app-button-icon no-drag inline-flex h-7 w-7 items-center justify-center rounded-md"
                     onClick={() => {
                       setIsCreatingProfile(false);
                       setNewProfileName("");
@@ -1667,7 +1667,7 @@ export function DatasetWorkspace() {
           {search ? (
             <button
               type="button"
-              className="absolute right-2 top-1/2 -translate-y-1/2 inline-flex h-5 w-5 items-center justify-center rounded text-neutral-400 transition hover:text-neutral-700"
+              className="app-button-icon absolute right-2 top-1/2 -translate-y-1/2 inline-flex h-5 w-5 items-center justify-center rounded"
               onClick={() => setSearch("")}
             >
               <X size={14} />

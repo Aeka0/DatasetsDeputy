@@ -21,7 +21,7 @@ export function Button({ className, variant = "primary", ...props }: ButtonProps
         variant === "danger" &&
           "border border-rose-200 bg-white text-rose-700 hover:bg-rose-50",
         variant === "icon" &&
-          "h-8 w-8 border border-transparent bg-transparent p-0 text-neutral-600 hover:bg-neutral-900/[0.06] hover:text-neutral-900",
+          "app-button-icon h-8 w-8 border border-transparent bg-transparent p-0",
         className
       )}
       {...props}
