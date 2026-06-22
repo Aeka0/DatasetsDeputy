@@ -5,6 +5,7 @@ use std::{
     path::{Path, PathBuf},
     process::{Command, Stdio},
     thread,
+    time::{SystemTime, UNIX_EPOCH},
 };
 
 use crate::{
@@ -24,7 +25,15 @@ import sys
 
 import numpy as np
 
-payload = json.loads(sys.argv[1])
+def load_payload():
+    if len(sys.argv) >= 3 and sys.argv[1] == "--payload-file":
+        with open(sys.argv[2], "r", encoding="utf-8") as handle:
+            return json.load(handle)
+    if len(sys.argv) >= 2:
+        return json.loads(sys.argv[1])
+    raise RuntimeError("Missing WD14 inference payload.")
+
+payload = load_payload()
 model_dir = payload["modelDir"]
 model_type = payload["modelType"]
 input_paths = payload.get("inputPaths") or [payload["inputPath"]]
@@ -223,6 +232,36 @@ struct InferenceBatchPayload {
     provider: Option<String>,
 }
 
+struct TempPayloadFile {
+    path: PathBuf,
+}
+
+impl TempPayloadFile {
+    fn write(dirs: &AppDirs, payload: &serde_json::Value) -> AppResult<Self> {
+        fs::create_dir_all(&dirs.temp)?;
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|duration| duration.as_nanos())
+            .unwrap_or_default();
+        let path = dirs.temp.join(format!(
+            "wd14-inference-request-{}-{nonce}.json",
+            std::process::id()
+        ));
+        fs::write(&path, serde_json::to_vec(payload)?)?;
+        Ok(Self { path })
+    }
+
+    fn path(&self) -> &Path {
+        &self.path
+    }
+}
+
+impl Drop for TempPayloadFile {
+    fn drop(&mut self) {
+        let _ = fs::remove_file(&self.path);
+    }
+}
+
 #[derive(Clone, Debug, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Wd14TaggerResult {
@@ -383,10 +422,12 @@ fn run_python_inference(
         "cpuThreads": CPU_INFERENCE_THREADS,
         "tagCount": tag_count,
     });
+    let payload_file = TempPayloadFile::write(dirs, &payload)?;
     let output = Command::new(&python_path)
         .arg("-c")
         .arg(INFERENCE_SCRIPT)
-        .arg(payload.to_string())
+        .arg("--payload-file")
+        .arg(payload_file.path())
         .env("PYTHONIOENCODING", "utf-8")
         .output()?;
     let stdout = String::from_utf8_lossy(&output.stdout).trim().to_owned();
@@ -425,10 +466,12 @@ where
         "tagCount": tag_count,
         "stream": true,
     });
+    let payload_file = TempPayloadFile::write(dirs, &payload)?;
     let mut child = Command::new(&python_path)
         .arg("-c")
         .arg(INFERENCE_SCRIPT)
-        .arg(payload.to_string())
+        .arg("--payload-file")
+        .arg(payload_file.path())
         .env("PYTHONIOENCODING", "utf-8")
         .env("OMP_NUM_THREADS", CPU_INFERENCE_THREADS.to_string())
         .env("MKL_NUM_THREADS", CPU_INFERENCE_THREADS.to_string())
