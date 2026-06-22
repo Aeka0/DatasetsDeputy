@@ -35,6 +35,9 @@
   --app-chrome-border: rgba(255, 255, 255, 0.6);
   --app-scrollbar-thumb: rgba(28, 28, 28, 0.18);
   --app-scrollbar-thumb-hover: rgba(28, 28, 28, 0.3);
+  --app-stable-scrollbar-track: transparent;
+  --app-stable-scrollbar-thumb: rgba(28, 28, 28, 0.32);
+  --app-stable-scrollbar-thumb-hover: rgba(28, 28, 28, 0.46);
   --app-overlay-scrollbar-track-width: 10px;
   --app-overlay-scrollbar-thumb-width: 6px;
   --app-menu-bg:
@@ -191,6 +194,34 @@ textarea {
 .overlay-scrollbar-thumb-dragging {
   opacity: 1 !important;
   pointer-events: auto !important;
+}
+
+.app-scrollbar-stable {
+  scrollbar-color: transparent transparent;
+  scrollbar-gutter: auto;
+  scrollbar-width: none;
+}
+
+.app-scrollbar-stable::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
+
+.app-scrollbar-stable::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.app-scrollbar-stable::-webkit-scrollbar-thumb {
+  background: transparent;
+}
+
+.app-scrollbar-stable-thumb {
+  position: fixed;
+  z-index: 1020;
+  width: 4px;
+  border-radius: 999px;
+  background-color: var(--app-stable-scrollbar-thumb);
+  pointer-events: none;
 }
 
 .app-drag-region {
@@ -764,7 +795,13 @@ html[data-window-render-mode="acrylic"] .fluent-titlebar {
 }
 
 .app-dropdown-menu {
+  --app-dropdown-item-height: 32px;
+  --app-dropdown-max-visible-height: 343px;
+  --app-dropdown-scrollbar-gap: 10px;
   isolation: isolate;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
   border: 1px solid var(--app-menu-border);
   border-radius: var(--app-radius-lg);
   background: var(--app-menu-bg);
@@ -772,7 +809,8 @@ html[data-window-render-mode="acrylic"] .fluent-titlebar {
   backdrop-filter: blur(36px) saturate(1.35);
   box-shadow: var(--app-menu-shadow);
   min-width: var(--app-menu-width);
-  overflow: hidden;
+  max-height: min(var(--app-dropdown-max-visible-height), calc(100vh - 24px));
+  overflow-y: auto;
   padding: 6px;
 }
 
@@ -791,9 +829,16 @@ html[data-window-render-mode="acrylic"] .fluent-titlebar {
 }
 
 .app-dropdown-item {
+  flex: 0 0 var(--app-dropdown-item-height);
+  height: var(--app-dropdown-item-height);
+  min-height: var(--app-dropdown-item-height);
+  width: 100%;
   border-radius: var(--app-radius-md);
-  min-height: 32px;
   color: var(--app-menu-text);
+}
+
+.app-dropdown-menu-scrollable .app-dropdown-item {
+  width: calc(100% - var(--app-dropdown-scrollbar-gap));
 }
 
 .app-dropdown-item:hover,
@@ -925,6 +970,9 @@ html[data-theme="dark"] {
   --app-accent-hover: #d9d9d9;
   --app-selection: #4a4a4a;
   --app-hover: rgba(255, 255, 255, 0.08);
+  --app-stable-scrollbar-track: transparent;
+  --app-stable-scrollbar-thumb: rgba(255, 255, 255, 0.32);
+  --app-stable-scrollbar-thumb-hover: rgba(255, 255, 255, 0.46);
   --app-slider-track: #414141;
   --app-slider-track-hover: #525252;
   --app-slider-fill: #a3a3a3;

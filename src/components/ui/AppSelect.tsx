@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 
 import { cn } from "../../lib/cn";
 import { AnimatedLayer, AnimatedLayerPortal, useUiAnimationEnabled } from "./layerMotion";
+import { estimateDropdownHeight, useStableDropdownScrollbar } from "./useStableDropdownScrollbar";
 import { useFloatingDropdown } from "./useFloatingDropdown";
 
 export interface AppSelectOption<T extends string = string> {
@@ -36,8 +37,13 @@ export function AppSelect<T extends string = string>({
   const selectedOption = options.find((option) => option.value === value) ?? options[0];
   const isDisabled = disabled || options.length === 0;
   const { refs, floatingStyles } = useFloatingDropdown({
-    matchReferenceWidth: true
+    matchReferenceWidth: true,
+    maxHeight: estimateDropdownHeight(options.length)
   });
+  const { scrollThumb, updateScrollThumb } = useStableDropdownScrollbar(
+    menuRef,
+    open && !isDisabled
+  );
 
   useEffect(() => {
     if (!open) return;
@@ -64,6 +70,12 @@ export function AppSelect<T extends string = string>({
       window.removeEventListener("keydown", closeOnEscape);
     };
   }, [open]);
+
+  useEffect(() => {
+    if (!open || isDisabled) return;
+    const frameId = window.requestAnimationFrame(updateScrollThumb);
+    return () => window.cancelAnimationFrame(frameId);
+  }, [isDisabled, open, options.length, updateScrollThumb]);
 
   return (
     <div ref={containerRef} className={cn("no-drag relative", className)}>
@@ -115,10 +127,14 @@ export function AppSelect<T extends string = string>({
               menuRef.current = node;
               refs.setFloating(node);
             }}
-            className="app-dropdown-menu pointer-events-auto no-drag fixed z-[1010] rounded-lg py-2"
+            className={cn(
+              "app-dropdown-menu app-scrollbar-stable pointer-events-auto no-drag fixed z-[1010] rounded-lg py-2",
+              scrollThumb.visible && "app-dropdown-menu-scrollable"
+            )}
             style={floatingStyles}
             animateUi={shouldAnimateUi}
             preset="fade"
+            onScroll={updateScrollThumb}
           >
             <div className="app-dropdown-backdrop" />
             {options.map((option) => {
@@ -160,6 +176,17 @@ export function AppSelect<T extends string = string>({
               );
             })}
           </AnimatedLayer>
+        ) : null}
+        {scrollThumb.visible ? (
+          <div
+            className="app-scrollbar-stable-thumb pointer-events-none fixed z-[1020] no-drag"
+            aria-hidden="true"
+            style={{
+              height: scrollThumb.height,
+              left: scrollThumb.left,
+              top: scrollThumb.top
+            }}
+          />
         ) : null}
       </AnimatedLayerPortal>
     </div>

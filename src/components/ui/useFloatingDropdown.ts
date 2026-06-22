@@ -13,12 +13,14 @@ export function useFloatingDropdown({
   offset = 4,
   padding = 8,
   minHeight = 96,
+  maxHeight,
   placement = "bottom-start"
 }: {
   matchReferenceWidth?: boolean;
   offset?: number;
   padding?: number;
   minHeight?: number;
+  maxHeight?: number;
   placement?: Placement;
 }) {
   return useFloating({
@@ -33,8 +35,13 @@ export function useFloatingDropdown({
       size({
         padding,
         apply({ availableHeight, elements, rects }) {
-          const maxHeight = Math.max(minHeight, availableHeight);
-          elements.floating.style.maxHeight = `${maxHeight}px`;
+          const availableMaxHeight = Math.max(minHeight, availableHeight);
+          const resolvedMaxHeight =
+            maxHeight === undefined
+              ? availableMaxHeight
+              : Math.max(minHeight, Math.min(maxHeight, availableMaxHeight));
+
+          elements.floating.style.maxHeight = `${resolvedMaxHeight}px`;
           elements.floating.style.overflowY = "auto";
 
           if (matchReferenceWidth) {
