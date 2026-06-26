@@ -91,7 +91,17 @@ def select_score_matrix(outputs, expected_batch_size):
         raise RuntimeError("model did not return a tensor output")
     return best.reshape(expected_batch_size, -1) if best.size % expected_batch_size == 0 else best.reshape(1, -1)
 
-def load_image_batch(paths):
+def fit_inside(width, height, target_width, target_height):
+    if width <= 0 or height <= 0:
+        return (0, 0, target_width, target_height)
+    scale = min(target_width / float(width), target_height / float(height))
+    resized_width = max(1, int(round(width * scale)))
+    resized_height = max(1, int(round(height * scale)))
+    left = (target_width - resized_width) // 2
+    top = (target_height - resized_height) // 2
+    return (left, top, resized_width, resized_height)
+
+def load_image_batch(paths, layout="nchw"):
     from PIL import Image
 
     batch = []
@@ -109,11 +119,24 @@ def load_image_batch(paths):
         else:
             image = image.convert("RGB")
 
-        image = image.resize((448, 448), Image.Resampling.BICUBIC)
-        array = np.asarray(image, dtype=np.float32) / 255.0
-        array = (array - 0.5) / 0.5
-        batch.append(np.transpose(array, (2, 0, 1)))
+        if layout == "nhwc":
+            left, top, resized_width, resized_height = fit_inside(image.width, image.height, 448, 448)
+            resized = image.resize((resized_width, resized_height), Image.Resampling.BICUBIC)
+            canvas = Image.new("RGB", (448, 448), (255, 255, 255))
+            canvas.paste(resized, (left, top))
+            array = np.asarray(canvas, dtype=np.float32)
+            batch.append(array[:, :, ::-1])
+        else:
+            image = image.resize((448, 448), Image.Resampling.BICUBIC)
+            array = np.asarray(image, dtype=np.float32) / 255.0
+            array = (array - 0.5) / 0.5
+            batch.append(np.transpose(array, (2, 0, 1)))
     return np.stack(batch, axis=0).astype(np.float32, copy=False)
+
+def onnx_input_layout(shape):
+    if len(shape) == 4 and shape[-1] == 3:
+        return "nhwc"
+    return "nchw"
 
 if model_type == "onnx":
     import onnxruntime as ort
@@ -138,14 +161,12 @@ if model_type == "onnx":
     session = ort.InferenceSession(model_path, sess_options=session_options, providers=providers)
     input_meta = session.get_inputs()[0]
     shape = input_meta.shape
+    layout = onnx_input_layout(shape)
     all_scores = []
     provider = session.get_providers()[0]
     for start in range(0, len(input_paths), batch_size):
         chunk_paths = input_paths[start:start + batch_size]
-        input_nchw = load_image_batch(chunk_paths)
-        model_input = input_nchw
-        if len(shape) == 4 and shape[-1] == 3:
-            model_input = np.transpose(input_nchw, (0, 2, 3, 1))
+        model_input = load_image_batch(chunk_paths, layout)
         outputs = session.run(None, {input_meta.name: model_input})
         scores = select_score_matrix(outputs, len(chunk_paths)).tolist()
         if stream:
@@ -522,49 +543,159 @@ fn load_tag_definitions(model_dir: &Path) -> AppResult<Vec<TagDefinition>> {
     let csv_path = model_dir.join("selected_tags.csv");
     if !csv_path.is_file() {
         return Err(AppError::InvalidInput(
-            "WD14 模型文件夹中未找到 selected_tags.csv".to_owned(),
+            "WD14 model folder does not contain selected_tags.csv".to_owned(),
         ));
     }
 
     let content = fs::read_to_string(csv_path)?;
+    let mut lines = content.lines();
+    let header = lines
+        .next()
+        .map(parse_csv_line)
+        .unwrap_or_default()
+        .into_iter()
+        .map(|field| normalize_csv_header(&field))
+        .collect::<Vec<_>>();
+    let layout = TagCsvLayout::from_header(&header);
     let mut tags = Vec::new();
-    for line in content
-        .lines()
-        .skip(1)
-        .filter(|line| !line.trim().is_empty())
-    {
+
+    for line in lines.filter(|line| !line.trim().is_empty()) {
         let fields = parse_csv_line(line);
-        if fields.len() < 6 {
+        let Some(tag) = layout.read_tag(&fields, tags.len())? else {
             continue;
-        }
-        let index = fields[0].parse::<usize>().map_err(|error| {
-            AppError::InvalidInput(format!("selected_tags.csv 标签索引解析失败：{error}"))
-        })?;
-        let category = fields[3].parse::<i32>().map_err(|error| {
-            AppError::InvalidInput(format!("selected_tags.csv 标签分类解析失败：{error}"))
-        })?;
-        tags.push(TagDefinition {
-            index,
-            name: fields[2].clone(),
-            category,
-            intellectual_properties: parse_ip_tags(&fields[5]),
-        });
+        };
+        tags.push(tag);
     }
 
     tags.sort_by_key(|tag| tag.index);
-    for (expected, tag) in tags.iter().enumerate() {
-        if tag.index != expected {
+    if !has_contiguous_indexes(&tags) {
+        if !layout.uses_explicit_model_index() {
             return Err(AppError::InvalidInput(
-                "selected_tags.csv 标签索引必须从 0 连续排列".to_owned(),
+                "selected_tags.csv tag indexes must be contiguous from 0".to_owned(),
             ));
+        }
+        for (index, tag) in tags.iter_mut().enumerate() {
+            tag.index = index;
         }
     }
     if tags.is_empty() {
         return Err(AppError::InvalidInput(
-            "selected_tags.csv 中没有可用标签".to_owned(),
+            "selected_tags.csv did not contain usable tag definitions".to_owned(),
         ));
     }
     Ok(tags)
+}
+
+fn has_contiguous_indexes(tags: &[TagDefinition]) -> bool {
+    tags.iter()
+        .enumerate()
+        .all(|(expected, tag)| tag.index == expected)
+}
+
+fn normalize_csv_header(field: &str) -> String {
+    field.trim().trim_start_matches('\u{feff}').to_ascii_lowercase()
+}
+
+struct TagCsvLayout {
+    model_index_column: Option<usize>,
+    name_column: usize,
+    category_column: usize,
+    intellectual_properties_column: Option<usize>,
+}
+
+impl TagCsvLayout {
+    fn from_header(header: &[String]) -> Self {
+        let is_classic_wd14 = header.get(0).is_some_and(|field| field == "tag_id")
+            && header.get(1).is_some_and(|field| field == "name")
+            && header.get(2).is_some_and(|field| field == "category");
+        if is_classic_wd14 {
+            return Self {
+                model_index_column: None,
+                name_column: 1,
+                category_column: 2,
+                intellectual_properties_column: None,
+            };
+        }
+
+        Self {
+            model_index_column: find_header_column(
+                header,
+                &["id", "index", "tag_index", "model_index", "output_index"],
+            )
+            .or(Some(0)),
+            name_column: find_header_column(header, &["name", "tag", "tag_name"])
+                .unwrap_or(if header.len() >= 3 { 2 } else { 1 }),
+            category_column: find_header_column(header, &["category", "tag_category"])
+                .unwrap_or(if header.len() >= 4 { 3 } else { 2 }),
+            intellectual_properties_column: find_header_column(
+                header,
+                &[
+                    "intellectual_properties",
+                    "intellectual_property",
+                    "copyrights",
+                    "copyright_tags",
+                    "ips",
+                ],
+            )
+            .or(if header.len() >= 6 { Some(5) } else { None }),
+        }
+    }
+
+    fn uses_explicit_model_index(&self) -> bool {
+        self.model_index_column.is_some()
+    }
+
+    fn read_tag(
+        &self,
+        fields: &[String],
+        ordinal_index: usize,
+    ) -> AppResult<Option<TagDefinition>> {
+        let required_column = self.name_column.max(self.category_column);
+        if fields.len() <= required_column {
+            return Ok(None);
+        }
+
+        let index = if let Some(column) = self.model_index_column {
+            fields
+                .get(column)
+                .ok_or_else(|| {
+                    AppError::InvalidInput("selected_tags.csv tag index column is missing".to_owned())
+                })?
+                .parse::<usize>()
+                .map_err(|error| {
+                    AppError::InvalidInput(format!(
+                        "selected_tags.csv tag index parse failed: {error}"
+                    ))
+                })?
+        } else {
+            ordinal_index
+        };
+        let category = fields[self.category_column]
+            .parse::<i32>()
+            .map_err(|error| {
+                AppError::InvalidInput(format!(
+                    "selected_tags.csv tag category parse failed: {error}"
+                ))
+            })?;
+        let intellectual_properties = self
+            .intellectual_properties_column
+            .and_then(|column| fields.get(column))
+            .map(|raw| parse_ip_tags(raw))
+            .unwrap_or_default();
+
+        Ok(Some(TagDefinition {
+            index,
+            name: fields[self.name_column].clone(),
+            category,
+            intellectual_properties,
+        }))
+    }
+}
+
+fn find_header_column(header: &[String], names: &[&str]) -> Option<usize> {
+    header
+        .iter()
+        .position(|field| names.iter().any(|name| field.eq_ignore_ascii_case(name)))
 }
 
 fn build_prompt(
@@ -596,10 +727,13 @@ fn build_prompt(
     for tag in tags {
         let score = probabilities[tag.index];
         if tag.category == 0 {
-            if score >= settings.general_threshold as f32 {
+            if score >= settings.general_threshold as f32 && !tag.name.trim().is_empty() {
                 general.push((format_tag(&tag.name, settings), score));
             }
-        } else if tag.category == 4 && score >= settings.character_threshold as f32 {
+        } else if tag.category == 4
+            && score >= settings.character_threshold as f32
+            && !tag.name.trim().is_empty()
+        {
             character.push((format_tag(&tag.name, settings), score));
             for ip in &tag.intellectual_properties {
                 upsert_max_score(&mut copyright, format_tag(ip, settings), score);
