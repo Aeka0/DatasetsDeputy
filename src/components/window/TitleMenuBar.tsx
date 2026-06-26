@@ -100,6 +100,12 @@ interface MenuSeparator {
 
 type MenuEntry = MenuAction | MenuSubmenu | MenuSeparator;
 
+interface OpenSubmenuState {
+  label: string;
+  left: number;
+  top: number;
+}
+
 type RemoteRequestMode = "queue" | "concurrent";
 type ScheduledRemoteBackend =
   | "gemini"
@@ -198,6 +204,30 @@ function getAppOverlayRoot() {
 
 function formatMenuActionLabel(action: MenuAction) {
   return action.opensDialog ? formatDialogMenuLabel(action.label) : action.label;
+}
+
+function estimateSubmenuHeight(entryCount: number) {
+  const itemHeight = 33;
+  const verticalPadding = 12;
+  return entryCount * itemHeight + verticalPadding;
+}
+
+function clampSubmenuPosition(trigger: HTMLElement, entryCount: number) {
+  const rect = trigger.getBoundingClientRect();
+  const width = 188;
+  const height = estimateSubmenuHeight(entryCount);
+  const gap = 6;
+  const padding = 8;
+  const rightSideLeft = rect.right + gap;
+  const left =
+    rightSideLeft + width > window.innerWidth - padding
+      ? rect.left - width - gap
+      : rightSideLeft;
+
+  return {
+    left: Math.max(padding, left),
+    top: Math.max(padding, Math.min(rect.top - 6, window.innerHeight - height - padding))
+  };
 }
 
 function isAnnotatableProject(project: DatasetProject | undefined) {
@@ -995,13 +1025,14 @@ export function TitleMenuBar({
     }))
   );
   const [openMenu, setOpenMenu] = useState<MenuKey>();
-  const [activeSubmenu, setActiveSubmenu] = useState<string>();
+  const [activeSubmenu, setActiveSubmenu] = useState<OpenSubmenuState>();
   const [dialog, setDialog] = useState<DialogKey | undefined>("about");
   const [isAnnotationRunning, setIsAnnotationRunning] = useState(false);
   const [isBatchActionRunning, setIsBatchActionRunning] = useState(false);
   const [isSavingChanges, setIsSavingChanges] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const submenuRef = useRef<HTMLDivElement>(null);
   const activeFloatingMenuRef = useRef<MenuKey | null>(null);
   const shouldAnimateUi = useUiAnimationEnabled();
   const { refs, floatingStyles } = useFloatingDropdown({});
@@ -1051,7 +1082,8 @@ export function TitleMenuBar({
       if (
         event.target instanceof Node &&
         (containerRef.current?.contains(event.target) ||
-          dropdownRef.current?.contains(event.target))
+          dropdownRef.current?.contains(event.target) ||
+          submenuRef.current?.contains(event.target))
       ) {
         return;
       }
@@ -2195,6 +2227,20 @@ export function TitleMenuBar({
     setOpenMenu(menu);
   };
 
+  const openSubmenuForEntry = (entry: MenuSubmenu, trigger: HTMLElement) => {
+    setActiveSubmenu({
+      label: entry.label,
+      ...clampSubmenuPosition(trigger, entry.entries.length)
+    });
+  };
+
+  const activeSubmenuEntry = openMenu && activeSubmenu
+    ? menus[openMenu].find(
+        (entry): entry is MenuSubmenu =>
+          entry.type === "submenu" && entry.label === activeSubmenu.label
+      )
+    : undefined;
+
   const startAnnotation = async (options: {
     mode: AnnotationExecutionMode;
     scope: AnnotationExecutionScope;
@@ -2536,48 +2582,26 @@ export function TitleMenuBar({
                 <div
                   key={entry.label}
                   className="relative"
-                  onMouseEnter={() => setActiveSubmenu(entry.label)}
+                  onMouseEnter={(event) => openSubmenuForEntry(entry, event.currentTarget)}
                 >
                   <button
                     type="button"
                     className={cn(
                       "app-dropdown-item flex h-9 w-full items-center gap-2 px-3.5 text-left text-[12px] font-medium leading-4 transition",
-                      activeSubmenu === entry.label && "app-dropdown-item-selected"
+                      activeSubmenu?.label === entry.label && "app-dropdown-item-selected"
                     )}
-                    onClick={() =>
-                      setActiveSubmenu((current) =>
-                        current === entry.label ? undefined : entry.label
-                      )
-                    }
+                    aria-haspopup="menu"
+                    aria-expanded={activeSubmenu?.label === entry.label}
+                    onFocus={(event) => openSubmenuForEntry(entry, event.currentTarget)}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      openSubmenuForEntry(entry, event.currentTarget);
+                    }}
                   >
                     <span className="flex w-4 shrink-0 justify-center" />
                     <span className="min-w-0 flex-1 truncate">{entry.label}</span>
                     <ChevronRight size={14} className="shrink-0 text-neutral-400" />
                   </button>
-                  {activeSubmenu === entry.label ? (
-                    <div className="app-dropdown-menu no-drag absolute left-[calc(100%-4px)] top-0 z-[60]">
-                      <div className="app-dropdown-backdrop" />
-                      {entry.entries.map((subEntry) => (
-                        <button
-                          key={subEntry.label}
-                          type="button"
-                          className={cn(
-                            "app-dropdown-item flex h-9 w-full items-center gap-2 px-3.5 text-left text-[12px] font-medium leading-4 transition",
-                            subEntry.checked && "app-dropdown-item-selected"
-                          )}
-                          disabled={subEntry.disabled}
-                          onClick={() => selectAction(subEntry)}
-                        >
-                          <span className="flex w-4 shrink-0 justify-center">
-                            {subEntry.checked ? <Check size={14} /> : null}
-                          </span>
-                          <span className="min-w-0 flex-1 truncate">
-                            {formatMenuActionLabel(subEntry)}
-                          </span>
-                        </button>
-                      ))}
-                    </div>
-                  ) : null}
                 </div>
               ) : (
                 <button
@@ -2597,6 +2621,37 @@ export function TitleMenuBar({
                 </button>
               )
             )}
+          </AnimatedLayer>
+        ) : null}
+        {activeSubmenuEntry && activeSubmenu ? (
+          <AnimatedLayer
+            key={`title-submenu:${activeSubmenu.label}`}
+            ref={submenuRef}
+            className="app-dropdown-menu no-drag pointer-events-auto fixed z-10"
+            style={{ left: activeSubmenu.left, top: activeSubmenu.top }}
+            animateUi={shouldAnimateUi}
+            preset="menu"
+          >
+            <div className="app-dropdown-backdrop" />
+            {activeSubmenuEntry.entries.map((subEntry) => (
+              <button
+                key={subEntry.label}
+                type="button"
+                className={cn(
+                  "app-dropdown-item flex h-9 w-full items-center gap-2 px-3.5 text-left text-[12px] font-medium leading-4 transition",
+                  subEntry.checked && "app-dropdown-item-selected"
+                )}
+                disabled={subEntry.disabled}
+                onClick={() => selectAction(subEntry)}
+              >
+                <span className="flex w-4 shrink-0 justify-center">
+                  {subEntry.checked ? <Check size={14} /> : null}
+                </span>
+                <span className="min-w-0 flex-1 truncate">
+                  {formatMenuActionLabel(subEntry)}
+                </span>
+              </button>
+            ))}
           </AnimatedLayer>
         ) : null}
       </AnimatedLayerPortal>
