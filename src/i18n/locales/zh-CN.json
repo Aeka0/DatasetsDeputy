@@ -15,6 +15,7 @@
   "actions": {
     "back": "返回",
     "cancel": "取消",
+    "close": "关闭",
     "clear": "清空",
     "create": "创建",
     "export": "导出",
@@ -69,17 +70,49 @@
     "formatValidator": "格式校验",
     "trainingCacheCleaner": "移除训练器缓存",
     "duplicateSimilarity": "重复/相似检测",
-    "aboutBody": "数据集图片预览、标注维度管理与导出工具。",
-    "versionLabel": "版本",
-    "version": "Beta 2",
-    "authorLabel": "作者",
-    "author": "Aeka",
-    "projectLabel": "项目",
-    "project": "github.com/Aeka0/DatasetsDeputy",
-    "licenseLabel": "协议",
-    "license": "AGPL v3",
-    "developmentNotice": "开发版本：功能尚不完整，且可能出现错误。",
     "close": "关闭"
+  },
+  "about": {
+    "tabsLabel": "关于页面",
+    "tabs": {
+      "version": "版本",
+      "statement": "声明",
+      "credits": "名单"
+    },
+    "versionTitle": "版本信息",
+    "statementTitle": "使用与归属声明",
+    "statement": {
+      "scope": "Datasets Deputy 是数据集浏览、标注、转换与导出工具，不附带模型权重、私有数据集或第三方服务商凭据。",
+      "ownership": "本工具创建的数据集文件、标注、指令、导出结果与生成记录归对应使用者或项目所有；外部服务商、模型与数据集仍遵循其各自许可与使用条款。",
+      "local": "应用以本地文件和本地项目状态为核心。只有在你选择已配置的服务商或后端时，远程标注或转换请求才会被发送。",
+      "development": "本工具正在快速开发中，部分功能可能尚不完整，或未能在不同环境下充分测试；如遭遇 Bug，可向作者提供反馈。",
+      "responsibility": "用户需要自行确认数据集来源、模型/服务商授权和导出用途的合规性；本工具只负责降低数据集整理与标注管理成本。"
+    },
+    "version": "版本",
+    "repository": "仓库",
+    "creditsIntro": "这里记录直接支撑当前软件能力的人、项目与生态。",
+    "credits": {
+      "aeka": {
+        "role": "作者",
+        "description": "Datasets Deputy 的设计、实现与维护。"
+      },
+      "evoMap": {
+        "role": "支持者",
+        "description": "算力支持。来自 evomap.ai。"
+      },
+      "wd14Tagger": {
+        "role": "标注后端",
+        "description": "支持本地 WD14 风格图片标签推理流程。"
+      },
+      "clipOnnx": {
+        "role": "本地推理",
+        "description": "支持重复/相似图片检测与本地神经网络运行时选项。"
+      },
+      "remoteProviders": {
+        "role": "远程标注",
+        "description": "为标注、转换与重写流程提供可选 LLM 和视觉端点。"
+      }
+    }
   },
   "history": {
     "labels": {

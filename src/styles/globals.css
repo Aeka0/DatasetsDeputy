@@ -773,6 +773,67 @@ html[data-window-render-mode="acrylic"] .fluent-titlebar {
   color: #1c1c1c;
 }
 
+.app-dialog-panel,
+.app-section {
+  border-color: var(--app-border);
+  background: var(--app-bg-elevated);
+  color: var(--app-text);
+}
+
+.app-dialog-title,
+.app-section-header,
+.app-field-label {
+  color: var(--app-text);
+}
+
+.app-section-header,
+.app-form-row {
+  border-color: var(--app-border);
+}
+
+.app-field-note {
+  color: var(--app-text-muted);
+}
+
+.app-button-primary {
+  border-color: var(--app-text);
+  background: var(--app-text);
+  color: var(--app-bg-elevated);
+}
+
+.app-button-primary:hover {
+  background: color-mix(in srgb, var(--app-text) 88%, var(--app-bg-elevated));
+}
+
+.app-button-secondary {
+  border-color: var(--app-border);
+  background: var(--app-bg-elevated);
+  color: var(--app-text);
+}
+
+.app-button-secondary:hover {
+  background: var(--app-bg-muted);
+}
+
+.app-button-ghost {
+  color: var(--app-text-muted);
+}
+
+.app-button-ghost:hover {
+  background: var(--app-hover);
+  color: var(--app-text);
+}
+
+.app-button-danger {
+  border-color: rgba(225, 29, 72, 0.28);
+  background: var(--app-bg-elevated);
+  color: rgb(190, 18, 60);
+}
+
+.app-button-danger:hover {
+  background: rgba(225, 29, 72, 0.08);
+}
+
 .app-button-icon {
   border-color: transparent;
   background: var(--app-icon-button-bg);
@@ -1399,6 +1460,10 @@ html[data-theme="dark"] .app-dropdown-item:disabled:hover {
 
 html[data-theme="dark"] .table-column-resizer::after {
   background: rgba(255, 255, 255, 0.16);
+}
+
+html[data-theme="dark"] .app-button-danger {
+  color: rgb(251, 113, 133);
 }
 
 html[data-theme="dark"] {

@@ -13,10 +13,6 @@ function setDocumentMaximizedState(isMaximized: boolean) {
   document.documentElement.dataset.windowMaximized = isMaximized ? "true" : "false";
 }
 
-interface WindowControlsProps {
-  onClose: () => void;
-}
-
 interface WindowBounds {
   position: PhysicalPosition;
   size: PhysicalSize;
@@ -27,7 +23,7 @@ function updateMaximizedState(setIsMaximized: (isMaximized: boolean) => void, va
   setDocumentMaximizedState(value);
 }
 
-export function WindowControls({ onClose }: WindowControlsProps) {
+export function WindowControls({ onClose }: { onClose?: () => void }) {
   const [isMaximized, setIsMaximized] = useState(false);
   const fakeMaximizedRef = useRef(false);
   const applyingWindowLayoutRef = useRef(false);
@@ -35,8 +31,8 @@ export function WindowControls({ onClose }: WindowControlsProps) {
 
   useEffect(() => {
     if (!hasTauriRuntime()) return;
-    const currentWindow = getCurrentWindow();
 
+    const currentWindow = getCurrentWindow();
     const refreshMaximizedState = async () => {
       if (applyingWindowLayoutRef.current) return;
 
@@ -70,7 +66,6 @@ export function WindowControls({ onClose }: WindowControlsProps) {
     };
 
     void refreshMaximizedState();
-
     const unlistenResizePromise = currentWindow.onResized(() => void refreshMaximizedState());
     const unlistenMovePromise = currentWindow.onMoved(() => void refreshMaximizedState());
 
@@ -79,6 +74,10 @@ export function WindowControls({ onClose }: WindowControlsProps) {
       unlistenMovePromise.then((unlisten) => unlisten()).catch(console.error);
     };
   }, []);
+
+  const minimize = () => {
+    if (hasTauriRuntime()) void getCurrentWindow().minimize();
+  };
 
   const toggleFakeMaximize = async () => {
     const currentWindow = getCurrentWindow();
@@ -120,34 +119,36 @@ export function WindowControls({ onClose }: WindowControlsProps) {
     }
   };
 
-  const withWindow = (action: "minimize" | "toggleMaximize") => {
-    if (!hasTauriRuntime()) {
+  const toggleMaximize = () => {
+    if (!hasTauriRuntime()) return;
+    void toggleFakeMaximize();
+  };
+
+  const close = () => {
+    if (onClose) {
+      onClose();
       return;
     }
-
-    const currentWindow = getCurrentWindow();
-    if (action === "minimize") {
-      void currentWindow.minimize();
-    } else {
-      void toggleFakeMaximize();
-    }
+    if (hasTauriRuntime()) void getCurrentWindow().close();
   };
 
   return (
-    <div className="no-drag flex h-10 overflow-hidden rounded-bl-xl text-neutral-700">
+    <div className="no-drag flex h-10 items-stretch">
       <button
-        aria-label="Minimize"
         type="button"
-        className="fluent-control-button flex h-10 w-12 items-center justify-center"
-        onClick={() => withWindow("minimize")}
+        className="fluent-control-button flex w-11 items-center justify-center"
+        aria-label="Minimize"
+        title="Minimize"
+        onClick={minimize}
       >
-        <Minus size={15} />
+        <Minus size={14} />
       </button>
       <button
-        aria-label={isMaximized ? "Restore" : "Maximize"}
         type="button"
-        className="fluent-control-button flex h-10 w-12 items-center justify-center"
-        onClick={() => withWindow("toggleMaximize")}
+        className="fluent-control-button flex w-11 items-center justify-center"
+        aria-label={isMaximized ? "Restore" : "Maximize"}
+        title={isMaximized ? "Restore" : "Maximize"}
+        onClick={toggleMaximize}
       >
         {isMaximized ? (
           <Copy size={12} className="rotate-180 scale-x-[-1]" />
@@ -156,12 +157,13 @@ export function WindowControls({ onClose }: WindowControlsProps) {
         )}
       </button>
       <button
-        aria-label="Close"
         type="button"
-        className="fluent-control-button close flex h-10 w-12 items-center justify-center"
-        onClick={onClose}
+        className="fluent-control-button close flex w-11 items-center justify-center"
+        aria-label="Close"
+        title="Close"
+        onClick={close}
       >
-        <X size={16} />
+        <X size={15} />
       </button>
     </div>
   );

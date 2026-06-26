@@ -37,7 +37,7 @@ import {
 import { formatDialogMenuLabel } from "../../lib/menuLabels";
 import { findProject, formatProjectPath, getProjectDisplayName } from "../../lib/projects";
 import { getUnsavedTableDraftState } from "../../lib/tableDrafts";
-import { hasTauriRuntime, invokeCommand, openExternalUrl } from "../../lib/tauri";
+import { hasTauriRuntime, invokeCommand } from "../../lib/tauri";
 import { useDatasetStore, type ViewFilterMode } from "../../stores/datasetStore";
 import type { AnnotationChange, DatasetImage, DatasetProject } from "../../types";
 import {
@@ -63,6 +63,7 @@ import { DialogTitleWithDataset } from "../ui/DialogTitleWithDataset";
 import { AnimatedLayer, AnimatedLayerPortal, useUiAnimationEnabled } from "../ui/layerMotion";
 import { Switch } from "../ui/Switch";
 import { useFloatingDropdown } from "../ui/useFloatingDropdown";
+import { AboutDialog } from "./AboutDialog";
 
 type MenuKey = "file" | "edit" | "annotation" | "view" | "tools" | "settings" | "about";
 type DialogKey =
@@ -2713,65 +2714,7 @@ export function TitleMenuBar({
         <TrainingCacheCleanerDialog onClose={() => setDialog(undefined)} />
       ) : null}
 
-      <AnimatedPortal open={dialog === "about"}>
-        {dialog === "about" ? (
-        <div className="no-drag fixed inset-0 z-50 flex items-center justify-center bg-neutral-950/16 px-5">
-          <div className="w-full max-w-[460px] overflow-hidden rounded-lg border border-neutral-200 bg-white shadow-[0_24px_72px_rgba(23,23,23,0.18)]">
-            <header className="border-b border-neutral-200 px-5 py-4">
-              <h2 className="m-0 text-[16px] font-semibold text-neutral-950">
-                Datasets Deputy
-              </h2>
-              <p className="mt-1 text-[13px] leading-5 text-neutral-600">
-                {t("menu.aboutBody")}
-              </p>
-            </header>
-
-            <div className="px-5 py-4">
-              <dl className="m-0 grid grid-cols-[72px_minmax(0,1fr)] gap-x-4 gap-y-3 text-[13px]">
-                <dt className="text-neutral-500">{t("menu.versionLabel")}</dt>
-                <dd className="m-0 font-medium text-neutral-900">{t("menu.version")}</dd>
-
-                <dt className="text-neutral-500">{t("menu.authorLabel")}</dt>
-                <dd className="m-0 text-neutral-900">{t("menu.author")}</dd>
-
-                <dt className="text-neutral-500">{t("menu.projectLabel")}</dt>
-                <dd className="m-0 min-w-0">
-                  <a
-                    className="break-all text-neutral-900 underline decoration-neutral-300 underline-offset-2 transition hover:decoration-neutral-700"
-                    href="https://github.com/Aeka0/DatasetsDeputy"
-                    target="_blank"
-                    rel="noreferrer"
-                    onClick={(event) => {
-                      event.preventDefault();
-                      void openExternalUrl("https://github.com/Aeka0/DatasetsDeputy");
-                    }}
-                  >
-                    {t("menu.project")}
-                  </a>
-                </dd>
-
-                <dt className="text-neutral-500">{t("menu.licenseLabel")}</dt>
-                <dd className="m-0 text-neutral-900">{t("menu.license")}</dd>
-              </dl>
-
-              <p className="mt-4 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] leading-5 text-amber-900">
-                {t("menu.developmentNotice")}
-              </p>
-            </div>
-
-            <footer className="flex justify-end border-t border-neutral-200 px-5 py-4">
-              <button
-                type="button"
-                className="h-8 rounded-md bg-neutral-900 px-3 text-[13px] font-medium text-white transition hover:bg-neutral-800"
-                onClick={() => setDialog(undefined)}
-              >
-                {t("menu.close")}
-              </button>
-            </footer>
-          </div>
-        </div>
-        ) : null}
-      </AnimatedPortal>
+      <AboutDialog open={dialog === "about"} onClose={() => setDialog(undefined)} />
     </>
   );
 }

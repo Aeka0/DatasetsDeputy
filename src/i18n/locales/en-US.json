@@ -15,6 +15,7 @@
   "actions": {
     "back": "Back",
     "cancel": "Cancel",
+    "close": "Close",
     "clear": "Clear",
     "create": "Create",
     "export": "Export",
@@ -69,17 +70,49 @@
     "formatValidator": "Format validator",
     "trainingCacheCleaner": "Remove trainer cache",
     "duplicateSimilarity": "Duplicate/similar images",
-    "aboutBody": "Dataset image preview, annotation dimension management, and export tools.",
-    "versionLabel": "Version",
-    "version": "Beta 2",
-    "authorLabel": "Author",
-    "author": "Aeka",
-    "projectLabel": "Project",
-    "project": "github.com/Aeka0/DatasetsDeputy",
-    "licenseLabel": "License",
-    "license": "AGPL v3",
-    "developmentNotice": "Development build: features are incomplete and errors may occur.",
     "close": "Close"
+  },
+  "about": {
+    "tabsLabel": "About pages",
+    "tabs": {
+      "version": "Version",
+      "statement": "Statement",
+      "credits": "Credits"
+    },
+    "versionTitle": "Version information",
+    "statementTitle": "Usage and ownership statement",
+    "statement": {
+      "scope": "Datasets Deputy is a dataset browsing, annotation, conversion, and export tool. It does not ship model weights, private datasets, or third-party provider credentials.",
+      "ownership": "Dataset files, annotations, instructions, exports, and generated records created with this tool belong to the relevant user or project. External providers, models, and datasets remain governed by their own licenses and terms.",
+      "local": "The app is designed around local files and local project state. Remote annotation or conversion requests are sent only when you choose a configured provider or backend.",
+      "development": "This tool is under rapid development; some features may be incomplete or untested across environments. If you encounter a bug, you can provide feedback to the author.",
+      "responsibility": "Users are responsible for confirming dataset sources, model/provider permissions, and export usage compliance. The tool only reduces dataset organization and annotation management cost."
+    },
+    "version": "Version",
+    "repository": "Repository",
+    "creditsIntro": "This page records the people, projects, and ecosystems that directly support the current app.",
+    "credits": {
+      "aeka": {
+        "role": "Author",
+        "description": "Design, implementation, and maintenance of Datasets Deputy."
+      },
+      "evoMap": {
+        "role": "Supporter",
+        "description": "Compute support from evomap.ai."
+      },
+      "wd14Tagger": {
+        "role": "Annotation backend",
+        "description": "Supports local WD14-style image tag inference workflows."
+      },
+      "clipOnnx": {
+        "role": "Local inference",
+        "description": "Supports duplicate/similar image detection and local neural inference runtime options."
+      },
+      "remoteProviders": {
+        "role": "Remote annotation",
+        "description": "Provide optional LLM and vision endpoints for annotation, conversion, and rewrite workflows."
+      }
+    }
   },
   "history": {
     "labels": {

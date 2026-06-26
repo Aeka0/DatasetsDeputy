@@ -1,30 +1,38 @@
-import type { ButtonHTMLAttributes } from "react";
+import type { ButtonHTMLAttributes, ReactNode } from "react";
 
 import { cn } from "../../lib/cn";
 
 interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
-  variant?: "primary" | "secondary" | "ghost" | "danger" | "icon";
+  variant?: "primary" | "secondary" | "ghost" | "danger" | "subtle" | "icon";
+  icon?: ReactNode;
 }
 
-export function Button({ className, variant = "primary", ...props }: ButtonProps) {
+export function Button({
+  className,
+  variant = "primary",
+  icon,
+  children,
+  ...props
+}: ButtonProps) {
   return (
     <button
       className={cn(
-        "no-drag inline-flex h-8 items-center justify-center gap-2 rounded-md px-3 text-[13px] font-medium transition",
+        "no-drag inline-flex h-8 shrink-0 items-center justify-center gap-2 rounded-md px-3 text-[13px] font-medium transition",
         "disabled:cursor-not-allowed disabled:opacity-45",
-        variant === "primary" &&
-          "border border-neutral-900 bg-neutral-900 text-white hover:bg-neutral-800",
-        variant === "secondary" &&
-          "border border-neutral-200 bg-white text-neutral-800 hover:bg-neutral-50",
-        variant === "ghost" &&
-          "border border-transparent bg-transparent text-neutral-700 hover:bg-neutral-900/[0.06]",
-        variant === "danger" &&
-          "border border-rose-200 bg-white text-rose-700 hover:bg-rose-50",
+        variant === "primary" && "app-button-primary border font-medium",
+        variant === "secondary" && "app-button-secondary border",
+        variant === "ghost" && "app-button-ghost border border-transparent bg-transparent",
+        variant === "danger" && "app-button-danger border",
+        variant === "subtle" &&
+          "border border-transparent bg-transparent text-neutral-700 subtle-highlight-button",
         variant === "icon" &&
-          "app-button-icon h-8 w-8 border border-transparent bg-transparent p-0",
+          "app-button-icon shrink-0 border border-transparent bg-transparent !px-0",
         className
       )}
       {...props}
-    />
+    >
+      {icon}
+      {children}
+    </button>
   );
 }
