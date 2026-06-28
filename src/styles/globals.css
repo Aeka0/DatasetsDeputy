@@ -873,6 +873,11 @@ html[data-window-render-mode="acrylic"] .fluent-titlebar {
   color: var(--app-text-muted);
 }
 
+.hierarchy-disclosure-button:not(:disabled):hover,
+.hierarchy-disclosure-button:not(:disabled):active {
+  background: transparent;
+}
+
 .hierarchy-disclosure-icon {
   transition: color var(--app-motion-duration-fast) var(--app-motion-ease);
 }
