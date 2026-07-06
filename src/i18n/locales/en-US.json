@@ -280,7 +280,7 @@
       "title": "Remove trainer cache",
       "selectFolder": "Select folder",
       "noFolderSelected": "Please select a dataset or training output folder",
-      "hint": "Select a folder to scan for .npz files, _latent_cache folders, and .aitk_size.json files.",
+      "hint": "Select a folder to scan for .npz files, _latent_cache folders, .aitk_size.json files, and Musubi cache .safetensors files.",
       "scanning": "Scanning trainer cache...",
       "noItems": "No trainer cache files were found in this folder.",
       "foundItems": "Found {{count}} cache item(s), {{size}} total",

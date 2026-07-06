@@ -27,6 +27,7 @@ mod tag_sheet;
 mod textgen;
 mod thumbnail;
 mod thumbnail_settings;
+mod training_cache;
 mod wd14_tagger;
 #[cfg(target_os = "windows")]
 mod window_region;

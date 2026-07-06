@@ -280,7 +280,7 @@
       "title": "移除训练器缓存",
       "selectFolder": "选择文件夹",
       "noFolderSelected": "请选择一个数据集或训练输出文件夹",
-      "hint": "选择文件夹后会自动扫描 .npz 文件、_latent_cache 文件夹和 .aitk_size.json 文件。",
+      "hint": "选择文件夹后会自动扫描 .npz 文件、_latent_cache 文件夹、.aitk_size.json 文件和 Musubi 缓存 .safetensors 文件。",
       "scanning": "正在扫描训练器缓存…",
       "noItems": "该文件夹下未发现训练器缓存文件。",
       "foundItems": "发现 {{count}} 个缓存项，共 {{size}}",
