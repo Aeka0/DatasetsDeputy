@@ -255,8 +255,8 @@ function AboutTabButton({
     <button
       type="button"
       className={cn(
-        "sidebar-nav-button flex h-9 w-full items-center gap-2 rounded px-3 text-left text-[13px] transition",
-        active && "sidebar-nav-button-active"
+        "sidebar-item sidebar-nav-button flex h-9 w-full items-center gap-2 rounded px-3 text-left text-[13px]",
+        active && "sidebar-item-selected sidebar-nav-button-active"
       )}
       aria-current={active ? "page" : undefined}
       onClick={onClick}

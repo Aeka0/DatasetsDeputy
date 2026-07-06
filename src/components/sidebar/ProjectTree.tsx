@@ -285,8 +285,8 @@ function ProjectNode({
           isImportingNode
             ? "cursor-not-allowed text-black/36"
             : isSelected
-            ? "project-tree-row-selected bg-white/62 text-black"
-            : "text-black hover:bg-neutral-900/[0.045]"
+            ? "sidebar-item sidebar-item-selected project-tree-row-selected"
+            : "sidebar-item"
         )}
         style={{ paddingLeft: `${indentation}px` }}
         onPointerDown={

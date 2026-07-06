@@ -1886,8 +1886,8 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
                   <div key={section.key}>
                     <div
                       className={cn(
-                        "sidebar-nav-button flex h-9 w-full items-center gap-1 rounded px-1.5 text-left text-[13px] transition",
-                        isActive && "sidebar-nav-button-active"
+                        "sidebar-item sidebar-nav-button flex h-9 w-full items-center gap-1 rounded px-1.5 text-left text-[13px]",
+                        isActive && "sidebar-item-selected sidebar-nav-button-active"
                       )}
                     >
                       {hasChildren ? (
@@ -1938,8 +1938,8 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
                                   key={item.key}
                                   type="button"
                                   className={cn(
-                                    "sidebar-nav-button flex h-8 w-full items-center gap-2 rounded px-3 text-left text-[12px] transition",
-                                    childActive && "sidebar-nav-button-active"
+                                    "sidebar-item sidebar-nav-button flex h-8 w-full items-center gap-2 rounded px-3 text-left text-[12px]",
+                                    childActive && "sidebar-item-selected sidebar-nav-button-active"
                                   )}
                                   aria-current={childActive ? "page" : undefined}
                                   onClick={() => {

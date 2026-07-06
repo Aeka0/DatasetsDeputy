@@ -16,6 +16,15 @@
   --app-accent-hover: #303030;
   --app-selection: #ebebeb;
   --app-hover: rgba(28, 28, 28, 0.06);
+  --app-sidebar-item-text: rgba(28, 28, 28, 0.68);
+  --app-sidebar-item-hover-bg: rgba(28, 28, 28, 0.055);
+  --app-sidebar-item-hover-text: rgba(28, 28, 28, 0.9);
+  --app-sidebar-item-active-bg: rgba(28, 28, 28, 0.075);
+  --app-sidebar-item-active-text: #1c1c1c;
+  --app-sidebar-tree-item-text: #000000;
+  --app-sidebar-tree-item-hover-bg: rgba(28, 28, 28, 0.045);
+  --app-sidebar-tree-item-active-bg: rgba(255, 255, 255, 0.62);
+  --app-sidebar-tree-item-active-text: #000000;
   --app-slider-track: #d7d7d7;
   --app-slider-track-hover: #c7c7c7;
   --app-slider-fill: #737373;
@@ -757,20 +766,44 @@ html[data-window-render-mode="acrylic"] .fluent-titlebar {
   transition: transform 180ms var(--app-motion-ease);
 }
 
+.sidebar-item,
 .sidebar-nav-button {
   border: 0;
   background: transparent;
-  color: rgba(28, 28, 28, 0.68);
+  color: var(--app-sidebar-item-text);
 }
 
+.sidebar-item {
+  transition:
+    background-color var(--app-motion-duration-fast) var(--app-motion-ease),
+    color var(--app-motion-duration-fast) var(--app-motion-ease);
+}
+
+.sidebar-item:not(.sidebar-item-disabled):not(.sidebar-item-selected):hover,
 .sidebar-nav-button:hover {
-  background: rgba(28, 28, 28, 0.055);
-  color: rgba(28, 28, 28, 0.9);
+  background: var(--app-sidebar-item-hover-bg);
+  color: var(--app-sidebar-item-hover-text);
 }
 
+.sidebar-item-selected,
 .sidebar-nav-button-active {
-  background: rgba(28, 28, 28, 0.075);
-  color: #1c1c1c;
+  background: var(--app-sidebar-item-active-bg);
+  color: var(--app-sidebar-item-active-text);
+}
+
+.project-tree-row.sidebar-item {
+  color: var(--app-sidebar-tree-item-text);
+}
+
+.project-tree-row.sidebar-item:not(.sidebar-item-disabled):not(.sidebar-item-selected):hover {
+  background: var(--app-sidebar-tree-item-hover-bg);
+  color: var(--app-sidebar-tree-item-text);
+}
+
+.project-tree-row-selected,
+.project-tree-row.sidebar-item-selected {
+  background: var(--app-sidebar-tree-item-active-bg);
+  color: var(--app-sidebar-tree-item-active-text);
 }
 
 .app-dialog-panel,
@@ -1077,6 +1110,15 @@ html[data-theme="dark"] {
   --app-accent-hover: #d9d9d9;
   --app-selection: #4a4a4a;
   --app-hover: rgba(255, 255, 255, 0.08);
+  --app-sidebar-item-text: rgba(232, 232, 232, 0.72);
+  --app-sidebar-item-hover-bg: rgba(255, 255, 255, 0.065);
+  --app-sidebar-item-hover-text: rgba(245, 245, 245, 0.92);
+  --app-sidebar-item-active-bg: rgba(255, 255, 255, 0.085);
+  --app-sidebar-item-active-text: rgba(245, 245, 245, 0.96);
+  --app-sidebar-tree-item-text: rgba(232, 232, 232, 0.82);
+  --app-sidebar-tree-item-hover-bg: rgba(255, 255, 255, 0.065);
+  --app-sidebar-tree-item-active-bg: rgba(255, 255, 255, 0.075);
+  --app-sidebar-tree-item-active-text: rgba(245, 245, 245, 0.92);
   --app-stable-scrollbar-track: transparent;
   --app-stable-scrollbar-thumb: rgba(255, 255, 255, 0.32);
   --app-stable-scrollbar-thumb-hover: rgba(255, 255, 255, 0.46);
@@ -1386,17 +1428,17 @@ html[data-theme="dark"] .shadow-xl {
 }
 
 html[data-theme="dark"] .sidebar-nav-button {
-  color: rgba(232, 232, 232, 0.72);
+  color: var(--app-sidebar-item-text);
 }
 
 html[data-theme="dark"] .sidebar-nav-button:hover {
-  background: rgba(255, 255, 255, 0.065);
-  color: rgba(245, 245, 245, 0.92);
+  background: var(--app-sidebar-item-hover-bg);
+  color: var(--app-sidebar-item-hover-text);
 }
 
 html[data-theme="dark"] .sidebar-nav-button-active {
-  background: rgba(255, 255, 255, 0.085);
-  color: rgba(245, 245, 245, 0.96);
+  background: var(--app-sidebar-item-active-bg);
+  color: var(--app-sidebar-item-active-text);
 }
 
 html[data-theme="dark"] .project-tree-import-button {
