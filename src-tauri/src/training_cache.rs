@@ -2,6 +2,7 @@ use std::{
     fs,
     io::Read,
     path::{Path, PathBuf},
+    time::{Duration, Instant},
 };
 
 use serde::{Deserialize, Serialize};
@@ -11,6 +12,9 @@ use crate::errors::{AppError, AppResult};
 
 const SAFETENSORS_HEADER_LENGTH_BYTES: usize = 8;
 const SAFETENSORS_MAX_HEADER_BYTES: u64 = 64 * 1024 * 1024;
+pub const TRAINING_CACHE_SCAN_PROGRESS_EVENT: &str = "training-cache-scan-progress";
+const SCAN_PROGRESS_INTERVAL: Duration = Duration::from_millis(160);
+const SCAN_PROGRESS_ENTRY_STEP: usize = 128;
 const MUSUBI_CACHE_ARCHITECTURES: &[(&str, &str)] = &[
     ("hv", "hunyuan_video"),
     ("wan", "wan"),
@@ -55,12 +59,31 @@ pub struct TrainingCacheRemoveResult {
     pub released_size_bytes: u64,
 }
 
-pub async fn scan_training_cache(folder: String) -> AppResult<TrainingCacheScanResult> {
-    tauri::async_runtime::spawn_blocking(move || scan_training_cache_folder(&folder))
-        .await
-        .map_err(|error| {
-            AppError::InvalidInput(format!("Training cache scan task failed: {error}"))
-        })?
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TrainingCacheScanProgress {
+    pub scan_id: Option<String>,
+    pub folder_path: String,
+    pub scanned_entries: usize,
+    pub found_items: usize,
+    pub total_size_bytes: u64,
+    pub current_path: String,
+    pub done: bool,
+}
+
+pub type TrainingCacheScanProgressCallback =
+    dyn Fn(TrainingCacheScanProgress) + Send + Sync + 'static;
+
+pub async fn scan_training_cache(
+    folder: String,
+    scan_id: Option<String>,
+    on_progress: Option<Box<TrainingCacheScanProgressCallback>>,
+) -> AppResult<TrainingCacheScanResult> {
+    tauri::async_runtime::spawn_blocking(move || {
+        scan_training_cache_folder_with_progress(&folder, scan_id, on_progress.as_deref())
+    })
+    .await
+    .map_err(|error| AppError::InvalidInput(format!("Training cache scan task failed: {error}")))?
 }
 
 pub async fn remove_training_cache(
@@ -74,7 +97,11 @@ pub async fn remove_training_cache(
         })?
 }
 
-pub fn scan_training_cache_folder(folder: &str) -> AppResult<TrainingCacheScanResult> {
+pub fn scan_training_cache_folder_with_progress(
+    folder: &str,
+    scan_id: Option<String>,
+    on_progress: Option<&TrainingCacheScanProgressCallback>,
+) -> AppResult<TrainingCacheScanResult> {
     let trimmed_folder = folder.trim();
     if trimmed_folder.is_empty() {
         return Err(AppError::InvalidInput(
@@ -91,12 +118,23 @@ pub fn scan_training_cache_folder(folder: &str) -> AppResult<TrainingCacheScanRe
 
     let mut items = Vec::new();
     let mut scanned_entries = 0;
-    collect_training_cache_items(&folder_path, &mut items, &mut scanned_entries)?;
+    let mut total_size_bytes = 0;
+    let folder_path_string = folder_path.to_string_lossy().to_string();
+    let mut reporter =
+        TrainingCacheScanProgressReporter::new(scan_id, folder_path_string.clone(), on_progress);
+    reporter.emit("", scanned_entries, items.len(), 0, false);
+    collect_training_cache_items(
+        &folder_path,
+        &mut items,
+        &mut scanned_entries,
+        &mut total_size_bytes,
+        &mut reporter,
+    )?;
     items.sort_by_key(|item| item.path.to_ascii_lowercase());
-    let total_size_bytes = items.iter().map(|item| item.size_bytes).sum();
+    reporter.emit("", scanned_entries, items.len(), total_size_bytes, true);
 
     Ok(TrainingCacheScanResult {
-        folder_path: folder_path.to_string_lossy().to_string(),
+        folder_path: folder_path_string,
         scanned_entries,
         items,
         total_size_bytes,
@@ -186,6 +224,8 @@ fn collect_training_cache_items(
     folder: &Path,
     items: &mut Vec<TrainingCacheItem>,
     scanned_entries: &mut usize,
+    total_size_bytes: &mut u64,
+    reporter: &mut TrainingCacheScanProgressReporter<'_>,
 ) -> AppResult<()> {
     let mut pending = vec![folder.to_path_buf()];
 
@@ -195,32 +235,83 @@ fn collect_training_cache_items(
             *scanned_entries += 1;
 
             let path = entry.path();
+            let path_string = path.to_string_lossy().to_string();
             let file_type = entry.file_type()?;
             if file_type.is_symlink() {
+                reporter.emit_throttled(
+                    &path_string,
+                    *scanned_entries,
+                    items.len(),
+                    *total_size_bytes,
+                );
                 continue;
             }
 
             if file_type.is_dir() {
                 let file_name = entry.file_name();
                 if file_name.to_string_lossy() == "_latent_cache" {
+                    reporter.emit(
+                        &path_string,
+                        *scanned_entries,
+                        items.len(),
+                        *total_size_bytes,
+                        false,
+                    );
+                    let size_bytes = directory_size_with_progress(
+                        &path,
+                        scanned_entries,
+                        items.len(),
+                        *total_size_bytes,
+                        reporter,
+                    )?;
+                    *total_size_bytes += size_bytes;
                     items.push(TrainingCacheItem {
-                        path: path.to_string_lossy().to_string(),
+                        path: path_string.clone(),
                         item_type: "directory".to_owned(),
-                        size_bytes: directory_size(&path)?,
+                        size_bytes,
                     });
+                    reporter.emit(
+                        &path_string,
+                        *scanned_entries,
+                        items.len(),
+                        *total_size_bytes,
+                        false,
+                    );
                     continue;
                 }
 
                 pending.push(path);
+                reporter.emit_throttled(
+                    &path_string,
+                    *scanned_entries,
+                    items.len(),
+                    *total_size_bytes,
+                );
                 continue;
             }
 
             if file_type.is_file() && is_training_cache_file(&path) {
+                let size_bytes = training_cache_item_size(&path)?;
+                *total_size_bytes += size_bytes;
                 items.push(TrainingCacheItem {
-                    path: path.to_string_lossy().to_string(),
+                    path: path_string.clone(),
                     item_type: "file".to_owned(),
-                    size_bytes: training_cache_item_size(&path)?,
+                    size_bytes,
                 });
+                reporter.emit(
+                    &path_string,
+                    *scanned_entries,
+                    items.len(),
+                    *total_size_bytes,
+                    false,
+                );
+            } else {
+                reporter.emit_throttled(
+                    &path_string,
+                    *scanned_entries,
+                    items.len(),
+                    *total_size_bytes,
+                );
             }
         }
     }
@@ -229,6 +320,18 @@ fn collect_training_cache_items(
 }
 
 fn directory_size(path: &Path) -> AppResult<u64> {
+    let mut scanned_entries = 0;
+    let mut reporter = TrainingCacheScanProgressReporter::new(None, String::new(), None);
+    directory_size_with_progress(path, &mut scanned_entries, 0, 0, &mut reporter)
+}
+
+fn directory_size_with_progress(
+    path: &Path,
+    scanned_entries: &mut usize,
+    found_items: usize,
+    base_total_size_bytes: u64,
+    reporter: &mut TrainingCacheScanProgressReporter<'_>,
+) -> AppResult<u64> {
     if !path.exists() {
         return Ok(0);
     }
@@ -239,19 +342,104 @@ fn directory_size(path: &Path) -> AppResult<u64> {
     while let Some(current_folder) = pending.pop() {
         for entry in fs::read_dir(current_folder)? {
             let entry = entry?;
+            *scanned_entries += 1;
+            let entry_path = entry.path();
             let metadata = fs::symlink_metadata(entry.path())?;
             if metadata.file_type().is_symlink() {
+                reporter.emit_throttled(
+                    &entry_path.to_string_lossy(),
+                    *scanned_entries,
+                    found_items,
+                    base_total_size_bytes + size,
+                );
                 continue;
             }
             if metadata.is_dir() {
-                pending.push(entry.path());
+                pending.push(entry_path.clone());
             } else if metadata.is_file() {
                 size += metadata.len();
             }
+            reporter.emit_throttled(
+                &entry_path.to_string_lossy(),
+                *scanned_entries,
+                found_items,
+                base_total_size_bytes + size,
+            );
         }
     }
 
     Ok(size)
+}
+
+struct TrainingCacheScanProgressReporter<'a> {
+    scan_id: Option<String>,
+    folder_path: String,
+    on_progress: Option<&'a TrainingCacheScanProgressCallback>,
+    last_emit: Option<Instant>,
+    last_scanned_entries: usize,
+}
+
+impl<'a> TrainingCacheScanProgressReporter<'a> {
+    fn new(
+        scan_id: Option<String>,
+        folder_path: String,
+        on_progress: Option<&'a TrainingCacheScanProgressCallback>,
+    ) -> Self {
+        Self {
+            scan_id,
+            folder_path,
+            on_progress,
+            last_emit: None,
+            last_scanned_entries: 0,
+        }
+    }
+
+    fn emit_throttled(
+        &mut self,
+        current_path: &str,
+        scanned_entries: usize,
+        found_items: usize,
+        total_size_bytes: u64,
+    ) {
+        let should_emit = self.last_emit.is_none_or(|last_emit| {
+            last_emit.elapsed() >= SCAN_PROGRESS_INTERVAL
+                || scanned_entries.saturating_sub(self.last_scanned_entries)
+                    >= SCAN_PROGRESS_ENTRY_STEP
+        });
+        if should_emit {
+            self.emit(
+                current_path,
+                scanned_entries,
+                found_items,
+                total_size_bytes,
+                false,
+            );
+        }
+    }
+
+    fn emit(
+        &mut self,
+        current_path: &str,
+        scanned_entries: usize,
+        found_items: usize,
+        total_size_bytes: u64,
+        done: bool,
+    ) {
+        let Some(on_progress) = self.on_progress else {
+            return;
+        };
+        self.last_emit = Some(Instant::now());
+        self.last_scanned_entries = scanned_entries;
+        on_progress(TrainingCacheScanProgress {
+            scan_id: self.scan_id.clone(),
+            folder_path: self.folder_path.clone(),
+            scanned_entries,
+            found_items,
+            total_size_bytes,
+            current_path: current_path.to_owned(),
+            done,
+        });
+    }
 }
 
 fn training_cache_item_size(path: &Path) -> AppResult<u64> {
@@ -375,6 +563,7 @@ fn safetensors_metadata_value(path: &Path, key: &str) -> AppResult<String> {
 mod tests {
     use super::*;
     use serde_json::json;
+    use std::sync::{Arc, Mutex};
     use std::time::{SystemTime, UNIX_EPOCH};
 
     #[test]
@@ -408,7 +597,16 @@ mod tests {
 
         let mut items = Vec::new();
         let mut scanned_entries = 0;
-        collect_training_cache_items(&root, &mut items, &mut scanned_entries).unwrap();
+        let mut total_size_bytes = 0;
+        let mut reporter = TrainingCacheScanProgressReporter::new(None, String::new(), None);
+        collect_training_cache_items(
+            &root,
+            &mut items,
+            &mut scanned_entries,
+            &mut total_size_bytes,
+            &mut reporter,
+        )
+        .unwrap();
 
         assert_eq!(items.len(), 5);
         assert!(items.iter().any(|item| item.path.ends_with("sample.npz")));
@@ -431,6 +629,37 @@ mod tests {
             .iter()
             .any(|item| item.path.ends_with("_latent_cache") && item.item_type == "directory"));
         assert!(scanned_entries >= 5);
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn emits_training_cache_scan_progress() {
+        let root = temp_dir("progress");
+        fs::create_dir_all(root.join("_latent_cache")).unwrap();
+        fs::write(root.join("_latent_cache").join("latent.bin"), b"latent").unwrap();
+        fs::write(root.join("sample.npz"), b"npz").unwrap();
+
+        let progress_events = Arc::new(Mutex::new(Vec::new()));
+        let captured_events = Arc::clone(&progress_events);
+        let scan_id = "scan-progress-test".to_owned();
+        let on_progress = move |progress| {
+            captured_events.lock().unwrap().push(progress);
+        };
+        let result = scan_training_cache_folder_with_progress(
+            root.to_str().unwrap(),
+            Some(scan_id.clone()),
+            Some(&on_progress),
+        )
+        .unwrap();
+
+        assert_eq!(result.items.len(), 2);
+        let progress_events = progress_events.lock().unwrap();
+        assert!(progress_events.len() >= 2);
+        assert!(progress_events.iter().any(|progress| progress.done));
+        assert!(progress_events
+            .iter()
+            .all(|progress| progress.scan_id.as_deref() == Some(scan_id.as_str())));
 
         let _ = fs::remove_dir_all(root);
     }

@@ -1,4 +1,5 @@
 import { open } from "@tauri-apps/plugin-dialog";
+import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import {
   AlertTriangle,
   CheckCircle2,
@@ -8,7 +9,7 @@ import {
   Trash2,
   X
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { formatAppError } from "../../lib/errors";
@@ -35,6 +36,16 @@ interface TrainingCacheRemoveResult {
   releasedSizeBytes: number;
 }
 
+interface TrainingCacheScanProgress {
+  scanId?: string | null;
+  folderPath: string;
+  scannedEntries: number;
+  foundItems: number;
+  totalSizeBytes: number;
+  currentPath: string;
+  done: boolean;
+}
+
 interface TrainingCacheCleanerDialogProps {
   onClose: () => void;
 }
@@ -54,10 +65,40 @@ export function TrainingCacheCleanerDialog({ onClose }: TrainingCacheCleanerDial
   const [isRemoving, setIsRemoving] = useState(false);
   const [hasScanned, setHasScanned] = useState(false);
   const [removeResult, setRemoveResult] = useState<TrainingCacheRemoveResult | null>(null);
+  const [scanProgress, setScanProgress] = useState<TrainingCacheScanProgress | null>(null);
   const [errorMessage, setErrorMessage] = useState("");
+  const activeScanIdRef = useRef("");
+
+  useEffect(() => {
+    let unlisten: UnlistenFn | undefined;
+    let isMounted = true;
+
+    void listen<TrainingCacheScanProgress>("training-cache-scan-progress", (event) => {
+      const progress = event.payload;
+      if (!progress || progress.scanId !== activeScanIdRef.current) return;
+      setScanProgress(progress);
+      setFolderPath(progress.folderPath);
+      setScannedEntries(progress.scannedEntries);
+      setTotalSizeBytes(progress.totalSizeBytes);
+    }).then((handler) => {
+      if (isMounted) {
+        unlisten = handler;
+      } else {
+        handler();
+      }
+    });
+
+    return () => {
+      isMounted = false;
+      unlisten?.();
+    };
+  }, []);
 
   const startScan = async (path = folderPath) => {
-    if (!path) return;
+    const trimmedPath = path.trim();
+    if (!trimmedPath || isScanning || isRemoving) return;
+    const scanId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    activeScanIdRef.current = scanId;
 
     setIsScanning(true);
     setItems([]);
@@ -65,22 +106,49 @@ export function TrainingCacheCleanerDialog({ onClose }: TrainingCacheCleanerDial
     setTotalSizeBytes(0);
     setHasScanned(false);
     setRemoveResult(null);
+    setScanProgress({
+      scanId,
+      folderPath: trimmedPath,
+      scannedEntries: 0,
+      foundItems: 0,
+      totalSizeBytes: 0,
+      currentPath: "",
+      done: false
+    });
     setErrorMessage("");
 
     try {
       const result = await invokeCommand<TrainingCacheScanResult>("scan_training_cache", {
-        folder: path
+        folder: trimmedPath,
+        scanId
       });
+      if (activeScanIdRef.current !== scanId) return;
       setFolderPath(result.folderPath);
       setItems(result.items);
       setScannedEntries(result.scannedEntries);
       setTotalSizeBytes(result.totalSizeBytes);
       setHasScanned(true);
+      setScanProgress((progress) =>
+        progress?.scanId === scanId
+          ? {
+              ...progress,
+              folderPath: result.folderPath,
+              scannedEntries: result.scannedEntries,
+              foundItems: result.items.length,
+              totalSizeBytes: result.totalSizeBytes,
+              currentPath: "",
+              done: true
+            }
+          : progress
+      );
     } catch (error) {
+      if (activeScanIdRef.current !== scanId) return;
       setErrorMessage(formatAppError(error));
       setHasScanned(true);
     } finally {
-      setIsScanning(false);
+      if (activeScanIdRef.current === scanId) {
+        setIsScanning(false);
+      }
     }
   };
 
@@ -235,10 +303,7 @@ export function TrainingCacheCleanerDialog({ onClose }: TrainingCacheCleanerDial
               </div>
             </div>
           ) : isScanning ? (
-            <div className="flex h-full flex-col items-center justify-center gap-3 text-neutral-500">
-              <Loader2 size={24} className="animate-spin" />
-              <div className="text-[13px]">{t("tools.trainingCacheCleaner.scanning")}</div>
-            </div>
+            <ScanProgressStatus progress={scanProgress} />
           ) : hasScanned ? (
             <div className="flex h-full flex-col items-center justify-center gap-3">
               <CheckCircle2 size={28} className="text-neutral-600" />
@@ -256,11 +321,17 @@ export function TrainingCacheCleanerDialog({ onClose }: TrainingCacheCleanerDial
 
         <div className="flex shrink-0 items-center justify-between border-t border-neutral-200 px-5 py-3">
           <div className="text-[12px] text-neutral-400">
-            {items.length > 0
-              ? t("tools.trainingCacheCleaner.summary", {
-                  count: items.length,
-                  size: formatByteValue(totalSizeBytes)
+            {isScanning && scanProgress
+              ? t("tools.trainingCacheCleaner.scanProgressSummary", {
+                  scanned: scanProgress.scannedEntries,
+                  found: scanProgress.foundItems,
+                  size: formatByteValue(scanProgress.totalSizeBytes)
                 })
+              : items.length > 0
+                ? t("tools.trainingCacheCleaner.summary", {
+                    count: items.length,
+                    size: formatByteValue(totalSizeBytes)
+                  })
               : ""}
           </div>
           <div className="flex items-center gap-2">
@@ -287,5 +358,36 @@ export function TrainingCacheCleanerDialog({ onClose }: TrainingCacheCleanerDial
       </section>
     </div>
     </AnimatedPortal>
+  );
+}
+
+function ScanProgressStatus({ progress }: { progress: TrainingCacheScanProgress | null }) {
+  const { t } = useTranslation();
+  const currentPath = progress?.currentPath.trim();
+
+  return (
+    <div className="flex h-full min-h-[280px] flex-col items-center justify-center gap-3 px-4 text-center">
+      <Loader2 size={24} className="animate-spin text-neutral-500" />
+      <div className="text-[13px] leading-5 text-neutral-500">
+        {t("tools.trainingCacheCleaner.scanning")}
+      </div>
+      <div className="h-1.5 w-full max-w-[360px] overflow-hidden rounded-full bg-neutral-200">
+        <div className="h-full w-1/2 animate-pulse rounded-full bg-neutral-500/65" />
+      </div>
+      <div className="grid w-full max-w-[520px] gap-1 text-[12px] leading-5 text-neutral-500">
+        <div>
+          {t("tools.trainingCacheCleaner.scanProgressSummary", {
+            scanned: progress?.scannedEntries ?? 0,
+            found: progress?.foundItems ?? 0,
+            size: formatByteValue(progress?.totalSizeBytes ?? 0)
+          })}
+        </div>
+        {currentPath ? (
+          <div className="truncate text-neutral-400" title={currentPath}>
+            {t("tools.trainingCacheCleaner.scanCurrentPath", { path: currentPath })}
+          </div>
+        ) : null}
+      </div>
+    </div>
   );
 }

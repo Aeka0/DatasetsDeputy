@@ -285,6 +285,8 @@
       "noItems": "No trainer cache files were found in this folder.",
       "foundItems": "Found {{count}} cache item(s), {{size}} total",
       "scannedEntries": "{{count}} entries scanned",
+      "scanProgressSummary": "{{scanned}} entries scanned · {{found}} cache item(s) found · {{size}}",
+      "scanCurrentPath": "Current: {{path}}",
       "summary": "{{count}} item(s), {{size}} can be released",
       "colType": "Type",
       "colPath": "Path",

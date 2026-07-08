@@ -4955,8 +4955,20 @@ fn prepare_export(
 }
 
 #[tauri::command]
-pub async fn scan_training_cache(folder: String) -> AppResult<TrainingCacheScanResult> {
-    training_cache::scan_training_cache(folder).await
+pub async fn scan_training_cache(
+    app: AppHandle,
+    folder: String,
+    scan_id: Option<String>,
+) -> AppResult<TrainingCacheScanResult> {
+    let progress_app = app.clone();
+    training_cache::scan_training_cache(
+        folder,
+        scan_id,
+        Some(Box::new(move |progress| {
+            let _ = progress_app.emit(training_cache::TRAINING_CACHE_SCAN_PROGRESS_EVENT, progress);
+        })),
+    )
+    .await
 }
 
 #[tauri::command]

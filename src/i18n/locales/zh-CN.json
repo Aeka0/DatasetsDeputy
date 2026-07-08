@@ -285,6 +285,8 @@
       "noItems": "该文件夹下未发现训练器缓存文件。",
       "foundItems": "发现 {{count}} 个缓存项，共 {{size}}",
       "scannedEntries": "已扫描 {{count}} 个条目",
+      "scanProgressSummary": "已扫描 {{scanned}} 项 · 发现 {{found}} 个缓存项 · {{size}}",
+      "scanCurrentPath": "当前：{{path}}",
       "summary": "共 {{count}} 项，可释放 {{size}}",
       "colType": "类型",
       "colPath": "路径",
