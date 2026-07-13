@@ -42,8 +42,14 @@ batch_size = max(1, int(payload.get("batchSize", 16)))
 stream = bool(payload.get("stream", False))
 cpu_threads = max(1, int(payload.get("cpuThreads", 4)))
 
-def emit_batch(start, scores, provider):
-    print(json.dumps({"start": start, "scores": scores, "provider": provider}, ensure_ascii=False), flush=True)
+def emit_batch(indexes, scores, provider):
+    print(json.dumps({"indexes": indexes, "scores": scores, "provider": provider}, ensure_ascii=False), flush=True)
+
+def emit_failure(index, path, error):
+    message = f"{type(error).__name__}: {error}"
+    print(json.dumps({
+        "failure": {"index": index, "path": path, "message": message}
+    }, ensure_ascii=False), flush=True)
 
 def first_file(extensions):
     matches = []
@@ -101,12 +107,11 @@ def fit_inside(width, height, target_width, target_height):
     top = (target_height - resized_height) // 2
     return (left, top, resized_width, resized_height)
 
-def load_image_batch(paths, layout="nchw"):
+def load_image(path, layout="nchw"):
     from PIL import Image
 
-    batch = []
-    for path in paths:
-        image = Image.open(path)
+    with Image.open(path) as source:
+        image = source
         if image.mode == "RGBA":
             background = Image.new("RGB", image.size, (255, 255, 255))
             background.paste(image, mask=image.split()[3])
@@ -125,13 +130,33 @@ def load_image_batch(paths, layout="nchw"):
             canvas = Image.new("RGB", (448, 448), (255, 255, 255))
             canvas.paste(resized, (left, top))
             array = np.asarray(canvas, dtype=np.float32)
-            batch.append(array[:, :, ::-1])
+            return array[:, :, ::-1]
         else:
             image = image.resize((448, 448), Image.Resampling.BICUBIC)
             array = np.asarray(image, dtype=np.float32) / 255.0
             array = (array - 0.5) / 0.5
-            batch.append(np.transpose(array, (2, 0, 1)))
+            return np.transpose(array, (2, 0, 1))
+
+def load_image_batch(paths, layout="nchw"):
+    batch = [load_image(path, layout) for path in paths]
     return np.stack(batch, axis=0).astype(np.float32, copy=False)
+
+def prepare_image_batch(start, paths, layout="nchw"):
+    if not stream:
+        return load_image_batch(paths, layout), list(range(start, start + len(paths)))
+
+    batch = []
+    indexes = []
+    for offset, path in enumerate(paths):
+        try:
+            batch.append(load_image(path, layout))
+            indexes.append(start + offset)
+        except Exception as error:
+            emit_failure(start + offset, path, error)
+
+    if not batch:
+        return None, indexes
+    return np.stack(batch, axis=0).astype(np.float32, copy=False), indexes
 
 def onnx_input_layout(shape):
     if len(shape) == 4 and shape[-1] == 3:
@@ -166,11 +191,13 @@ if model_type == "onnx":
     provider = session.get_providers()[0]
     for start in range(0, len(input_paths), batch_size):
         chunk_paths = input_paths[start:start + batch_size]
-        model_input = load_image_batch(chunk_paths, layout)
+        model_input, indexes = prepare_image_batch(start, chunk_paths, layout)
+        if model_input is None:
+            continue
         outputs = session.run(None, {input_meta.name: model_input})
-        scores = select_score_matrix(outputs, len(chunk_paths)).tolist()
+        scores = select_score_matrix(outputs, len(indexes)).tolist()
         if stream:
-            emit_batch(start, scores, provider)
+            emit_batch(indexes, scores, provider)
         else:
             all_scores.extend(scores)
     if not stream:
@@ -197,11 +224,14 @@ elif model_type == "pytorch":
         with torch.inference_mode():
             for start in range(0, len(input_paths), batch_size):
                 chunk_paths = input_paths[start:start + batch_size]
-                tensor = torch.from_numpy(load_image_batch(chunk_paths)).to(device, non_blocking=True)
+                model_input, indexes = prepare_image_batch(start, chunk_paths)
+                if model_input is None:
+                    continue
+                tensor = torch.from_numpy(model_input).to(device, non_blocking=True)
                 output = model(pixel_values=tensor)
-                scores = as_numpy(getattr(output, "logits", output)).reshape(len(chunk_paths), -1).tolist()
+                scores = as_numpy(getattr(output, "logits", output)).reshape(len(indexes), -1).tolist()
                 if stream:
-                    emit_batch(start, scores, str(device))
+                    emit_batch(indexes, scores, str(device))
                 else:
                     all_scores.extend(scores)
     else:
@@ -219,10 +249,13 @@ elif model_type == "pytorch":
         with torch.inference_mode():
             for start in range(0, len(input_paths), batch_size):
                 chunk_paths = input_paths[start:start + batch_size]
-                tensor = torch.from_numpy(load_image_batch(chunk_paths)).to(device, non_blocking=True)
-                scores = as_numpy(model(tensor)).reshape(len(chunk_paths), -1).tolist()
+                model_input, indexes = prepare_image_batch(start, chunk_paths)
+                if model_input is None:
+                    continue
+                tensor = torch.from_numpy(model_input).to(device, non_blocking=True)
+                scores = as_numpy(model(tensor)).reshape(len(indexes), -1).tolist()
                 if stream:
-                    emit_batch(start, scores, str(device))
+                    emit_batch(indexes, scores, str(device))
                 else:
                     all_scores.extend(scores)
 
@@ -248,9 +281,19 @@ struct InferencePayload {
 
 #[derive(Debug, Deserialize)]
 struct InferenceBatchPayload {
-    start: usize,
+    #[serde(default)]
+    indexes: Vec<usize>,
+    #[serde(default)]
     scores: Vec<Vec<f32>>,
     provider: Option<String>,
+    failure: Option<InferenceFailurePayload>,
+}
+
+#[derive(Debug, Deserialize)]
+struct InferenceFailurePayload {
+    index: usize,
+    path: String,
+    message: String,
 }
 
 struct TempPayloadFile {
@@ -288,6 +331,22 @@ impl Drop for TempPayloadFile {
 pub struct Wd14TaggerResult {
     pub positive_prompt: String,
     pub execution_provider: String,
+}
+
+#[derive(Clone, Debug)]
+pub struct Wd14TaggerFailure {
+    pub index: usize,
+    pub path: String,
+    pub message: String,
+}
+
+#[derive(Clone, Debug)]
+pub enum Wd14TaggerProgress {
+    Result {
+        index: usize,
+        result: Wd14TaggerResult,
+    },
+    Failure(Wd14TaggerFailure),
 }
 
 pub fn generate_annotation(dirs: &AppDirs, image_path: &Path) -> AppResult<Wd14TaggerResult> {
@@ -337,10 +396,10 @@ pub fn generate_annotations(
 pub fn generate_annotations_streaming<F>(
     dirs: &AppDirs,
     image_paths: &[PathBuf],
-    mut on_batch: F,
-) -> AppResult<Vec<Wd14TaggerResult>>
+    mut on_progress: F,
+) -> AppResult<Vec<Option<Wd14TaggerResult>>>
 where
-    F: FnMut(usize, &[Wd14TaggerResult]) -> AppResult<()>,
+    F: FnMut(Wd14TaggerProgress) -> AppResult<()>,
 {
     if image_paths.is_empty() {
         return Ok(Vec::new());
@@ -352,6 +411,7 @@ where
     let tags = load_tag_definitions(&model_dir)?;
     let mut results = Vec::<Option<Wd14TaggerResult>>::with_capacity(image_paths.len());
     results.resize_with(image_paths.len(), || None);
+    let mut failures = vec![false; image_paths.len()];
 
     run_python_inference_streaming(
         dirs,
@@ -360,47 +420,62 @@ where
         image_paths,
         tags.len(),
         |batch| {
-            if batch.start + batch.scores.len() > image_paths.len() {
+            if let Some(failure) = batch.failure {
+                if failure.index >= image_paths.len() {
+                    return Err(AppError::InvalidInput(format!(
+                        "WD14 returned a failure outside the target list: {} / {}",
+                        failure.index,
+                        image_paths.len()
+                    )));
+                }
+                failures[failure.index] = true;
+                return on_progress(Wd14TaggerProgress::Failure(Wd14TaggerFailure {
+                    index: failure.index,
+                    path: failure.path,
+                    message: failure.message,
+                }));
+            }
+
+            if batch.indexes.len() != batch.scores.len() {
                 return Err(AppError::InvalidInput(format!(
-                    "WD14 returned a batch outside the target list: {} + {} / {}",
-                    batch.start,
+                    "WD14 returned {} indexes for {} results",
+                    batch.indexes.len(),
                     batch.scores.len(),
-                    image_paths.len()
                 )));
             }
 
             let execution_provider = batch
                 .provider
                 .unwrap_or_else(|| tagger_settings.model_type.clone());
-            let batch_results = batch
-                .scores
-                .iter()
-                .map(|scores| {
-                    build_prompt(scores, &tags, &tagger_settings).map(|positive_prompt| {
-                        Wd14TaggerResult {
-                            positive_prompt,
-                            execution_provider: execution_provider.clone(),
-                        }
-                    })
-                })
-                .collect::<AppResult<Vec<_>>>()?;
-
-            for (offset, result) in batch_results.iter().cloned().enumerate() {
-                results[batch.start + offset] = Some(result);
+            for (index, scores) in batch.indexes.into_iter().zip(batch.scores) {
+                if index >= image_paths.len() {
+                    return Err(AppError::InvalidInput(format!(
+                        "WD14 returned a result outside the target list: {index} / {}",
+                        image_paths.len()
+                    )));
+                }
+                let result = Wd14TaggerResult {
+                    positive_prompt: build_prompt(&scores, &tags, &tagger_settings)?,
+                    execution_provider: execution_provider.clone(),
+                };
+                results[index] = Some(result.clone());
+                on_progress(Wd14TaggerProgress::Result { index, result })?;
             }
-            on_batch(batch.start, &batch_results)
+            Ok(())
         },
     )?;
 
-    results
-        .into_iter()
+    if let Some(index) = results
+        .iter()
         .enumerate()
-        .map(|(index, result)| {
-            result.ok_or_else(|| {
-                AppError::InvalidInput(format!("WD14 did not return a result for image {index}"))
-            })
-        })
-        .collect()
+        .find_map(|(index, result)| (result.is_none() && !failures[index]).then_some(index))
+    {
+        return Err(AppError::InvalidInput(format!(
+            "WD14 did not return a result or failure for image {index}"
+        )));
+    }
+
+    Ok(results)
 }
 
 fn resolve_model_dir(settings: &Wd14TaggerSettings) -> AppResult<PathBuf> {
@@ -593,7 +668,10 @@ fn has_contiguous_indexes(tags: &[TagDefinition]) -> bool {
 }
 
 fn normalize_csv_header(field: &str) -> String {
-    field.trim().trim_start_matches('\u{feff}').to_ascii_lowercase()
+    field
+        .trim()
+        .trim_start_matches('\u{feff}')
+        .to_ascii_lowercase()
 }
 
 struct TagCsvLayout {
@@ -659,7 +737,9 @@ impl TagCsvLayout {
             fields
                 .get(column)
                 .ok_or_else(|| {
-                    AppError::InvalidInput("selected_tags.csv tag index column is missing".to_owned())
+                    AppError::InvalidInput(
+                        "selected_tags.csv tag index column is missing".to_owned(),
+                    )
                 })?
                 .parse::<usize>()
                 .map_err(|error| {

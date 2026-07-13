@@ -143,8 +143,10 @@ interface LLMTextConversionTarget {
 }
 
 interface Wd14AnnotationProgress {
-  start: number;
-  contents: string[];
+  index: number;
+  content: string | null;
+  error: string | null;
+  filePath: string | null;
   executionProvider: string;
 }
 
@@ -2371,7 +2373,9 @@ export function TitleMenuBar({
       }
     };
 
-    const markWd14MissingResultsFailed = (generatedContents: Array<string | undefined>) => {
+    const markWd14MissingResultsFailed = (
+      generatedContents: Array<string | null | undefined>
+    ) => {
       for (const [index, image] of targets.entries()) {
         if (generatedContents[index] === undefined) {
           markAnnotationFailed(image);
@@ -2384,7 +2388,7 @@ export function TitleMenuBar({
         for (const image of targets) {
           markAnnotationImageActive(image.id);
         }
-        const generatedContents = new Array<string | undefined>(targets.length);
+        const generatedContents = new Array<string | null | undefined>(targets.length);
         let loggedWd14Provider = "";
         let unlistenWd14Progress: UnlistenFn | undefined;
         try {
@@ -2393,23 +2397,31 @@ export function TitleMenuBar({
             "wd14-annotation-progress",
             (event) => {
               if (!isAnnotationRunActive(runId)) return;
-              const { start, contents, executionProvider } = event.payload;
+              const { index, content, error, executionProvider } = event.payload;
               if (executionProvider && executionProvider !== loggedWd14Provider) {
                 loggedWd14Provider = executionProvider;
                 addAppLog(`WD14 execution provider: ${executionProvider}`);
               }
-              for (const [offset, content] of contents.entries()) {
-                const index = start + offset;
-                const image = targets[index];
-                if (!image) continue;
-                generatedContents[index] = content;
-                applyGeneratedContent(image, content);
+              const image = targets[index];
+              if (!image) return;
+              if (error) {
+                generatedContents[index] = null;
+                const alreadyFailed = failedAnnotationImageIds.has(image.id);
+                markAnnotationFailed(image);
                 markAnnotationImageInactive(runId, image.id);
-                addAppLog(`Generated draft annotation: ${image.fileName}`);
+                if (!alreadyFailed) {
+                  addAppLog(`WD14 annotation failed: ${image.fileName}: ${error}`, "error");
+                }
+                return;
               }
+              if (content === null) return;
+              generatedContents[index] = content;
+              applyGeneratedContent(image, content);
+              markAnnotationImageInactive(runId, image.id);
+              addAppLog(`Generated draft annotation: ${image.fileName}`);
             }
           );
-          const contents = await invokeCommand<string[]>("generate_wd14_annotations", {
+          const contents = await invokeCommand<Array<string | null>>("generate_wd14_annotations", {
             imagePaths: targets.map((image) => image.storagePath ?? image.path)
           });
           if (contents.length !== targets.length) {
@@ -2421,7 +2433,19 @@ export function TitleMenuBar({
             throw new Error(annotationCancelledError);
           }
           for (const [index, image] of targets.entries()) {
-            const content = contents[index] ?? "";
+            const content = contents[index];
+            if (content === null) {
+              generatedContents[index] = null;
+              const alreadyFailed = failedAnnotationImageIds.has(image.id);
+              markAnnotationFailed(image);
+              if (!alreadyFailed) {
+                addAppLog(
+                  `WD14 annotation failed: ${image.fileName}: image preprocessing failed.`,
+                  "error"
+                );
+              }
+              continue;
+            }
             if (generatedContents[index] === undefined) {
               applyGeneratedContent(image, content);
               addAppLog(`Generated draft annotation: ${image.fileName}`);
@@ -2438,7 +2462,10 @@ export function TitleMenuBar({
             markAnnotationImageInactive(runId, image.id);
           }
         }
-        addAppLog(`WD14 annotation completed: processed ${targets.length} images.`);
+        addAppLog(
+          `WD14 annotation completed: ${targets.length - failedAnnotationImageIds.size} succeeded, ${failedAnnotationImageIds.size} failed.`,
+          failedAnnotationImageIds.size > 0 ? "warning" : "info"
+        );
         await saveGeneratedChanges();
         return;
       }

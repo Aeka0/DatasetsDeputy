@@ -217,8 +217,10 @@ pub struct ModelPathSelection {
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Wd14AnnotationProgress {
-    pub start: usize,
-    pub contents: Vec<String>,
+    pub index: usize,
+    pub content: Option<String>,
+    pub error: Option<String>,
+    pub file_path: Option<String>,
     pub execution_provider: String,
 }
 
@@ -3195,36 +3197,41 @@ pub async fn generate_wd14_annotations(
     app: AppHandle,
     state: State<'_, AppState>,
     image_paths: Vec<String>,
-) -> AppResult<Vec<String>> {
+) -> AppResult<Vec<Option<String>>> {
     let dirs = state.dirs.clone();
     tauri::async_runtime::spawn_blocking(move || {
         let paths = image_paths
             .into_iter()
             .map(PathBuf::from)
             .collect::<Vec<_>>();
-        wd14_tagger::generate_annotations_streaming(&dirs, &paths, |start, results| {
-            let contents = results
-                .iter()
-                .map(|result| result.positive_prompt.clone())
-                .collect::<Vec<_>>();
-            let execution_provider = results
-                .first()
-                .map(|result| result.execution_provider.clone())
-                .unwrap_or_default();
-            app.emit(
-                "wd14-annotation-progress",
-                Wd14AnnotationProgress {
-                    start,
-                    contents,
-                    execution_provider,
+        wd14_tagger::generate_annotations_streaming(&dirs, &paths, |progress| {
+            let progress = match progress {
+                wd14_tagger::Wd14TaggerProgress::Result { index, result } => {
+                    Wd14AnnotationProgress {
+                        index,
+                        content: Some(result.positive_prompt),
+                        error: None,
+                        file_path: None,
+                        execution_provider: result.execution_provider,
+                    }
+                }
+                wd14_tagger::Wd14TaggerProgress::Failure(failure) => Wd14AnnotationProgress {
+                    index: failure.index,
+                    content: None,
+                    error: Some(failure.message),
+                    file_path: Some(failure.path),
+                    execution_provider: String::new(),
                 },
-            )
-            .map_err(|error| AppError::InvalidInput(format!("WD14 progress event failed: {error}")))
+            };
+            app.emit("wd14-annotation-progress", progress)
+                .map_err(|error| {
+                    AppError::InvalidInput(format!("WD14 progress event failed: {error}"))
+                })
         })
         .map(|results| {
             results
                 .into_iter()
-                .map(|result| result.positive_prompt)
+                .map(|result| result.map(|result| result.positive_prompt))
                 .collect()
         })
     })
