@@ -73,12 +73,7 @@ pub fn create_thumbnail(source: &Path, target: &Path, max_edge: u32) -> bool {
         cx: max_edge.min(i32::MAX as u32) as i32,
         cy: max_edge.min(i32::MAX as u32) as i32,
     };
-    let bitmap = match unsafe {
-        item.GetImage(
-            size,
-            SIIGBF_BIGGERSIZEOK | SIIGBF_RESIZETOFIT,
-        )
-    } {
+    let bitmap = match unsafe { item.GetImage(size, SIIGBF_BIGGERSIZEOK | SIIGBF_RESIZETOFIT) } {
         Ok(bitmap) if !bitmap.0.is_null() => BitmapGuard(bitmap),
         _ => return false,
     };

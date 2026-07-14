@@ -1,6 +1,9 @@
 use std::{
     path::{Path, PathBuf},
-    sync::{atomic::{AtomicU8, Ordering}, Arc},
+    sync::{
+        atomic::{AtomicU8, Ordering},
+        Arc,
+    },
     time::{Duration, Instant},
 };
 
@@ -185,8 +188,7 @@ fn create_thumbnail_inner(
     #[cfg(target_os = "windows")]
     {
         progress.store(STEP_WINDOWS_SHELL, Ordering::Relaxed);
-        if windows_shell::create_thumbnail(source, &target, max_edge)
-            && is_valid_thumbnail(&target)
+        if windows_shell::create_thumbnail(source, &target, max_edge) && is_valid_thumbnail(&target)
         {
             progress.store(STEP_DIMENSIONS, Ordering::Relaxed);
             let ((width, height), format_warning) = dimensions_with_fallback(source)?;
@@ -257,9 +259,7 @@ pub fn create_thumbnail_with_timeout(
         )
     });
 
-    let file_size = std::fs::metadata(source)
-        .map(|m| m.len())
-        .unwrap_or(0);
+    let file_size = std::fs::metadata(source).map(|m| m.len()).unwrap_or(0);
 
     let start = Instant::now();
     loop {
@@ -284,4 +284,3 @@ pub fn create_thumbnail_with_timeout(
         std::thread::sleep(Duration::from_millis(200));
     }
 }
-

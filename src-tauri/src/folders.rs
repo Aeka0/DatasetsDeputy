@@ -381,8 +381,9 @@ pub fn ensure_folder_thumbnails(
                 continue;
             }
             let metadata = fs::metadata(&path).ok();
-            let cached = cached_folder_thumbnail_path(dirs, &path, metadata.as_ref(), thumbnail_size)
-                .map(|p| p.to_string_lossy().to_string());
+            let cached =
+                cached_folder_thumbnail_path(dirs, &path, metadata.as_ref(), thumbnail_size)
+                    .map(|p| p.to_string_lossy().to_string());
             let hash = folder_thumbnail_hash(&path, metadata.as_ref());
             jobs.push(FolderThumbnailJob {
                 id,
@@ -621,7 +622,10 @@ pub fn list_folder_images_fast(dirs: &AppDirs) -> AppResult<Vec<DatasetImage>> {
     list_folder_images_inner(dirs, true)
 }
 
-fn list_folder_images_inner(dirs: &AppDirs, skip_annotations: bool) -> AppResult<Vec<DatasetImage>> {
+fn list_folder_images_inner(
+    dirs: &AppDirs,
+    skip_annotations: bool,
+) -> AppResult<Vec<DatasetImage>> {
     let registry = read_registry(dirs)?;
     let mut images = Vec::new();
 
