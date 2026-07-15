@@ -13,7 +13,15 @@ pub struct OpenAiCompatibleSettings {
     pub model: String,
     pub use_proxy: bool,
     pub proxy_port: String,
-    pub disable_thinking: bool,
+    pub thinking_control: ThinkingControl,
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum ThinkingControl {
+    #[default]
+    Unspecified,
+    DisableTopLevel,
+    DisableChatTemplate,
 }
 
 #[derive(Debug, Deserialize)]
@@ -37,12 +45,27 @@ struct ChatRequest {
     temperature: f32,
     max_tokens: u32,
     #[serde(skip_serializing_if = "Option::is_none")]
+    enable_thinking: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     chat_template_kwargs: Option<ChatTemplateKwargs>,
 }
 
 #[derive(Debug, Serialize)]
 struct ChatTemplateKwargs {
     enable_thinking: bool,
+}
+
+fn thinking_fields(control: ThinkingControl) -> (Option<bool>, Option<ChatTemplateKwargs>) {
+    match control {
+        ThinkingControl::Unspecified => (None, None),
+        ThinkingControl::DisableTopLevel => (Some(false), None),
+        ThinkingControl::DisableChatTemplate => (
+            None,
+            Some(ChatTemplateKwargs {
+                enable_thinking: false,
+            }),
+        ),
+    }
 }
 
 #[derive(Debug, Serialize)]
@@ -213,6 +236,7 @@ async fn generate_chat(
     client: &reqwest::Client,
     content: Vec<ChatContentPart>,
 ) -> AppResult<String> {
+    let (enable_thinking, chat_template_kwargs) = thinking_fields(settings.thinking_control);
     let request = ChatRequest {
         model: discover_model(client, settings).await,
         messages: vec![ChatMessage {
@@ -221,9 +245,8 @@ async fn generate_chat(
         }],
         temperature: 0.2,
         max_tokens: 1024,
-        chat_template_kwargs: settings.disable_thinking.then_some(ChatTemplateKwargs {
-            enable_thinking: false,
-        }),
+        enable_thinking,
+        chat_template_kwargs,
     };
 
     let mut builder = client
@@ -362,4 +385,52 @@ pub async fn fetch_models(settings: &OpenAiCompatibleSettings) -> AppResult<Vec<
     models.sort();
     models.dedup();
     Ok(models)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn serialized_request(thinking_control: ThinkingControl) -> serde_json::Value {
+        let (enable_thinking, chat_template_kwargs) = thinking_fields(thinking_control);
+        let request = ChatRequest {
+            model: Some("test-model".to_owned()),
+            messages: vec![ChatMessage {
+                role: "user".to_owned(),
+                content: vec![ChatContentPart::Text {
+                    text: "test".to_owned(),
+                }],
+            }],
+            temperature: 0.2,
+            max_tokens: 1024,
+            enable_thinking,
+            chat_template_kwargs,
+        };
+
+        serde_json::to_value(request).expect("chat request should serialize")
+    }
+
+    #[test]
+    fn top_level_thinking_control_uses_dashscope_request_shape() {
+        let payload = serialized_request(ThinkingControl::DisableTopLevel);
+
+        assert_eq!(payload["enable_thinking"], false);
+        assert!(payload.get("chat_template_kwargs").is_none());
+    }
+
+    #[test]
+    fn chat_template_thinking_control_uses_local_server_request_shape() {
+        let payload = serialized_request(ThinkingControl::DisableChatTemplate);
+
+        assert!(payload.get("enable_thinking").is_none());
+        assert_eq!(payload["chat_template_kwargs"]["enable_thinking"], false);
+    }
+
+    #[test]
+    fn unspecified_thinking_control_adds_no_provider_specific_fields() {
+        let payload = serialized_request(ThinkingControl::Unspecified);
+
+        assert!(payload.get("enable_thinking").is_none());
+        assert!(payload.get("chat_template_kwargs").is_none());
+    }
 }

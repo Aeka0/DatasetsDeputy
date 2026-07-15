@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
     app_dirs::AppDirs,
     errors::AppResult,
-    openai_compatible::{self, OpenAiCompatibleSettings},
+    openai_compatible::{self, OpenAiCompatibleSettings, ThinkingControl},
     proxy_settings::ProxySettings,
     request_scheduling::{default_request_mode, default_target_rpm, normalize_request_mode},
 };
@@ -122,7 +122,7 @@ fn request_settings(
         model: settings.model.clone(),
         use_proxy: proxy_settings.use_proxy,
         proxy_port: proxy_settings.proxy_port.clone(),
-        disable_thinking: false,
+        thinking_control: ThinkingControl::Unspecified,
     }
 }
 

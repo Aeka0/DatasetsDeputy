@@ -3,7 +3,7 @@ use std::path::Path;
 use crate::{
     errors::AppResult,
     llm_loader_settings::{self, LlmLoaderSettings},
-    openai_compatible::{self, OpenAiCompatibleSettings},
+    openai_compatible::{self, OpenAiCompatibleSettings, ThinkingControl},
 };
 
 fn request_settings(settings: &LlmLoaderSettings) -> OpenAiCompatibleSettings {
@@ -14,7 +14,7 @@ fn request_settings(settings: &LlmLoaderSettings) -> OpenAiCompatibleSettings {
         model: String::new(),
         use_proxy: false,
         proxy_port: String::new(),
-        disable_thinking: false,
+        thinking_control: ThinkingControl::Unspecified,
     }
 }
 
