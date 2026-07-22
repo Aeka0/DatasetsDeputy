@@ -24,6 +24,11 @@ import i18next from "../../i18n";
 import { cn } from "../../lib/cn";
 import { formatAppError } from "../../lib/errors";
 import { formatBytes } from "../../lib/format";
+import {
+  defaultGeminiTextModel,
+  defaultGeminiTextModels,
+  modelForGoogleSource
+} from "../../lib/geminiModels";
 import { hasTauriRuntime, invokeCommand } from "../../lib/tauri";
 import {
   getBottomUiOpacity,
@@ -269,8 +274,8 @@ const defaultGeminiSettings: GeminiSettings = {
   googleVertexProjectId: "",
   googleVertexLocation: "global",
   baseUrl: "",
-  model: "gemini-flash-latest",
-  availableModels: ["gemini-flash-latest", "gemini-pro-latest"],
+  model: defaultGeminiTextModel,
+  availableModels: defaultGeminiTextModels,
   targetRpm: 5,
   requestMode: "queue",
   imageResizeMode: "none",
@@ -2649,7 +2654,17 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
                             label: t(option.labelKey)
                           }))}
                           onChange={(googleApiSource) =>
-                            patchGeminiSettings({ googleApiSource })
+                            patchGeminiSettings({
+                              googleApiSource,
+                              model: modelForGoogleSource(
+                                googleApiSource,
+                                geminiSettings.model
+                              ),
+                              availableModels:
+                                googleApiSource === "vertex_ai"
+                                  ? defaultGeminiTextModels
+                                  : geminiSettings.availableModels
+                            })
                           }
                         />
                       </label>

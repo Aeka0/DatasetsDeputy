@@ -13,9 +13,20 @@ use crate::{
 
 const SETTINGS_FILE: &str = "gemini-settings.json";
 const DEFAULT_BASE_URL: &str = "https://generativelanguage.googleapis.com/v1beta";
-const DEFAULT_MODEL: &str = "gemini-flash-latest";
-const DEFAULT_AVAILABLE_MODELS: [&str; 2] = ["gemini-flash-latest", "gemini-pro-latest"];
-const LEGACY_DEFAULT_AVAILABLE_MODELS: [&str; 2] = ["gemini-1.5-pro-002", "gemini-1.5-flash-002"];
+const DEFAULT_MODEL: &str = "gemini-3.6-flash";
+const DEFAULT_AVAILABLE_MODELS: [&str; 6] = [
+    "gemini-3.6-flash",
+    "gemini-3.5-flash",
+    "gemini-3.5-flash-lite",
+    "gemini-3.1-flash-lite",
+    "gemini-3.1-pro-preview",
+    "gemini-3-flash-preview",
+];
+const OUTDATED_DEFAULT_MODEL_SETS: &[&[&str]] = &[
+    &["gemini-flash-latest", "gemini-pro-latest"],
+    &["gemini-1.5-pro-002", "gemini-1.5-flash-002"],
+];
+const UNSUPPORTED_VERTEX_MODEL_ALIASES: &[&str] = &["gemini-flash-latest", "gemini-pro-latest"];
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -81,7 +92,23 @@ struct GenerateContentRequest {
 
 #[derive(Debug, Serialize)]
 struct GenerateContentMessage {
+    role: GenerateContentRole,
     parts: Vec<GenerateContentPart>,
+}
+
+impl GenerateContentMessage {
+    fn user(parts: Vec<GenerateContentPart>) -> Self {
+        Self {
+            role: GenerateContentRole::User,
+            parts,
+        }
+    }
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "lowercase")]
+enum GenerateContentRole {
+    User,
 }
 
 #[derive(Debug, Serialize)]
@@ -189,11 +216,23 @@ fn effective_base_url(base_url: &str) -> String {
     }
 }
 
-fn is_legacy_default_models(models: &[String]) -> bool {
-    models.len() == LEGACY_DEFAULT_AVAILABLE_MODELS.len()
-        && LEGACY_DEFAULT_AVAILABLE_MODELS
-            .iter()
-            .all(|legacy_model| models.iter().any(|model| model == legacy_model))
+fn is_outdated_default_models(models: &[String]) -> bool {
+    OUTDATED_DEFAULT_MODEL_SETS.iter().any(|defaults| {
+        models.len() == defaults.len()
+            && defaults
+                .iter()
+                .all(|legacy_model| models.iter().any(|model| model == legacy_model))
+    })
+}
+
+fn dedup_models(models: &mut Vec<String>) {
+    let mut deduped = Vec::with_capacity(models.len());
+    for model in models.drain(..) {
+        if !deduped.contains(&model) {
+            deduped.push(model);
+        }
+    }
+    *models = deduped;
 }
 
 pub fn load_settings(dirs: &AppDirs) -> AppResult<GeminiSettings> {
@@ -208,11 +247,14 @@ pub fn load_settings(dirs: &AppDirs) -> AppResult<GeminiSettings> {
         settings.available_models = default_settings().available_models;
     }
     settings.base_url = normalize_base_url(&settings.base_url);
-    if is_legacy_default_models(&settings.available_models) {
+    if is_outdated_default_models(&settings.available_models) {
         settings.available_models = default_settings().available_models;
         if matches!(
             settings.model.as_str(),
-            "gemini-1.5-pro-002" | "gemini-1.5-flash-002"
+            "gemini-flash-latest"
+                | "gemini-pro-latest"
+                | "gemini-1.5-pro-002"
+                | "gemini-1.5-flash-002"
         ) {
             settings.model = default_settings().model;
         }
@@ -256,8 +298,7 @@ pub fn save_settings(dirs: &AppDirs, mut settings: GeminiSettings) -> AppResult<
     {
         settings.available_models.push(settings.model.clone());
     }
-    settings.available_models.sort();
-    settings.available_models.dedup();
+    dedup_models(&mut settings.available_models);
 
     let path = dirs.config.join(SETTINGS_FILE);
     fs::write(path, serde_json::to_string_pretty(&settings)?)?;
@@ -266,6 +307,11 @@ pub fn save_settings(dirs: &AppDirs, mut settings: GeminiSettings) -> AppResult<
 
 fn normalize_google_settings(settings: &mut GeminiSettings) {
     settings.google_api_source = google_api::normalize_source(&settings.google_api_source);
+    if GoogleApiSource::from_settings(&settings.google_api_source) == GoogleApiSource::VertexAi
+        && UNSUPPORTED_VERTEX_MODEL_ALIASES.contains(&settings.model.trim())
+    {
+        settings.model = DEFAULT_MODEL.to_owned();
+    }
     settings.google_vertex_service_account_path = settings
         .google_vertex_service_account_path
         .trim()
@@ -299,12 +345,7 @@ pub async fn fetch_models(
         .await
         .map_err(|error| AppError::InvalidInput(format!("Model request failed: {error}")))?;
 
-    if !response.status().is_success() {
-        return Err(AppError::InvalidInput(format!(
-            "Model request failed with status {}",
-            response.status()
-        )));
-    }
+    let response = checked_google_response(response, "Model request").await?;
 
     let payload: GeminiModelsResponse = response
         .json()
@@ -413,12 +454,7 @@ async fn generate_content(
         .await
         .map_err(|error| AppError::InvalidInput(format!("Annotation request failed: {error}")))?;
 
-    if !response.status().is_success() {
-        return Err(AppError::InvalidInput(format!(
-            "Annotation request failed with status {}",
-            response.status()
-        )));
-    }
+    let response = checked_google_response(response, "Annotation request").await?;
 
     let payload: GenerateContentResponse = response.json().await.map_err(|error| {
         AppError::InvalidInput(format!("Annotation response parse failed: {error}"))
@@ -458,9 +494,9 @@ pub async fn generate_text(
     }
 
     let request = GenerateContentRequest {
-        contents: vec![GenerateContentMessage {
-            parts: vec![GenerateContentPart::Text(prompt.trim().to_owned())],
-        }],
+        contents: vec![GenerateContentMessage::user(vec![
+            GenerateContentPart::Text(prompt.trim().to_owned()),
+        ])],
     };
 
     generate_content(dirs, settings, proxy_settings, request).await
@@ -482,15 +518,13 @@ pub async fn generate_annotation(
 
     let image_bytes = fs::read(image_path)?;
     let request = GenerateContentRequest {
-        contents: vec![GenerateContentMessage {
-            parts: vec![
-                GenerateContentPart::Text(prompt.trim().to_owned()),
-                GenerateContentPart::InlineData(InlineData {
-                    mime_type: mime_type_for_path(image_path)?,
-                    data: general_purpose::STANDARD.encode(image_bytes),
-                }),
-            ],
-        }],
+        contents: vec![GenerateContentMessage::user(vec![
+            GenerateContentPart::Text(prompt.trim().to_owned()),
+            GenerateContentPart::InlineData(InlineData {
+                mime_type: mime_type_for_path(image_path)?,
+                data: general_purpose::STANDARD.encode(image_bytes),
+            }),
+        ])],
     };
 
     generate_content(dirs, settings, proxy_settings, request).await
@@ -520,11 +554,13 @@ pub async fn test_connection(
     settings: &GeminiSettings,
     proxy_settings: &ProxySettings,
 ) -> AppResult<usize> {
+    let mut settings = settings.clone();
+    normalize_google_settings(&mut settings);
     if GoogleApiSource::from_settings(&settings.google_api_source) == GoogleApiSource::AiStudio {
-        return Ok(fetch_models(settings, proxy_settings).await?.len());
+        return Ok(fetch_models(&settings, proxy_settings).await?.len());
     }
 
-    validate_auth_settings(settings)?;
+    validate_auth_settings(&settings)?;
     let client = proxy_settings::http_client(proxy_settings, 20)?;
     let credentials =
         google_api::load_vertex_credentials(dirs, &settings.google_vertex_service_account_path)?;
@@ -558,12 +594,7 @@ pub async fn test_connection(
     .map_err(|error| {
         AppError::InvalidInput(format!("Vertex AI connection request failed: {error}"))
     })?;
-    if !response.status().is_success() {
-        return Err(AppError::InvalidInput(format!(
-            "Vertex AI connection request failed with status {}",
-            response.status()
-        )));
-    }
+    let response = checked_google_response(response, "Vertex AI connection request").await?;
     let payload = response
         .json::<serde_json::Value>()
         .await
@@ -574,6 +605,37 @@ pub async fn test_connection(
         .get("totalTokens")
         .and_then(serde_json::Value::as_u64)
         .unwrap_or(0) as usize)
+}
+
+async fn checked_google_response(
+    response: reqwest::Response,
+    action: &str,
+) -> AppResult<reqwest::Response> {
+    let status = response.status();
+    if status.is_success() {
+        return Ok(response);
+    }
+
+    let body = response.text().await.unwrap_or_default();
+    let detail = serde_json::from_str::<serde_json::Value>(&body)
+        .ok()
+        .and_then(|value| {
+            value
+                .get("error")
+                .and_then(|error| error.get("message").or_else(|| error.get("status")))
+                .or_else(|| value.get("message"))
+                .and_then(serde_json::Value::as_str)
+                .map(str::to_owned)
+        })
+        .unwrap_or_else(|| body.trim().chars().take(1200).collect());
+    let suffix = if detail.is_empty() {
+        String::new()
+    } else {
+        format!(": {detail}")
+    };
+    Err(AppError::InvalidInput(format!(
+        "{action} failed with status {status}{suffix}"
+    )))
 }
 
 #[cfg(test)]
@@ -608,5 +670,61 @@ mod tests {
 
         settings.google_vertex_service_account_path = "config/api/service-account.json".to_owned();
         assert!(validate_auth_settings(&settings).is_ok());
+    }
+
+    #[test]
+    fn defaults_to_current_gemini_three_text_models() {
+        let settings = default_settings();
+        assert_eq!(settings.model, "gemini-3.6-flash");
+        assert_eq!(
+            settings.available_models,
+            DEFAULT_AVAILABLE_MODELS.map(str::to_owned)
+        );
+        assert!(settings.available_models.iter().all(|model| {
+            model.starts_with("gemini-3")
+                && !model.contains("image")
+                && !model.contains("live")
+                && !model.contains("tts")
+        }));
+    }
+
+    #[test]
+    fn replaces_unsupported_vertex_latest_aliases() {
+        let mut settings = default_settings();
+        settings.google_api_source = google_api::SOURCE_VERTEX_AI.to_owned();
+        settings.model = "gemini-flash-latest".to_owned();
+        normalize_google_settings(&mut settings);
+        assert_eq!(settings.model, DEFAULT_MODEL);
+    }
+
+    #[test]
+    fn serializes_user_role_for_generate_content_requests() {
+        let request = GenerateContentRequest {
+            contents: vec![GenerateContentMessage::user(vec![
+                GenerateContentPart::Text("Describe the image".to_owned()),
+                GenerateContentPart::InlineData(InlineData {
+                    mime_type: "image/png".to_owned(),
+                    data: "encoded-image".to_owned(),
+                }),
+            ])],
+        };
+
+        assert_eq!(
+            serde_json::to_value(request).unwrap(),
+            serde_json::json!({
+                "contents": [{
+                    "role": "user",
+                    "parts": [
+                        { "text": "Describe the image" },
+                        {
+                            "inlineData": {
+                                "mimeType": "image/png",
+                                "data": "encoded-image"
+                            }
+                        }
+                    ]
+                }]
+            })
+        );
     }
 }

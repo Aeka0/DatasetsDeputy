@@ -9,6 +9,7 @@ import {
   type AnnotationPromptSettings
 } from "../../lib/annotationPrompt";
 import { formatAppError } from "../../lib/errors";
+import { defaultGeminiTextModel, defaultGeminiTextModels } from "../../lib/geminiModels";
 import { hasTauriRuntime, invokeCommand } from "../../lib/tauri";
 import { AnimatedPortal, useAnimatedPortalClose } from "../ui/AnimatedPortal";
 import { Button } from "../ui/Button";
@@ -31,8 +32,8 @@ const fallbackSettings: LLMPromptManagementSettings = {
   ...defaultAnnotationPromptSettings,
   apiKey: "",
   baseUrl: "",
-  model: "gemini-flash-latest",
-  availableModels: ["gemini-flash-latest", "gemini-pro-latest"],
+  model: defaultGeminiTextModel,
+  availableModels: defaultGeminiTextModels,
   targetRpm: 5,
   requestMode: "queue",
   imageResizeMode: "none",
