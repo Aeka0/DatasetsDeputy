@@ -19,7 +19,7 @@ import {
   X
 } from "lucide-react";
 import type { MouseEvent as ReactMouseEvent } from "react";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useShallow } from "zustand/react/shallow";
 
@@ -1227,6 +1227,7 @@ export function DatasetWorkspace() {
     profiles,
     workspaceTab: activeTab,
     selectedProjectId,
+    selectedImageId,
     selectedImageIds,
     search,
     viewFilterMode,
@@ -1261,6 +1262,7 @@ export function DatasetWorkspace() {
       profiles: state.profiles,
       workspaceTab: state.workspaceTab,
       selectedProjectId: state.selectedProjectId,
+      selectedImageId: state.selectedImageId,
       selectedImageIds: state.selectedImageIds,
       search: state.search,
       viewFilterMode: state.viewFilterMode,
@@ -1518,11 +1520,47 @@ export function DatasetWorkspace() {
     }
   };
 
-  const startDeleteImage = (image: DatasetImage) => {
+  const startDeleteImage = useCallback((image: DatasetImage) => {
     setImageContextMenu(undefined);
     setDeleteImage(image);
     setDeleteError("");
-  };
+  }, []);
+
+  useEffect(() => {
+    const openSelectedImageDeleteDialog = (event: KeyboardEvent) => {
+      if (
+        event.key !== "Delete" ||
+        event.defaultPrevented ||
+        event.repeat ||
+        event.ctrlKey ||
+        event.metaKey ||
+        event.altKey ||
+        event.shiftKey ||
+        activeTab === "overview" ||
+        document.querySelector(".dialog-transition-root")
+      ) {
+        return;
+      }
+
+      const target = event.target;
+      if (
+        target instanceof HTMLElement &&
+        (target.isContentEditable ||
+          target.closest("input, textarea, select, [contenteditable='true']"))
+      ) {
+        return;
+      }
+
+      const selectedImage = visibleImages.find((image) => image.id === selectedImageId);
+      if (!selectedImage) return;
+
+      event.preventDefault();
+      startDeleteImage(selectedImage);
+    };
+
+    window.addEventListener("keydown", openSelectedImageDeleteDialog);
+    return () => window.removeEventListener("keydown", openSelectedImageDeleteDialog);
+  }, [activeTab, selectedImageId, startDeleteImage, visibleImages]);
 
   const confirmDeleteImage = async () => {
     if (!deleteImage || isDeletingImage) return;
