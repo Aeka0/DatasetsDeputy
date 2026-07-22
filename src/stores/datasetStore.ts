@@ -640,6 +640,7 @@ interface DatasetState {
   deleteLooseFiles: (project: DatasetProject) => Promise<void>;
   renameDatasetImage: (image: DatasetImage, name: string) => Promise<void>;
   deleteDatasetImage: (image: DatasetImage) => Promise<void>;
+  deleteDatasetImages: (images: DatasetImage[]) => Promise<void>;
   openExportDialog: () => void;
   closeExportDialog: () => void;
   prepareExportDataset: (request: ExportDatasetRequest) => Promise<ExportPreview | undefined>;
@@ -690,6 +691,7 @@ interface DatasetState {
   updateTableAnnotationDraft: (imageId: number, value: string) => void;
   updateTableInstructionDraft: (imageId: number, value: string) => void;
   markTableCellSaved: (key: string) => void;
+  markTableCellsSaved: (keys: string[]) => void;
   markTableCellFailed: (key: string) => void;
   clearTableCellFailure: (key: string) => void;
   clearTableFailedCellMarks: () => void;
@@ -2231,12 +2233,20 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
       };
     });
   },
-  deleteDatasetImage: async (image) => {
+  deleteDatasetImage: async (image) => get().deleteDatasetImages([image]),
+  deleteDatasetImages: async (imagesToDelete) => {
+    const uniqueImages = Array.from(
+      new Map(imagesToDelete.map((image) => [image.id, image])).values()
+    );
+    if (uniqueImages.length === 0) return;
+
     if (hasTauriRuntime()) {
-      await invokeCommand<number>("delete_dataset_image", {
-        imageId: image.id,
-        imagePath: image.path,
-        sourceKind: image.sourceKind
+      await invokeCommand<number>("delete_dataset_images", {
+        images: uniqueImages.map((image) => ({
+          imageId: image.id,
+          imagePath: image.path,
+          sourceKind: image.sourceKind
+        }))
       });
       try {
         const profiles = await invokeCommand<AnnotationProfile[]>("list_annotation_profiles");
@@ -2257,18 +2267,23 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
           "error"
         );
       }
-      const historyState = await invalidateHistoryResources([`image:${image.id}`]);
+      const historyState = await invalidateHistoryResources(
+        uniqueImages.map((image) => `image:${image.id}`)
+      );
       if (historyState) set({ historyState });
       return;
     }
 
+    const deletedImageIds = new Set(uniqueImages.map((image) => image.id));
     set((state) => {
-      const images = state.images.filter((item) => item.id !== image.id);
+      const images = state.images.filter((item) => !deletedImageIds.has(item.id));
       const usedProfileIds = new Set(
         images.flatMap((item) => item.annotations.map((annotation) => annotation.profileId))
       );
       const profiles = state.profiles.filter((profile) => usedProfileIds.has(profile.id));
-      const selectedImageIds = state.selectedImageIds.filter((imageId) => imageId !== image.id);
+      const selectedImageIds = state.selectedImageIds.filter(
+        (imageId) => !deletedImageIds.has(imageId)
+      );
       const activeProfileId = profiles.some((profile) => profile.id === state.activeProfileId)
         ? state.activeProfileId
         : profiles[0]?.id;
@@ -2280,12 +2295,18 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
         activeProfileId,
         ...createImageSelection(
           selectedImageIds,
-          state.selectedImageId === image.id ? selectedImageIds.at(-1) : state.selectedImageId,
-          state.selectionAnchorImageId === image.id
+          state.selectedImageId !== undefined && deletedImageIds.has(state.selectedImageId)
+            ? selectedImageIds.at(-1)
+            : state.selectedImageId,
+          state.selectionAnchorImageId !== undefined &&
+            deletedImageIds.has(state.selectionAnchorImageId)
             ? selectedImageIds.at(-1)
             : state.selectionAnchorImageId
         ),
-        previewImageId: state.previewImageId === image.id ? undefined : state.previewImageId
+        previewImageId:
+          state.previewImageId !== undefined && deletedImageIds.has(state.previewImageId)
+            ? undefined
+            : state.previewImageId
       };
     });
   },
@@ -2921,17 +2942,20 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
         [`${imageId}:instruction`]: "dirty"
       }
     })),
-  markTableCellSaved: (key) =>
+  markTableCellSaved: (key) => get().markTableCellsSaved([key]),
+  markTableCellsSaved: (keys) => {
+    const savedKeys = new Set(keys);
     set((state) => ({
-      tableSavedCellKeys: state.tableSavedCellKeys.includes(key)
-        ? state.tableSavedCellKeys
-        : [...state.tableSavedCellKeys, key],
-      tableFailedCellKeys: state.tableFailedCellKeys.filter((failedKey) => failedKey !== key),
+      tableSavedCellKeys: Array.from(new Set([...state.tableSavedCellKeys, ...savedKeys])),
+      tableFailedCellKeys: state.tableFailedCellKeys.filter(
+        (failedKey) => !savedKeys.has(failedKey)
+      ),
       tableLatestCellStates: {
         ...state.tableLatestCellStates,
-        [key]: "saved"
+        ...Object.fromEntries(Array.from(savedKeys, (key) => [key, "saved" as const]))
       }
-    })),
+    }));
+  },
   markTableCellFailed: (key) =>
     set((state) => ({
       tableFailedCellKeys: state.tableFailedCellKeys.includes(key)

@@ -217,14 +217,23 @@ pub fn refresh_folder_indexes(dirs: &AppDirs) -> AppResult<()> {
 }
 
 pub fn refresh_registered_folder_for_path(dirs: &AppDirs, target: &Path) -> AppResult<()> {
+    refresh_registered_folders_for_paths(dirs, &[target.to_path_buf()])
+}
+
+pub fn refresh_registered_folders_for_paths(dirs: &AppDirs, targets: &[PathBuf]) -> AppResult<()> {
     let registry = read_registry(dirs)?;
-    let normalized_target = normalize_path(target).to_ascii_lowercase();
+    let normalized_targets = targets
+        .iter()
+        .map(|target| normalize_path(target).to_ascii_lowercase())
+        .collect::<Vec<_>>();
     for root in registry.folders.iter().map(PathBuf::from) {
         let normalized_root = normalize_path(&root).to_ascii_lowercase();
-        if normalized_target == normalized_root
-            || normalized_target.starts_with(&format!("{normalized_root}/"))
+        let root_prefix = format!("{normalized_root}/");
+        if normalized_targets
+            .iter()
+            .any(|target| target == &normalized_root || target.starts_with(&root_prefix))
         {
-            return refresh_folder_index(dirs, &root);
+            refresh_folder_index(dirs, &root)?;
         }
     }
     Ok(())

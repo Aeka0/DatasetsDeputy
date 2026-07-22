@@ -47,6 +47,7 @@ import { AnimatedLayer, AnimatedLayerPortal, useUiAnimationEnabled } from "../ui
 type WorkspaceTab = "overview" | "grid" | "table";
 type ImageContextMenuState = {
   image: DatasetImage;
+  imageIds: number[];
   left: number;
   top: number;
 };
@@ -592,13 +593,13 @@ function ImageRenameDialog({
 }
 
 function ImageDeleteDialog({
-  image,
+  images,
   error,
   isDeleting,
   onClose,
   onConfirm
 }: {
-  image: DatasetImage;
+  images: DatasetImage[];
   error: string;
   isDeleting: boolean;
   onClose: () => void;
@@ -606,44 +607,122 @@ function ImageDeleteDialog({
 }) {
   const { t } = useTranslation();
   const { open, close } = useAnimatedPortalClose(onClose);
-  const editedAnnotationTypeCount = new Set(
-    image.annotations
-      .filter((annotation) => annotation.content.trim() || annotation.instruction.trim())
-      .map((annotation) => annotation.profileId)
-  ).size;
+  const image = images[0];
+  const isMultiDelete = images.length > 1;
+  const sourceGroups = {
+    folder: images.filter((item) => item.sourceKind === "folder"),
+    asset: images.filter((item) => item.sourceKind === "asset"),
+    database: images.filter(
+      (item) => item.sourceKind !== "folder" && item.sourceKind !== "asset"
+    )
+  };
+  const countEditedAnnotations = (targetImages: DatasetImage[]) =>
+    targetImages.reduce(
+      (count, targetImage) =>
+        count +
+        new Set(
+          targetImage.annotations
+            .filter((annotation) => annotation.content.trim() || annotation.instruction.trim())
+            .map((annotation) => annotation.profileId)
+        ).size,
+      0
+    );
   const isFolderImage = image.sourceKind === "folder";
   const isAssetImage = image.sourceKind === "asset";
-  const deletedDescription = isFolderImage
-    ? t("itemMenu.deletedFolderImage")
-    : isAssetImage
-    ? t("itemMenu.deletedAssetImage", { count: editedAnnotationTypeCount })
-    : t("itemMenu.deletedDatabaseImage", { count: editedAnnotationTypeCount });
-  const keptDescription = isFolderImage
-    ? t("itemMenu.keptFolderImage")
-    : isAssetImage
-    ? t("itemMenu.keptAssetImage")
-    : t("itemMenu.keptDatabaseImage");
+  const editedAnnotationTypeCount = countEditedAnnotations([image]);
+  const deletedDescriptions = isMultiDelete
+    ? [
+        ...(sourceGroups.folder.length > 0
+          ? [t("itemMenu.deletedFolderImages", { count: sourceGroups.folder.length })]
+          : []),
+        ...(sourceGroups.database.length > 0
+          ? [
+              t("itemMenu.deletedDatabaseImages", {
+                count: sourceGroups.database.length,
+                annotationCount: countEditedAnnotations(sourceGroups.database)
+              })
+            ]
+          : []),
+        ...(sourceGroups.asset.length > 0
+          ? [
+              t("itemMenu.deletedAssetImages", {
+                count: sourceGroups.asset.length,
+                annotationCount: countEditedAnnotations(sourceGroups.asset)
+              })
+            ]
+          : [])
+      ]
+    : [
+        isFolderImage
+          ? t("itemMenu.deletedFolderImage")
+          : isAssetImage
+          ? t("itemMenu.deletedAssetImage", { count: editedAnnotationTypeCount })
+          : t("itemMenu.deletedDatabaseImage", { count: editedAnnotationTypeCount })
+      ];
+  const keptDescriptions = isMultiDelete
+    ? [
+        ...(sourceGroups.database.length > 0
+          ? [t("itemMenu.keptDatabaseImages", { count: sourceGroups.database.length })]
+          : []),
+        ...(sourceGroups.asset.length > 0
+          ? [t("itemMenu.keptAssetImages", { count: sourceGroups.asset.length })]
+          : [])
+      ]
+    : isFolderImage
+    ? []
+    : [isAssetImage ? t("itemMenu.keptAssetImage") : t("itemMenu.keptDatabaseImage")];
+  const previewImages = images.slice(0, 4);
 
   return (
     <AnimatedPortal open={open}>
     <div className="no-drag fixed inset-0 z-[60] flex items-center justify-center bg-neutral-950/24 px-4">
-      <div className="w-full max-w-[420px] rounded-lg border border-neutral-200 bg-white p-5 shadow-xl">
+      <div className="max-h-[calc(100vh-2rem)] w-full max-w-[420px] overflow-y-auto rounded-lg border border-neutral-200 bg-white p-5 shadow-xl">
         <h2 className="m-0 text-[15px] font-semibold leading-6 text-neutral-950">
-          {t("itemMenu.deleteTitle")}
+          {isMultiDelete
+            ? t("itemMenu.deleteManyTitle", { count: images.length })
+            : t("itemMenu.deleteTitle")}
         </h2>
         <div className="mt-3 rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2.5 text-[12px] leading-5">
-          <div className="truncate font-medium text-neutral-900">{image.fileName}</div>
-          <div className="truncate text-neutral-500">{image.path}</div>
+          {isMultiDelete ? (
+            <>
+              <div className="mb-1 font-medium text-neutral-900">
+                {t("itemMenu.selectedItems", { count: images.length })}
+              </div>
+              {previewImages.map((previewImage) => (
+                <div key={previewImage.id} className="truncate text-neutral-600" title={previewImage.path}>
+                  {previewImage.fileName}
+                </div>
+              ))}
+              {images.length > previewImages.length ? (
+                <div className="text-neutral-500">
+                  {t("itemMenu.moreItems", { count: images.length - previewImages.length })}
+                </div>
+              ) : null}
+            </>
+          ) : (
+            <>
+              <div className="truncate font-medium text-neutral-900">{image.fileName}</div>
+              <div className="truncate text-neutral-500">{image.path}</div>
+            </>
+          )}
         </div>
         <div className="mt-4 space-y-3 text-[13px] leading-5">
           <div>
             <div className="font-medium text-neutral-950">{t("deleteDetails.deletedTitle")}</div>
-            <div className="mt-1 text-rose-400">{deletedDescription}</div>
+            {deletedDescriptions.map((description) => (
+              <div key={description} className="mt-1 text-rose-400">
+                {description}
+              </div>
+            ))}
           </div>
-          {!isFolderImage ? (
+          {keptDescriptions.length > 0 ? (
             <div>
               <div className="font-medium text-neutral-950">{t("deleteDetails.keptTitle")}</div>
-              <div className="mt-1 text-neutral-600">{keptDescription}</div>
+              {keptDescriptions.map((description) => (
+                <div key={description} className="mt-1 text-neutral-600">
+                  {description}
+                </div>
+              ))}
             </div>
           ) : null}
         </div>
@@ -1227,7 +1306,6 @@ export function DatasetWorkspace() {
     profiles,
     workspaceTab: activeTab,
     selectedProjectId,
-    selectedImageId,
     selectedImageIds,
     search,
     viewFilterMode,
@@ -1250,11 +1328,11 @@ export function DatasetWorkspace() {
     deleteAnnotationProfile,
     selectProject,
     selectImage,
-    applyTableDraft,
-    markTableCellSaved,
+    applyBatchTableDrafts,
+    markTableCellsSaved,
     saveAnnotationChanges,
     renameDatasetImage,
-    deleteDatasetImage
+    deleteDatasetImages
   } = useDatasetStore(
     useShallow((state) => ({
       images: state.images,
@@ -1262,7 +1340,6 @@ export function DatasetWorkspace() {
       profiles: state.profiles,
       workspaceTab: state.workspaceTab,
       selectedProjectId: state.selectedProjectId,
-      selectedImageId: state.selectedImageId,
       selectedImageIds: state.selectedImageIds,
       search: state.search,
       viewFilterMode: state.viewFilterMode,
@@ -1285,11 +1362,11 @@ export function DatasetWorkspace() {
       deleteAnnotationProfile: state.deleteAnnotationProfile,
       selectProject: state.selectProject,
       selectImage: state.selectImage,
-      applyTableDraft: state.applyTableDraft,
-      markTableCellSaved: state.markTableCellSaved,
+      applyBatchTableDrafts: state.applyBatchTableDrafts,
+      markTableCellsSaved: state.markTableCellsSaved,
       saveAnnotationChanges: state.saveAnnotationChanges,
       renameDatasetImage: state.renameDatasetImage,
-      deleteDatasetImage: state.deleteDatasetImage
+      deleteDatasetImages: state.deleteDatasetImages
     }))
   );
   const [folderImportPreview, setFolderImportPreview] = useState<FolderImageImportPreview>();
@@ -1303,9 +1380,9 @@ export function DatasetWorkspace() {
   const [renameName, setRenameName] = useState("");
   const [renameError, setRenameError] = useState("");
   const [isRenamingImage, setIsRenamingImage] = useState(false);
-  const [deleteImage, setDeleteImage] = useState<DatasetImage>();
+  const [deleteImages, setDeleteImages] = useState<DatasetImage[]>([]);
   const [deleteError, setDeleteError] = useState("");
-  const [isDeletingImage, setIsDeletingImage] = useState(false);
+  const [isDeletingImages, setIsDeletingImages] = useState(false);
   const [isSavingImageChanges, setIsSavingImageChanges] = useState(false);
   const selectedProject = flattenProjects(projects).find(
     (project) => project.id === selectedProjectId
@@ -1317,6 +1394,10 @@ export function DatasetWorkspace() {
   const visibleImages = useMemo(
     () => getVisibleImages(images, selectedProject, search, viewFilterMode, viewFilterImageIds),
     [images, search, selectedProject, viewFilterImageIds, viewFilterMode]
+  );
+  const imageById = useMemo(
+    () => new Map(images.map((image) => [image.id, image])),
+    [images]
   );
   const overviewImages = useMemo(
     () => getVisibleImages(images, selectedProject, "", viewFilterMode, viewFilterImageIds),
@@ -1331,10 +1412,14 @@ export function DatasetWorkspace() {
     viewFilterMode !== "all" &&
     visibleImages.length === 0 &&
     projectImageCount > 0;
-  const selectedVisibleImageCount = useMemo(() => {
+  const selectedVisibleImages = useMemo(() => {
     const visibleImageIds = new Set(visibleImages.map((image) => image.id));
-    return selectedImageIds.filter((imageId) => visibleImageIds.has(imageId)).length;
-  }, [selectedImageIds, visibleImages]);
+    return selectedImageIds
+      .filter((imageId) => visibleImageIds.has(imageId))
+      .map((imageId) => imageById.get(imageId))
+      .filter((image): image is DatasetImage => Boolean(image));
+  }, [imageById, selectedImageIds, visibleImages]);
+  const selectedVisibleImageCount = selectedVisibleImages.length;
   const visibleProblemItemCount = useMemo(
     () => visibleImages.filter((image) => image.sourceMissing).length,
     [visibleImages]
@@ -1376,19 +1461,24 @@ export function DatasetWorkspace() {
       : tableProfiles.some((profile) => profile.id === activeProfileId)
       ? activeProfileId
       : tableProfiles[0]?.id;
-  const contextMenuImage = imageContextMenu
-    ? images.find((image) => image.id === imageContextMenu.image.id) ?? imageContextMenu.image
-    : undefined;
-  const contextMenuChange = contextMenuImage
-    ? getImageDraftChange(
-        contextMenuImage,
+  const contextMenuImages = imageContextMenu
+    ? imageContextMenu.imageIds
+        .map((imageId) => imageById.get(imageId))
+        .filter((image): image is DatasetImage => Boolean(image))
+    : [];
+  const contextMenuChanges = contextMenuImages
+    .map((image) =>
+      getImageDraftChange(
+        image,
         contextMenuProfileId,
         tableDraftProfileId,
         tableAnnotationDrafts,
         tableInstructionDrafts
       )
-    : undefined;
-  const contextMenuImageIsDirty = Boolean(contextMenuChange);
+    )
+    .filter((change): change is AnnotationChange => Boolean(change));
+  const contextMenuImagesAreDirty = contextMenuChanges.length > 0;
+  const isMultiImageContextMenu = contextMenuImages.length > 1;
   const canImportImagesToFolder =
     isImportableDatasetChild(selectedProject) && Boolean(selectedProject?.datasetId);
   const workspaceViewTransitionKey = `${selectedProjectId ?? "none"}:${activeTab}:${
@@ -1450,41 +1540,61 @@ export function DatasetWorkspace() {
   ) => {
     event.preventDefault();
     event.stopPropagation();
-    selectImage(image.id);
+    const isInVisibleSelection = selectedVisibleImages.some(
+      (selectedImage) => selectedImage.id === image.id
+    );
+    const targetImages = isInVisibleSelection ? selectedVisibleImages : [image];
+    if (!isInVisibleSelection) {
+      selectImage(image.id);
+    }
     const position = clampContextMenuPosition(event.clientX, event.clientY, {
       width: 188,
       height: 192
     });
     setImageContextMenu({
       image,
+      imageIds: targetImages.map((targetImage) => targetImage.id),
       left: position.x,
       top: position.y
     });
   };
 
-  const discardImageChanges = (image: DatasetImage) => {
-    if (contextMenuProfileId === undefined) return;
+  const discardImageChanges = (changes: AnnotationChange[]) => {
+    if (contextMenuProfileId === undefined || changes.length === 0) return;
 
-    const annotation = getAnnotationForProfile(image, contextMenuProfileId);
-    applyTableDraft(contextMenuProfileId, image.id, {
-      content: annotation?.content ?? "",
-      instruction: annotation?.instruction ?? ""
-    });
+    applyBatchTableDrafts(
+      contextMenuProfileId,
+      changes.flatMap((change) => {
+        const image = imageById.get(change.imageId);
+        if (!image) return [];
+
+        const annotation = getAnnotationForProfile(image, contextMenuProfileId);
+        return [
+          {
+            imageId: image.id,
+            ...(change.content !== undefined ? { content: annotation?.content ?? "" } : {}),
+            ...(change.instruction !== undefined
+              ? { instruction: annotation?.instruction ?? "" }
+              : {})
+          }
+        ];
+      })
+    );
     setImageContextMenu(undefined);
   };
 
-  const saveImageChanges = async (image: DatasetImage) => {
-    if (!contextMenuChange || isSavingImageChanges) return;
+  const saveImageChanges = async (changes: AnnotationChange[]) => {
+    if (changes.length === 0 || isSavingImageChanges) return;
 
     setIsSavingImageChanges(true);
     try {
-      await saveAnnotationChanges([contextMenuChange]);
-      if (contextMenuChange.content !== undefined) {
-        markTableCellSaved(`${image.id}:annotation`);
-      }
-      if (contextMenuChange.instruction !== undefined) {
-        markTableCellSaved(`${image.id}:instruction`);
-      }
+      await saveAnnotationChanges(changes);
+      markTableCellsSaved(
+        changes.flatMap((change) => [
+          ...(change.content !== undefined ? [`${change.imageId}:annotation`] : []),
+          ...(change.instruction !== undefined ? [`${change.imageId}:instruction`] : [])
+        ])
+      );
       setImageContextMenu(undefined);
     } catch (error) {
       addAppLog(
@@ -1520,9 +1630,14 @@ export function DatasetWorkspace() {
     }
   };
 
-  const startDeleteImage = useCallback((image: DatasetImage) => {
+  const startDeleteImages = useCallback((imagesToDelete: DatasetImage[]) => {
+    const uniqueImages = Array.from(
+      new Map(imagesToDelete.map((image) => [image.id, image])).values()
+    );
+    if (uniqueImages.length === 0) return;
+
     setImageContextMenu(undefined);
-    setDeleteImage(image);
+    setDeleteImages(uniqueImages);
     setDeleteError("");
   }, []);
 
@@ -1551,29 +1666,28 @@ export function DatasetWorkspace() {
         return;
       }
 
-      const selectedImage = visibleImages.find((image) => image.id === selectedImageId);
-      if (!selectedImage) return;
+      if (selectedVisibleImages.length === 0) return;
 
       event.preventDefault();
-      startDeleteImage(selectedImage);
+      startDeleteImages(selectedVisibleImages);
     };
 
     window.addEventListener("keydown", openSelectedImageDeleteDialog);
     return () => window.removeEventListener("keydown", openSelectedImageDeleteDialog);
-  }, [activeTab, selectedImageId, startDeleteImage, visibleImages]);
+  }, [activeTab, selectedVisibleImages, startDeleteImages]);
 
-  const confirmDeleteImage = async () => {
-    if (!deleteImage || isDeletingImage) return;
+  const confirmDeleteImages = async () => {
+    if (deleteImages.length === 0 || isDeletingImages) return;
 
-    setIsDeletingImage(true);
+    setIsDeletingImages(true);
     setDeleteError("");
     try {
-      await deleteDatasetImage(deleteImage);
-      setDeleteImage(undefined);
+      await deleteDatasetImages(deleteImages);
+      setDeleteImages([]);
     } catch (error) {
       setDeleteError(formatAppError(error));
     } finally {
-      setIsDeletingImage(false);
+      setIsDeletingImages(false);
     }
   };
 
@@ -1793,43 +1907,55 @@ export function DatasetWorkspace() {
               onContextMenu={(event) => event.preventDefault()}
             >
               <div className="app-dropdown-backdrop" />
+              {isMultiImageContextMenu ? (
+                <>
+                  <div className="px-3.5 py-2 text-[11px] text-neutral-500">
+                    {t("itemMenu.selectedItems", { count: contextMenuImages.length })}
+                  </div>
+                  <div className="app-dropdown-separator mb-1.5 h-px" />
+                </>
+              ) : null}
               <button
                 type="button"
                 className="app-dropdown-item flex h-9 w-full items-center px-3.5 text-left text-[12px] font-medium transition disabled:cursor-not-allowed"
-                disabled={!contextMenuImageIsDirty || isSavingImageChanges || !contextMenuImage}
-                onClick={() => {
-                  if (contextMenuImage) {
-                    discardImageChanges(contextMenuImage);
-                  }
-                }}
+                disabled={
+                  !contextMenuImagesAreDirty ||
+                  isSavingImageChanges ||
+                  contextMenuImages.length === 0
+                }
+                onClick={() => discardImageChanges(contextMenuChanges)}
               >
                 <span>{t("itemMenu.discardChanges")}</span>
               </button>
               <button
                 type="button"
                 className="app-dropdown-item flex h-9 w-full items-center px-3.5 text-left text-[12px] font-medium transition disabled:cursor-not-allowed"
-                disabled={!contextMenuImageIsDirty || isSavingImageChanges || !contextMenuImage}
-                onClick={() => {
-                  if (contextMenuImage) {
-                    void saveImageChanges(contextMenuImage);
-                  }
-                }}
+                disabled={
+                  !contextMenuImagesAreDirty ||
+                  isSavingImageChanges ||
+                  contextMenuImages.length === 0
+                }
+                onClick={() => void saveImageChanges(contextMenuChanges)}
               >
                 <span>{t("itemMenu.saveChanges")}</span>
               </button>
               <div className="app-dropdown-separator my-1.5 h-px" />
+              {!isMultiImageContextMenu ? (
+                <>
+                  <button
+                    type="button"
+                    className="app-dropdown-item flex h-9 w-full items-center px-3.5 text-left text-[12px] font-medium transition"
+                    onClick={() => startRenameImage(imageContextMenu.image)}
+                  >
+                    <span>{formatDialogMenuLabel(t("itemMenu.rename"))}</span>
+                  </button>
+                  <div className="app-dropdown-separator my-1.5 h-px" />
+                </>
+              ) : null}
               <button
                 type="button"
                 className="app-dropdown-item flex h-9 w-full items-center px-3.5 text-left text-[12px] font-medium transition"
-                onClick={() => startRenameImage(imageContextMenu.image)}
-              >
-                <span>{formatDialogMenuLabel(t("itemMenu.rename"))}</span>
-              </button>
-              <div className="app-dropdown-separator my-1.5 h-px" />
-              <button
-                type="button"
-                className="app-dropdown-item flex h-9 w-full items-center px-3.5 text-left text-[12px] font-medium transition"
-                onClick={() => startDeleteImage(imageContextMenu.image)}
+                onClick={() => startDeleteImages(contextMenuImages)}
               >
                 <span>{formatDialogMenuLabel(t("itemMenu.delete"))}</span>
               </button>
@@ -1857,18 +1983,18 @@ export function DatasetWorkspace() {
         />
       ) : null}
 
-      {deleteImage ? (
+      {deleteImages.length > 0 ? (
         <ImageDeleteDialog
-          image={deleteImage}
+          images={deleteImages}
           error={deleteError}
-          isDeleting={isDeletingImage}
+          isDeleting={isDeletingImages}
           onClose={() => {
-            if (!isDeletingImage) {
-              setDeleteImage(undefined);
+            if (!isDeletingImages) {
+              setDeleteImages([]);
               setDeleteError("");
             }
           }}
-          onConfirm={() => void confirmDeleteImage()}
+          onConfirm={() => void confirmDeleteImages()}
         />
       ) : null}
 

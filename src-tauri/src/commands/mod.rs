@@ -201,6 +201,14 @@ pub struct FolderImageImportSummary {
     pub instruction_count: usize,
 }
 
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DeleteDatasetImageRequest {
+    pub image_id: i64,
+    pub image_path: String,
+    pub source_kind: Option<String>,
+}
+
 struct ImageImportTarget {
     target: Option<PathBuf>,
     source_kind: String,
@@ -4060,26 +4068,72 @@ pub fn delete_dataset_image(
     image_path: String,
     source_kind: Option<String>,
 ) -> AppResult<usize> {
-    if source_kind.as_deref() == Some("folder") || image_id < 0 {
-        let deleted = folders::delete_folder_image(&image_path)?;
-        folders::refresh_registered_folder_for_path(&state.dirs, Path::new(&image_path))?;
-        return Ok(deleted);
+    delete_dataset_images_impl(
+        &state.dirs,
+        &[DeleteDatasetImageRequest {
+            image_id,
+            image_path,
+            source_kind,
+        }],
+    )
+}
+
+#[tauri::command]
+pub fn delete_dataset_images(
+    state: State<'_, AppState>,
+    images: Vec<DeleteDatasetImageRequest>,
+) -> AppResult<usize> {
+    delete_dataset_images_impl(&state.dirs, &images)
+}
+
+fn delete_dataset_images_impl(
+    dirs: &app_dirs::AppDirs,
+    images: &[DeleteDatasetImageRequest],
+) -> AppResult<usize> {
+    let mut seen_image_ids = HashSet::new();
+    let mut folder_paths = Vec::new();
+    let mut database_image_ids = HashMap::<i64, Vec<i64>>::new();
+
+    for image in images {
+        if !seen_image_ids.insert(image.image_id) {
+            continue;
+        }
+        if image.source_kind.as_deref() == Some("folder") || image.image_id < 0 {
+            folder_paths.push(image.image_path.clone());
+            continue;
+        }
+
+        let (prefix, local_image_id) = split_public_id(image.image_id)?;
+        database_image_ids
+            .entry(prefix)
+            .or_default()
+            .push(local_image_id);
     }
 
-    let (prefix, local_image_id) = split_public_id(image_id)?;
-    let (mut db, _) = open_database_by_prefix(&state.dirs, prefix)?;
+    let mut deleted = 0;
+    for (prefix, local_image_ids) in database_image_ids {
+        let (mut db, _) = open_database_by_prefix(dirs, prefix)?;
+        let mut asset_storage_paths = Vec::new();
+        if db.dataset_source_kind()? == "asset" {
+            for image_id in &local_image_ids {
+                if let Some(storage_path) = db.get_image_storage_path(*image_id)? {
+                    asset_storage_paths.push(storage_path);
+                }
+            }
+        }
+        deleted += db.delete_images(&local_image_ids)?;
+        drop(db);
+        if !asset_storage_paths.is_empty() {
+            cleanup_unreferenced_asset_files(dirs, &asset_storage_paths, None);
+        }
+    }
 
-    let asset_storage_path = if db.dataset_source_kind()? == "asset" {
-        db.get_image_storage_path(local_image_id)?
-    } else {
-        None
-    };
-
-    let deleted = db.delete_image(local_image_id)?;
-    drop(db);
-
-    if let Some(storage_path) = asset_storage_path {
-        cleanup_unreferenced_asset_files(&state.dirs, &[storage_path], None);
+    if !folder_paths.is_empty() {
+        let folder_result = folders::delete_folder_images(&folder_paths);
+        let folder_path_bufs = folder_paths.iter().map(PathBuf::from).collect::<Vec<_>>();
+        let refresh_result = folders::refresh_registered_folders_for_paths(dirs, &folder_path_bufs);
+        deleted += folder_result?;
+        refresh_result?;
     }
 
     Ok(deleted)

@@ -882,6 +882,19 @@ impl Database {
         Ok(deleted)
     }
 
+    pub fn delete_images(&mut self, image_ids: &[i64]) -> AppResult<usize> {
+        let tx = self.conn.transaction()?;
+        let mut deleted = 0;
+        {
+            let mut stmt = tx.prepare("DELETE FROM images WHERE id = ?1")?;
+            for image_id in image_ids {
+                deleted += stmt.execute(params![image_id])?;
+            }
+        }
+        tx.commit()?;
+        Ok(deleted)
+    }
+
     pub fn delete_images_under_path(&mut self, folder_path: &str) -> AppResult<usize> {
         let normalized_path = normalize_dataset_path(folder_path);
         let child_pattern = format!("{}/%", escape_like_pattern(&normalized_path));

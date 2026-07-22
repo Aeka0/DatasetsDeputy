@@ -283,6 +283,7 @@ pub fn run() {
             commands::save_folder_instruction,
             commands::rename_dataset_image,
             commands::delete_dataset_image,
+            commands::delete_dataset_images,
             commands::create_annotation_profile,
             commands::rename_annotation_profile,
             commands::duplicate_annotation_profile,
