@@ -4,6 +4,7 @@ use crate::{
     errors::AppResult,
     llm_loader_settings::{self, LlmLoaderSettings},
     openai_compatible::{self, OpenAiCompatibleSettings, ThinkingControl},
+    proxy_settings::ProxySettings,
 };
 
 fn request_settings(settings: &LlmLoaderSettings) -> OpenAiCompatibleSettings {
@@ -12,8 +13,7 @@ fn request_settings(settings: &LlmLoaderSettings) -> OpenAiCompatibleSettings {
         base_url: llm_loader_settings::textgen_base_url(settings),
         api_key: String::new(),
         model: String::new(),
-        use_proxy: false,
-        proxy_port: String::new(),
+        proxy_settings: ProxySettings::direct(),
         thinking_control: ThinkingControl::DisableChatTemplate,
     }
 }

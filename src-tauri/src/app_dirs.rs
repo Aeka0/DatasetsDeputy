@@ -18,6 +18,7 @@ pub struct AppDirs {
     pub root: PathBuf,
     pub model: PathBuf,
     pub config: PathBuf,
+    pub api_config_dir: PathBuf,
     pub datasets: PathBuf,
     pub runtime: PathBuf,
     pub app: PathBuf,
@@ -40,6 +41,7 @@ pub fn ensure_release_dirs<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> AppR
     let dirs = AppDirs {
         model: root.join("model"),
         config: root.join("config"),
+        api_config_dir: root.join("config").join("api"),
         datasets: root.join("datasets"),
         runtime: root.join("runtime"),
         app: root.join("app"),
@@ -53,6 +55,7 @@ pub fn ensure_release_dirs<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> AppR
     for dir in [
         &dirs.model,
         &dirs.config,
+        &dirs.api_config_dir,
         &dirs.datasets,
         &dirs.runtime,
         &dirs.app,

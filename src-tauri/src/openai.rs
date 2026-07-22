@@ -120,8 +120,7 @@ fn request_settings(
         base_url,
         api_key: settings.api_key.clone(),
         model: settings.model.clone(),
-        use_proxy: proxy_settings.use_proxy,
-        proxy_port: proxy_settings.proxy_port.clone(),
+        proxy_settings: proxy_settings.clone(),
         thinking_control: ThinkingControl::Unspecified,
     }
 }

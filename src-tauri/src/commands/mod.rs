@@ -33,6 +33,7 @@ use crate::{
     files::{self, ImportPreview, ImportSummary},
     folders,
     gemini::{self, GeminiSettings},
+    google_api,
     grok::{self, GrokSettings},
     history::{HistoryOperation, HistoryRecordResult, HistoryState, NewHistoryOperation},
     llm_loader_settings::{self, LlmLoaderSettings},
@@ -220,6 +221,13 @@ struct ImageImportTarget {
 pub struct ModelPathSelection {
     pub path: String,
     pub model_type: String,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GoogleVertexServiceAccountImportResult {
+    pub path: String,
+    pub project_id: String,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -2629,9 +2637,34 @@ pub async fn test_gemini_connection(
         None => gemini::load_settings(&state.dirs)?,
     };
     let proxy_settings = proxy_settings::load_settings(&state.dirs)?;
-    gemini::fetch_models(&settings, &proxy_settings)
+    gemini::test_connection(&state.dirs, &settings, &proxy_settings).await
+}
+
+#[tauri::command]
+pub async fn pick_google_vertex_service_account(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> AppResult<GoogleVertexServiceAccountImportResult> {
+    let (sender, receiver) = std::sync::mpsc::channel();
+    app.dialog()
+        .file()
+        .add_filter("JSON", &["json"])
+        .pick_file(move |path| {
+            let _ = sender.send(path);
+        });
+
+    let Some(path) = tauri::async_runtime::spawn_blocking(move || receiver.recv())
         .await
-        .map(|models| models.len())
+        .map_err(|error| AppError::InvalidInput(format!("文件选择任务失败：{error}")))?
+        .map_err(|error| AppError::InvalidInput(format!("文件选择失败：{error}")))?
+    else {
+        return Err(AppError::DialogCancelled);
+    };
+    let path = path
+        .into_path()
+        .map_err(|_| AppError::InvalidInput("选择的服务账号文件不是本地路径".to_owned()))?;
+    let (path, project_id) = google_api::import_vertex_service_account(&state.dirs, &path)?;
+    Ok(GoogleVertexServiceAccountImportResult { path, project_id })
 }
 
 #[tauri::command]
@@ -2643,6 +2676,7 @@ pub async fn generate_gemini_annotation(
     let settings = gemini::load_settings(&state.dirs)?;
     let proxy_settings = proxy_settings::load_settings(&state.dirs)?;
     gemini::generate_annotation(
+        &state.dirs,
         &settings,
         &proxy_settings,
         &PathBuf::from(image_path),
@@ -2655,7 +2689,7 @@ pub async fn generate_gemini_annotation(
 pub async fn generate_gemini_text(state: State<'_, AppState>, prompt: String) -> AppResult<String> {
     let settings = gemini::load_settings(&state.dirs)?;
     let proxy_settings = proxy_settings::load_settings(&state.dirs)?;
-    gemini::generate_text(&settings, &proxy_settings, &prompt).await
+    gemini::generate_text(&state.dirs, &settings, &proxy_settings, &prompt).await
 }
 
 #[tauri::command]

@@ -1,9 +1,12 @@
-use std::{fs, path::Path, time::Duration};
+use std::{fs, path::Path};
 
 use base64::{engine::general_purpose, Engine as _};
 use serde::{Deserialize, Serialize};
 
-use crate::errors::{AppError, AppResult};
+use crate::{
+    errors::{AppError, AppResult},
+    proxy_settings::{self, ProxySettings},
+};
 
 #[derive(Clone, Debug)]
 pub struct OpenAiCompatibleSettings {
@@ -11,8 +14,7 @@ pub struct OpenAiCompatibleSettings {
     pub base_url: String,
     pub api_key: String,
     pub model: String,
-    pub use_proxy: bool,
-    pub proxy_port: String,
+    pub proxy_settings: ProxySettings,
     pub thinking_control: ThinkingControl,
 }
 
@@ -130,18 +132,7 @@ fn http_client(
     settings: &OpenAiCompatibleSettings,
     timeout_secs: u64,
 ) -> AppResult<reqwest::Client> {
-    let mut builder = reqwest::Client::builder().timeout(Duration::from_secs(timeout_secs));
-    if settings.use_proxy {
-        let proxy_url = format!("http://127.0.0.1:{}", settings.proxy_port.trim());
-        builder = builder.proxy(
-            reqwest::Proxy::all(&proxy_url)
-                .map_err(|error| AppError::InvalidInput(format!("Invalid proxy: {error}")))?,
-        );
-    }
-
-    builder
-        .build()
-        .map_err(|error| AppError::InvalidInput(format!("HTTP client failed: {error}")))
+    proxy_settings::http_client(&settings.proxy_settings, timeout_secs)
 }
 
 fn mime_type_for_path(path: &Path) -> AppResult<String> {

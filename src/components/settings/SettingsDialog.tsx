@@ -2,6 +2,7 @@ import {
   Check,
   ChevronDown,
   Boxes,
+  FileInput,
   Globe2,
   HardDrive,
   ImageUp,
@@ -120,14 +121,26 @@ const uiAnimationOptions: Array<{ value: UiAnimationPreference; labelKey: string
 ];
 
 type RemoteRequestMode = "queue" | "concurrent";
+type GoogleApiSource = "ai_studio" | "vertex_ai";
+type ProxyMode = "system" | "direct" | "manual";
 
 const requestModeOptions: Array<{ value: RemoteRequestMode; labelKey: string }> = [
   { value: "queue", labelKey: "settings.requestModeQueue" },
   { value: "concurrent", labelKey: "settings.requestModeConcurrent" }
 ];
 
+const proxyModeOptions: Array<{ value: ProxyMode; labelKey: string }> = [
+  { value: "system", labelKey: "settings.proxyModeSystem" },
+  { value: "direct", labelKey: "settings.proxyModeDirect" },
+  { value: "manual", labelKey: "settings.proxyModeManual" }
+];
+
 interface GeminiSettings {
   apiKey: string;
+  googleApiSource: GoogleApiSource;
+  googleVertexServiceAccountPath: string;
+  googleVertexProjectId: string;
+  googleVertexLocation: string;
   baseUrl: string;
   model: string;
   availableModels: string[];
@@ -156,8 +169,8 @@ type RemoteLlmProvider =
   | "zhipu";
 
 interface ProxySettings {
-  useProxy: boolean;
-  proxyPort: string;
+  proxyMode: ProxyMode;
+  proxyUrl: string;
 }
 
 interface LlmLoaderEndpointSettings {
@@ -251,6 +264,10 @@ interface LogFilesInfo {
 
 const defaultGeminiSettings: GeminiSettings = {
   apiKey: "",
+  googleApiSource: "ai_studio",
+  googleVertexServiceAccountPath: "",
+  googleVertexProjectId: "",
+  googleVertexLocation: "global",
   baseUrl: "",
   model: "gemini-flash-latest",
   availableModels: ["gemini-flash-latest", "gemini-pro-latest"],
@@ -259,6 +276,11 @@ const defaultGeminiSettings: GeminiSettings = {
   imageResizeMode: "none",
   imageConvertFormat: "none"
 };
+
+const googleApiSourceOptions: Array<{ value: GoogleApiSource; labelKey: string }> = [
+  { value: "ai_studio", labelKey: "settings.googleApiSources.aiStudio" },
+  { value: "vertex_ai", labelKey: "settings.googleApiSources.vertexAi" }
+];
 
 const defaultOpenAiSettings: RemoteLlmSettings = {
   apiKey: "",
@@ -402,8 +424,8 @@ const remoteLlmProviderMetadata: Record<
 };
 
 const defaultProxySettings: ProxySettings = {
-  useProxy: false,
-  proxyPort: "7890"
+  proxyMode: "system",
+  proxyUrl: "http://127.0.0.1:7890"
 };
 
 const defaultLlmLoaderSettings: LlmLoaderSettings = {
@@ -1173,6 +1195,33 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
     setGeminiSettings((current) => ({ ...current, ...patch }));
   };
 
+  const pickGoogleVertexServiceAccount = async () => {
+    if (!hasTauriRuntime() || isGeminiBusy) return;
+
+    setIsGeminiBusy(true);
+    setGeminiMessage("");
+    try {
+      const result = await invokeCommand<{ path: string; projectId: string }>(
+        "pick_google_vertex_service_account"
+      );
+      patchGeminiSettings({
+        googleApiSource: "vertex_ai",
+        googleVertexServiceAccountPath: result.path,
+        googleVertexProjectId: result.projectId
+      });
+      setGeminiMessage(t("settings.googleVertexJsonImported"));
+    } catch (error) {
+      const payload = error as { code?: string };
+      if (payload.code !== "dialog_cancelled") {
+        setGeminiMessage(
+          t("settings.geminiActionFailed", { message: formatAppError(error) })
+        );
+      }
+    } finally {
+      setIsGeminiBusy(false);
+    }
+  };
+
   const patchProxySettings = (patch: Partial<ProxySettings>) => {
     setProxySettings((current) => ({ ...current, ...patch }));
     setProxyMessage("");
@@ -1270,7 +1319,11 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
       const count = await invokeCommand<number>("test_gemini_connection", {
         settings: geminiSettings
       });
-      setGeminiMessage(t("settings.geminiConnectionOk", { count }));
+      setGeminiMessage(
+        geminiSettings.googleApiSource === "vertex_ai"
+          ? t("settings.googleVertexConnectionOk")
+          : t("settings.geminiConnectionOk", { count })
+      );
     } catch (error) {
       const message = formatAppError(error);
       setGeminiMessage(t("settings.geminiActionFailed", { message }));
@@ -2586,30 +2639,120 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
                     <div className="space-y-3 px-4 py-3">
                       <label className="block">
                         <span className="mb-1 block text-[12px] font-medium text-neutral-600">
-                          {t("settings.llmBaseUrl")}
+                          {t("settings.googleApiSource")}
                         </span>
-                        <input
-                          className="glass-input h-8 w-full px-2.5 text-[13px]"
-                          value={geminiSettings.baseUrl}
-                          placeholder="https://generativelanguage.googleapis.com/v1beta"
-                          onChange={(event) => patchGeminiSettings({ baseUrl: event.target.value })}
+                        <AppSelect
+                          className="w-full"
+                          value={geminiSettings.googleApiSource}
+                          options={googleApiSourceOptions.map((option) => ({
+                            value: option.value,
+                            label: t(option.labelKey)
+                          }))}
+                          onChange={(googleApiSource) =>
+                            patchGeminiSettings({ googleApiSource })
+                          }
                         />
                       </label>
 
-                      <label className="block">
-                        <span className="mb-1 block text-[12px] font-medium text-neutral-600">
-                          {t("settings.geminiApiKey")}
-                        </span>
-                        <input
-                          type="password"
-                          className="glass-input h-8 w-full px-2.5 text-[13px]"
-                          value={geminiSettings.apiKey}
-                          placeholder={t("settings.geminiApiKeyPlaceholder")}
-                          onChange={(event) => patchGeminiSettings({ apiKey: event.target.value })}
-                        />
-                      </label>
+                      {geminiSettings.googleApiSource === "vertex_ai" ? (
+                        <>
+                          <label className="block">
+                            <span className="mb-1 block text-[12px] font-medium text-neutral-600">
+                              {t("settings.googleVertexJson")}
+                            </span>
+                            <div className="flex gap-2">
+                              <input
+                                className="glass-input h-8 min-w-0 flex-1 px-2.5 text-[13px]"
+                                value={geminiSettings.googleVertexServiceAccountPath}
+                                placeholder={t("settings.googleVertexJsonPlaceholder")}
+                                readOnly
+                                title={geminiSettings.googleVertexServiceAccountPath}
+                              />
+                              <button
+                                type="button"
+                                className="icon-button no-drag"
+                                title={t("settings.googleVertexSelectJson")}
+                                aria-label={t("settings.googleVertexSelectJson")}
+                                disabled={isGeminiBusy}
+                                onClick={() => void pickGoogleVertexServiceAccount()}
+                              >
+                                <FileInput size={15} />
+                              </button>
+                            </div>
+                          </label>
+                          <div className="grid grid-cols-2 gap-2">
+                            <label className="block min-w-0">
+                              <span className="mb-1 block text-[12px] font-medium text-neutral-600">
+                                {t("settings.googleVertexProjectId")}
+                              </span>
+                              <input
+                                className="glass-input h-8 w-full px-2.5 text-[13px]"
+                                value={geminiSettings.googleVertexProjectId}
+                                placeholder={t("settings.googleVertexProjectIdPlaceholder")}
+                                onChange={(event) =>
+                                  patchGeminiSettings({
+                                    googleVertexProjectId: event.target.value
+                                  })
+                                }
+                              />
+                            </label>
+                            <label className="block min-w-0">
+                              <span className="mb-1 block text-[12px] font-medium text-neutral-600">
+                                {t("settings.googleVertexLocation")}
+                              </span>
+                              <input
+                                className="glass-input h-8 w-full px-2.5 text-[13px]"
+                                value={geminiSettings.googleVertexLocation}
+                                placeholder="global"
+                                onChange={(event) =>
+                                  patchGeminiSettings({
+                                    googleVertexLocation: event.target.value
+                                  })
+                                }
+                              />
+                            </label>
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          <label className="block">
+                            <span className="mb-1 block text-[12px] font-medium text-neutral-600">
+                              {t("settings.llmBaseUrl")}
+                            </span>
+                            <input
+                              className="glass-input h-8 w-full px-2.5 text-[13px]"
+                              value={geminiSettings.baseUrl}
+                              placeholder="https://generativelanguage.googleapis.com/v1beta"
+                              onChange={(event) =>
+                                patchGeminiSettings({ baseUrl: event.target.value })
+                              }
+                            />
+                          </label>
+                          <label className="block">
+                            <span className="mb-1 block text-[12px] font-medium text-neutral-600">
+                              {t("settings.geminiApiKey")}
+                            </span>
+                            <input
+                              type="password"
+                              className="glass-input h-8 w-full px-2.5 text-[13px]"
+                              value={geminiSettings.apiKey}
+                              placeholder={t("settings.geminiApiKeyPlaceholder")}
+                              onChange={(event) =>
+                                patchGeminiSettings({ apiKey: event.target.value })
+                              }
+                            />
+                          </label>
+                        </>
+                      )}
 
-                      <div className="grid grid-cols-[minmax(0,1fr)_110px] items-end gap-2">
+                      <div
+                        className={cn(
+                          "grid items-end gap-2",
+                          geminiSettings.googleApiSource === "vertex_ai"
+                            ? "grid-cols-1"
+                            : "grid-cols-[minmax(0,1fr)_110px]"
+                        )}
+                      >
                         <label className="block min-w-0">
                           <span className="mb-1 block text-[12px] font-medium text-neutral-600">
                             {t("settings.geminiModel")}
@@ -2620,14 +2763,16 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
                             onChange={(model) => patchGeminiSettings({ model })}
                           />
                         </label>
-                        <button
-                          type="button"
-                          className="no-drag h-8 rounded-md border border-neutral-200 bg-white px-2 text-[12px] text-neutral-700 transition hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-50"
-                          disabled={isGeminiBusy}
-                          onClick={() => void runGeminiAction("fetch")}
-                        >
-                          {t("settings.geminiFetchModels")}
-                        </button>
+                        {geminiSettings.googleApiSource === "ai_studio" ? (
+                          <button
+                            type="button"
+                            className="no-drag h-8 rounded-md border border-neutral-200 bg-white px-2 text-[12px] text-neutral-700 transition hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-50"
+                            disabled={isGeminiBusy}
+                            onClick={() => void runGeminiAction("fetch")}
+                          >
+                            {t("settings.geminiFetchModels")}
+                          </button>
+                        ) : null}
                       </div>
 
                       {renderRemoteRequestScheduling(geminiSettings, patchGeminiSettings)}
@@ -2715,42 +2860,53 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
 
                 {activeNetworkSection === "proxy" ? (
                   <div className="rounded-lg border border-neutral-200 bg-white">
-                  <div className="border-b border-neutral-100 px-4 py-3">
-                    <div className="text-[13px] font-semibold text-neutral-900">
-                      {t("settings.networkProxy")}
+                    <div className="border-b border-neutral-100 px-4 py-3">
+                      <div className="text-[13px] font-semibold text-neutral-900">
+                        {t("settings.networkProxy")}
+                      </div>
+                      <div className="mt-0.5 text-[12px] text-neutral-500">
+                        {t("settings.networkProxyDescription")}
+                      </div>
                     </div>
-                    <div className="mt-0.5 text-[12px] text-neutral-500">
-                      {t("settings.networkProxyDescription")}
+                    <div className="space-y-3 px-4 py-3">
+                      <label className="block">
+                        <span className="mb-1 block text-[12px] font-medium text-neutral-600">
+                          {t("settings.proxyMode")}
+                        </span>
+                        <AppSelect
+                          className="w-full"
+                          value={proxySettings.proxyMode}
+                          options={proxyModeOptions.map((option) => ({
+                            value: option.value,
+                            label: t(option.labelKey)
+                          }))}
+                          onChange={(proxyMode) => patchProxySettings({ proxyMode })}
+                        />
+                      </label>
+
+                      {proxySettings.proxyMode === "manual" ? (
+                        <label className="block">
+                          <span className="mb-1 block text-[12px] font-medium text-neutral-600">
+                            {t("settings.proxyUrl")}
+                          </span>
+                          <input
+                            className="glass-input h-8 w-full px-2.5 text-[13px]"
+                            value={proxySettings.proxyUrl}
+                            placeholder="http://127.0.0.1:7890"
+                            spellCheck={false}
+                            onChange={(event) =>
+                              patchProxySettings({ proxyUrl: event.target.value })
+                            }
+                          />
+                        </label>
+                      ) : null}
                     </div>
+                    {proxyMessage ? (
+                      <div className="px-4 pb-3 text-[12px] text-neutral-500">
+                        {proxyMessage}
+                      </div>
+                    ) : null}
                   </div>
-                  <div className="grid grid-cols-[minmax(0,1fr)_160px] gap-4 px-4 py-3">
-                    <Switch
-                      className="self-start pt-1"
-                      checked={proxySettings.useProxy}
-                      label={t("settings.proxyUseProxy")}
-                      onCheckedChange={(checked) => patchProxySettings({ useProxy: checked })}
-                    />
-                    <label className="block">
-                      <span className="mb-1 block text-[12px] font-medium text-neutral-600">
-                        {t("settings.proxyPort")}
-                      </span>
-                      <input
-                        className="glass-input h-8 w-full px-2.5 text-[13px]"
-                        value={proxySettings.proxyPort}
-                        disabled={!proxySettings.useProxy}
-                        onChange={(event) => patchProxySettings({ proxyPort: event.target.value })}
-                      />
-                      <span className="mt-1 block text-[11px] text-neutral-500">
-                        {t("settings.proxyPortDescription")}
-                      </span>
-                    </label>
-                  </div>
-                  {proxyMessage ? (
-                    <div className="px-4 pb-3 text-[12px] text-neutral-500">
-                      {proxyMessage}
-                    </div>
-                  ) : null}
-                </div>
                 ) : null}
 
                 {activeNetworkSection === "imageTransfer" ? (

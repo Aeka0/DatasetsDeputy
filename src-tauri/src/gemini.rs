@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
     app_dirs::AppDirs,
     errors::{AppError, AppResult},
+    google_api::{self, GoogleApiSource},
     proxy_settings::{self, ProxySettings},
     request_scheduling::{default_request_mode, default_target_rpm, normalize_request_mode},
 };
@@ -20,6 +21,14 @@ const LEGACY_DEFAULT_AVAILABLE_MODELS: [&str; 2] = ["gemini-1.5-pro-002", "gemin
 #[serde(rename_all = "camelCase")]
 pub struct GeminiSettings {
     pub api_key: String,
+    #[serde(default = "default_google_api_source")]
+    pub google_api_source: String,
+    #[serde(default)]
+    pub google_vertex_service_account_path: String,
+    #[serde(default)]
+    pub google_vertex_project_id: String,
+    #[serde(default = "default_google_vertex_location")]
+    pub google_vertex_location: String,
     #[serde(default)]
     pub base_url: String,
     pub model: String,
@@ -113,6 +122,10 @@ struct GenerateContentResponsePart {
 pub fn default_settings() -> GeminiSettings {
     GeminiSettings {
         api_key: String::new(),
+        google_api_source: default_google_api_source(),
+        google_vertex_service_account_path: String::new(),
+        google_vertex_project_id: String::new(),
+        google_vertex_location: default_google_vertex_location(),
         base_url: String::new(),
         model: DEFAULT_MODEL.to_owned(),
         available_models: DEFAULT_AVAILABLE_MODELS
@@ -138,6 +151,14 @@ pub fn default_settings() -> GeminiSettings {
 
 fn default_annotation_mode() -> String {
     "exact".to_owned()
+}
+
+fn default_google_api_source() -> String {
+    google_api::SOURCE_AI_STUDIO.to_owned()
+}
+
+fn default_google_vertex_location() -> String {
+    "global".to_owned()
 }
 
 fn default_base_url() -> String {
@@ -182,6 +203,7 @@ pub fn load_settings(dirs: &AppDirs) -> AppResult<GeminiSettings> {
     }
 
     let mut settings: GeminiSettings = serde_json::from_str(&fs::read_to_string(path)?)?;
+    normalize_google_settings(&mut settings);
     if settings.available_models.is_empty() {
         settings.available_models = default_settings().available_models;
     }
@@ -213,6 +235,7 @@ pub fn load_settings(dirs: &AppDirs) -> AppResult<GeminiSettings> {
 
 pub fn save_settings(dirs: &AppDirs, mut settings: GeminiSettings) -> AppResult<GeminiSettings> {
     settings.api_key = settings.api_key.trim().to_owned();
+    normalize_google_settings(&mut settings);
     settings.base_url = normalize_base_url(&settings.base_url);
     settings.model = settings.model.trim().to_owned();
     settings.annotation_mode = settings.annotation_mode.trim().to_owned();
@@ -241,10 +264,26 @@ pub fn save_settings(dirs: &AppDirs, mut settings: GeminiSettings) -> AppResult<
     Ok(settings)
 }
 
+fn normalize_google_settings(settings: &mut GeminiSettings) {
+    settings.google_api_source = google_api::normalize_source(&settings.google_api_source);
+    settings.google_vertex_service_account_path = settings
+        .google_vertex_service_account_path
+        .trim()
+        .to_owned();
+    settings.google_vertex_project_id = settings.google_vertex_project_id.trim().to_owned();
+    settings.google_vertex_location =
+        google_api::normalize_vertex_location(&settings.google_vertex_location);
+}
+
 pub async fn fetch_models(
     settings: &GeminiSettings,
     proxy_settings: &ProxySettings,
 ) -> AppResult<Vec<String>> {
+    if GoogleApiSource::from_settings(&settings.google_api_source) == GoogleApiSource::VertexAi {
+        return Err(AppError::InvalidInput(
+            "Vertex AI does not provide the AI Studio model discovery endpoint".to_owned(),
+        ));
+    }
     if settings.api_key.trim().is_empty() {
         return Err(AppError::InvalidInput(
             "Gemini API key is required".to_owned(),
@@ -328,20 +367,47 @@ fn mime_type_for_path(path: &Path) -> AppResult<String> {
 }
 
 async fn generate_content(
+    dirs: &AppDirs,
     settings: &GeminiSettings,
     proxy_settings: &ProxySettings,
     request: GenerateContentRequest,
 ) -> AppResult<String> {
     let client = proxy_settings::http_client(proxy_settings, 120)?;
-    let base_url = effective_base_url(&settings.base_url);
-    let endpoint = format!(
-        "{}/models/{}:generateContent",
-        base_url,
-        settings.model.trim()
-    );
-    let response = client
-        .post(endpoint)
-        .query(&[("key", settings.api_key.trim())])
+    let source = GoogleApiSource::from_settings(&settings.google_api_source);
+    let request_builder = if source == GoogleApiSource::VertexAi {
+        let credentials = google_api::load_vertex_credentials(
+            dirs,
+            &settings.google_vertex_service_account_path,
+        )?;
+        let project_id = if settings.google_vertex_project_id.trim().is_empty() {
+            credentials.project_id.trim()
+        } else {
+            settings.google_vertex_project_id.trim()
+        };
+        let model_path = google_api::vertex_model_path(
+            &settings.model,
+            project_id,
+            &settings.google_vertex_location,
+        )?;
+        let auth = google_api::authorize_vertex(&client, &credentials).await?;
+        google_api::apply_vertex_auth(
+            client.post(format!(
+                "{}/{model_path}:generateContent",
+                google_api::vertex_endpoint_base()
+            )),
+            &auth,
+        )
+    } else {
+        let endpoint = format!(
+            "{}/models/{}:generateContent",
+            effective_base_url(&settings.base_url),
+            settings.model.trim()
+        );
+        client
+            .post(endpoint)
+            .query(&[("key", settings.api_key.trim())])
+    };
+    let response = request_builder
         .json(&request)
         .send()
         .await
@@ -379,15 +445,12 @@ async fn generate_content(
 }
 
 pub async fn generate_text(
+    dirs: &AppDirs,
     settings: &GeminiSettings,
     proxy_settings: &ProxySettings,
     prompt: &str,
 ) -> AppResult<String> {
-    if settings.api_key.trim().is_empty() {
-        return Err(AppError::InvalidInput(
-            "Gemini API key is required".to_owned(),
-        ));
-    }
+    validate_auth_settings(settings)?;
     if prompt.trim().is_empty() {
         return Err(AppError::InvalidInput(
             "Annotation prompt is empty".to_owned(),
@@ -400,20 +463,17 @@ pub async fn generate_text(
         }],
     };
 
-    generate_content(settings, proxy_settings, request).await
+    generate_content(dirs, settings, proxy_settings, request).await
 }
 
 pub async fn generate_annotation(
+    dirs: &AppDirs,
     settings: &GeminiSettings,
     proxy_settings: &ProxySettings,
     image_path: &Path,
     prompt: &str,
 ) -> AppResult<String> {
-    if settings.api_key.trim().is_empty() {
-        return Err(AppError::InvalidInput(
-            "Gemini API key is required".to_owned(),
-        ));
-    }
+    validate_auth_settings(settings)?;
     if prompt.trim().is_empty() {
         return Err(AppError::InvalidInput(
             "Annotation prompt is empty".to_owned(),
@@ -433,5 +493,120 @@ pub async fn generate_annotation(
         }],
     };
 
-    generate_content(settings, proxy_settings, request).await
+    generate_content(dirs, settings, proxy_settings, request).await
+}
+
+fn validate_auth_settings(settings: &GeminiSettings) -> AppResult<()> {
+    if GoogleApiSource::from_settings(&settings.google_api_source) == GoogleApiSource::VertexAi {
+        if settings
+            .google_vertex_service_account_path
+            .trim()
+            .is_empty()
+        {
+            return Err(AppError::InvalidInput(
+                "Vertex AI service account JSON is required".to_owned(),
+            ));
+        }
+    } else if settings.api_key.trim().is_empty() {
+        return Err(AppError::InvalidInput(
+            "Gemini API key is required".to_owned(),
+        ));
+    }
+    Ok(())
+}
+
+pub async fn test_connection(
+    dirs: &AppDirs,
+    settings: &GeminiSettings,
+    proxy_settings: &ProxySettings,
+) -> AppResult<usize> {
+    if GoogleApiSource::from_settings(&settings.google_api_source) == GoogleApiSource::AiStudio {
+        return Ok(fetch_models(settings, proxy_settings).await?.len());
+    }
+
+    validate_auth_settings(settings)?;
+    let client = proxy_settings::http_client(proxy_settings, 20)?;
+    let credentials =
+        google_api::load_vertex_credentials(dirs, &settings.google_vertex_service_account_path)?;
+    let project_id = if settings.google_vertex_project_id.trim().is_empty() {
+        credentials.project_id.trim()
+    } else {
+        settings.google_vertex_project_id.trim()
+    };
+    let model_path = google_api::vertex_model_path(
+        &settings.model,
+        project_id,
+        &settings.google_vertex_location,
+    )?;
+    let auth = google_api::authorize_vertex(&client, &credentials).await?;
+    let response = google_api::apply_vertex_auth(
+        client
+            .post(format!(
+                "{}/{model_path}:countTokens",
+                google_api::vertex_endpoint_base()
+            ))
+            .json(&serde_json::json!({
+                "contents": [{
+                    "role": "user",
+                    "parts": [{ "text": "ping" }]
+                }]
+            })),
+        &auth,
+    )
+    .send()
+    .await
+    .map_err(|error| {
+        AppError::InvalidInput(format!("Vertex AI connection request failed: {error}"))
+    })?;
+    if !response.status().is_success() {
+        return Err(AppError::InvalidInput(format!(
+            "Vertex AI connection request failed with status {}",
+            response.status()
+        )));
+    }
+    let payload = response
+        .json::<serde_json::Value>()
+        .await
+        .map_err(|error| {
+            AppError::InvalidInput(format!("Vertex AI response parse failed: {error}"))
+        })?;
+    Ok(payload
+        .get("totalTokens")
+        .and_then(serde_json::Value::as_u64)
+        .unwrap_or(0) as usize)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn legacy_settings_receive_google_source_defaults() {
+        let mut value = serde_json::to_value(default_settings()).unwrap();
+        let object = value.as_object_mut().unwrap();
+        object.remove("googleApiSource");
+        object.remove("googleVertexServiceAccountPath");
+        object.remove("googleVertexProjectId");
+        object.remove("googleVertexLocation");
+
+        let settings = serde_json::from_value::<GeminiSettings>(value).unwrap();
+        assert_eq!(settings.google_api_source, google_api::SOURCE_AI_STUDIO);
+        assert_eq!(settings.google_vertex_location, "global");
+        assert!(settings.google_vertex_service_account_path.is_empty());
+    }
+
+    #[test]
+    fn validates_credentials_for_selected_google_source() {
+        let mut settings = default_settings();
+        assert!(validate_auth_settings(&settings).is_err());
+
+        settings.api_key = "ai-studio-key".to_owned();
+        assert!(validate_auth_settings(&settings).is_ok());
+
+        settings.google_api_source = google_api::SOURCE_VERTEX_AI.to_owned();
+        assert!(validate_auth_settings(&settings).is_err());
+
+        settings.google_vertex_service_account_path = "config/api/service-account.json".to_owned();
+        assert!(validate_auth_settings(&settings).is_ok());
+    }
 }

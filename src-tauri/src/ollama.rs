@@ -58,6 +58,7 @@ struct ChatResponseMessage {
 fn http_client(timeout_secs: u64) -> AppResult<reqwest::Client> {
     reqwest::Client::builder()
         .timeout(Duration::from_secs(timeout_secs))
+        .no_proxy()
         .build()
         .map_err(|error| AppError::InvalidInput(format!("HTTP client failed: {error}")))
 }

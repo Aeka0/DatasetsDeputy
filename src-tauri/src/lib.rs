@@ -11,6 +11,7 @@ mod file_watcher;
 mod files;
 mod folders;
 mod gemini;
+mod google_api;
 mod grok;
 mod history;
 mod llm_loader_settings;
@@ -193,6 +194,7 @@ pub fn run() {
             commands::save_gemini_settings,
             commands::fetch_gemini_models,
             commands::test_gemini_connection,
+            commands::pick_google_vertex_service_account,
             commands::generate_gemini_annotation,
             commands::generate_gemini_text,
             commands::get_proxy_settings,
