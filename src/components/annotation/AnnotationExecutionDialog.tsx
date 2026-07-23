@@ -1,10 +1,26 @@
-import { Check, ChevronDown, X } from "lucide-react";
+import {
+  ArrowLeftToLine,
+  ArrowRightToLine,
+  Check,
+  ChevronDown,
+  ChevronsRight,
+  FilePen,
+  Server,
+  SquareDashed,
+  SquareDashedMousePointer,
+  SquareDashedText,
+  Tags,
+  X,
+  type LucideIcon
+} from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 
+import type { ProviderIconName } from "../../lib/providerIcons";
 import { AnimatedPortal, useAnimatedPortalClose } from "../ui/AnimatedPortal";
 import { Button } from "../ui/Button";
+import { ProviderIcon } from "../ui/ProviderIcon";
 
 export type AnnotationExecutionScope = "selected" | "all" | "empty";
 export type AnnotationConflictStrategy = "overwrite" | "skip" | "mergePrefix" | "mergeSuffix";
@@ -22,27 +38,107 @@ export type AnnotationExecutionMode =
   | "textgen"
   | "wd14";
 
-const modeOptions: Array<{ value: AnnotationExecutionMode; labelKey: string }> = [
-  { value: "wd14", labelKey: "annotationRun.modeWd14" },
-  { value: "gemini", labelKey: "annotationRun.modeGemini" },
-  { value: "openai", labelKey: "annotationRun.modeOpenAi" },
-  { value: "anthropic", labelKey: "annotationRun.modeAnthropic" },
-  { value: "grok", labelKey: "annotationRun.modeGrok" },
-  { value: "doubao", labelKey: "annotationRun.modeDoubao" },
-  { value: "qwen", labelKey: "annotationRun.modeQwen" },
-  { value: "deepseek", labelKey: "annotationRun.modeDeepSeek" },
-  { value: "zhipu", labelKey: "annotationRun.modeZhipu" },
-  { value: "lmStudio", labelKey: "annotationRun.modeLmStudio" },
-  { value: "ollama", labelKey: "annotationRun.modeOllama" },
-  { value: "textgen", labelKey: "annotationRun.modeTextgen" }
+type ModeOptionIcon =
+  | { kind: "provider"; provider: ProviderIconName }
+  | { kind: "lucide"; icon: LucideIcon };
+
+interface ModeOption {
+  value: AnnotationExecutionMode;
+  labelKey: string;
+  icon: ModeOptionIcon;
+}
+
+const localModeOptions: ModeOption[] = [
+  { value: "wd14", labelKey: "annotationRun.modeWd14", icon: { kind: "lucide", icon: Tags } },
+  {
+    value: "lmStudio",
+    labelKey: "annotationRun.modeLmStudio",
+    icon: { kind: "lucide", icon: Server }
+  },
+  {
+    value: "ollama",
+    labelKey: "annotationRun.modeOllama",
+    icon: { kind: "lucide", icon: Server }
+  },
+  {
+    value: "textgen",
+    labelKey: "annotationRun.modeTextgen",
+    icon: { kind: "lucide", icon: Server }
+  }
 ];
 
-const conflictOptions: Array<{ value: AnnotationConflictStrategy; labelKey: string }> = [
-  { value: "skip", labelKey: "annotationRun.conflictSkip" },
-  { value: "overwrite", labelKey: "annotationRun.conflictOverwrite" },
-  { value: "mergePrefix", labelKey: "annotationRun.conflictMergePrefix" },
-  { value: "mergeSuffix", labelKey: "annotationRun.conflictMergeSuffix" }
+const cloudModeOptions: ModeOption[] = [
+  {
+    value: "gemini",
+    labelKey: "annotationRun.modeGemini",
+    icon: { kind: "provider", provider: "gemini" }
+  },
+  {
+    value: "openai",
+    labelKey: "annotationRun.modeOpenAi",
+    icon: { kind: "provider", provider: "openai" }
+  },
+  {
+    value: "anthropic",
+    labelKey: "annotationRun.modeAnthropic",
+    icon: { kind: "provider", provider: "anthropic" }
+  },
+  {
+    value: "grok",
+    labelKey: "annotationRun.modeGrok",
+    icon: { kind: "provider", provider: "grok" }
+  },
+  {
+    value: "doubao",
+    labelKey: "annotationRun.modeDoubao",
+    icon: { kind: "provider", provider: "doubao" }
+  },
+  {
+    value: "qwen",
+    labelKey: "annotationRun.modeQwen",
+    icon: { kind: "provider", provider: "qwen" }
+  },
+  {
+    value: "deepseek",
+    labelKey: "annotationRun.modeDeepSeek",
+    icon: { kind: "provider", provider: "deepseek" }
+  },
+  {
+    value: "zhipu",
+    labelKey: "annotationRun.modeZhipu",
+    icon: { kind: "provider", provider: "zhipu" }
+  }
 ];
+
+const modeOptions = [...localModeOptions, ...cloudModeOptions];
+
+const conflictOptions: Array<{
+  value: AnnotationConflictStrategy;
+  labelKey: string;
+  icon: LucideIcon;
+}> = [
+  { value: "skip", labelKey: "annotationRun.conflictSkip", icon: ChevronsRight },
+  { value: "overwrite", labelKey: "annotationRun.conflictOverwrite", icon: FilePen },
+  {
+    value: "mergePrefix",
+    labelKey: "annotationRun.conflictMergePrefix",
+    icon: ArrowLeftToLine
+  },
+  {
+    value: "mergeSuffix",
+    labelKey: "annotationRun.conflictMergeSuffix",
+    icon: ArrowRightToLine
+  }
+];
+
+function ModeIcon({ icon }: { icon: ModeOptionIcon }) {
+  if (icon.kind === "provider") {
+    return <ProviderIcon provider={icon.provider} />;
+  }
+
+  const Icon = icon.icon;
+  return <Icon className="h-4 w-4 shrink-0" strokeWidth={1.8} aria-hidden="true" />;
+}
 
 interface AnnotationExecutionDialogProps {
   datasetName: string;
@@ -79,26 +175,27 @@ export function AnnotationExecutionDialog({
   const scopeButtonRef = useRef<HTMLButtonElement>(null);
   const conflictButtonRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
-  const selectedModeLabel =
-    modeOptions.find((option) => option.value === mode)?.labelKey ?? "annotationRun.modeWd14";
+  const selectedModeOption =
+    modeOptions.find((option) => option.value === mode) ?? localModeOptions[0];
   const scopeOptions: Array<{
     value: AnnotationExecutionScope;
     label: string;
+    icon: LucideIcon;
     disabled?: boolean;
   }> = [
     {
       value: "selected",
       label: t("annotationRun.scopeSelected", { count: selectedImageCount }),
+      icon: SquareDashedMousePointer,
       disabled: !hasSelectedImage
     },
-    { value: "all", label: t("annotationRun.scopeAll") },
-    { value: "empty", label: t("annotationRun.scopeEmpty") }
+    { value: "all", label: t("annotationRun.scopeAll"), icon: SquareDashedText },
+    { value: "empty", label: t("annotationRun.scopeEmpty"), icon: SquareDashed }
   ];
-  const selectedScopeLabel =
-    scopeOptions.find((option) => option.value === scope)?.label ?? t("annotationRun.scopeEmpty");
-  const selectedConflictLabel =
-    conflictOptions.find((option) => option.value === conflictStrategy)?.labelKey ??
-    "annotationRun.conflictSkip";
+  const selectedScopeOption =
+    scopeOptions.find((option) => option.value === scope) ?? scopeOptions[2];
+  const selectedConflictOption =
+    conflictOptions.find((option) => option.value === conflictStrategy) ?? conflictOptions[0];
 
   const openSelectMenu = (
     menu: "mode" | "scope" | "conflict",
@@ -148,6 +245,29 @@ export function AnnotationExecutionDialog({
     };
   }, [openMenu]);
 
+  const renderModeOption = (option: ModeOption) => {
+    const isSelected = option.value === mode;
+    return (
+      <button
+        key={option.value}
+        type="button"
+        className={`app-dropdown-item flex h-9 w-full items-center gap-2 px-3 text-left text-[13px] font-medium transition hover:bg-neutral-100 ${
+          isSelected ? "text-neutral-950" : "text-neutral-600"
+        }`}
+        onClick={() => {
+          setMode(option.value);
+          setOpenMenu(undefined);
+        }}
+      >
+        <span className="flex w-4 shrink-0 justify-center">
+          {isSelected ? <Check size={14} /> : null}
+        </span>
+        <ModeIcon icon={option.icon} />
+        <span className="min-w-0 flex-1 truncate">{t(option.labelKey)}</span>
+      </button>
+    );
+  };
+
   return (
     <AnimatedPortal open={open}>
     <div
@@ -195,7 +315,10 @@ export function AnnotationExecutionDialog({
                 className="glass-input no-drag flex h-8 w-full items-center justify-between gap-2 px-2.5 text-left text-[13px]"
                 onClick={(event) => openSelectMenu("mode", event.currentTarget)}
               >
-                <span className="min-w-0 truncate">{t(selectedModeLabel)}</span>
+                <span className="flex min-w-0 items-center gap-2">
+                  <ModeIcon icon={selectedModeOption.icon} />
+                  <span className="min-w-0 truncate">{t(selectedModeOption.labelKey)}</span>
+                </span>
                 <ChevronDown size={14} className="shrink-0 text-neutral-400" />
               </button>
             </div>
@@ -210,7 +333,14 @@ export function AnnotationExecutionDialog({
                 className="glass-input no-drag flex h-8 w-full items-center justify-between gap-2 px-2.5 text-left text-[13px]"
                 onClick={(event) => openSelectMenu("scope", event.currentTarget)}
               >
-                <span className="min-w-0 truncate">{selectedScopeLabel}</span>
+                <span className="flex min-w-0 items-center gap-2">
+                  <selectedScopeOption.icon
+                    className="h-4 w-4 shrink-0"
+                    strokeWidth={1.8}
+                    aria-hidden="true"
+                  />
+                  <span className="min-w-0 truncate">{selectedScopeOption.label}</span>
+                </span>
                 <ChevronDown size={14} className="shrink-0 text-neutral-400" />
               </button>
             </div>
@@ -225,7 +355,16 @@ export function AnnotationExecutionDialog({
                 className="glass-input no-drag flex h-8 w-full items-center justify-between gap-2 px-2.5 text-left text-[13px]"
                 onClick={(event) => openSelectMenu("conflict", event.currentTarget)}
               >
-                <span className="min-w-0 truncate">{t(selectedConflictLabel)}</span>
+                <span className="flex min-w-0 items-center gap-2">
+                  <selectedConflictOption.icon
+                    className="h-4 w-4 shrink-0"
+                    strokeWidth={1.8}
+                    aria-hidden="true"
+                  />
+                  <span className="min-w-0 truncate">
+                    {t(selectedConflictOption.labelKey)}
+                  </span>
+                </span>
                 <ChevronDown size={14} className="shrink-0 text-neutral-400" />
               </button>
             </div>
@@ -254,29 +393,19 @@ export function AnnotationExecutionDialog({
           }}
         >
           <div className="app-dropdown-backdrop" />
-          {openMenu === "mode" ? modeOptions.map((option) => {
-            const isSelected = option.value === mode;
-            return (
-              <button
-                key={option.value}
-                type="button"
-                className={`app-dropdown-item flex h-9 w-full items-center gap-2 px-3 text-left text-[13px] font-medium transition hover:bg-neutral-100 ${
-                  isSelected ? "text-neutral-950" : "text-neutral-600"
-                }`}
-                onClick={() => {
-                  setMode(option.value);
-                  setOpenMenu(undefined);
-                }}
-              >
-                <span className="flex w-4 shrink-0 justify-center">
-                  {isSelected ? <Check size={14} /> : null}
-                </span>
-                <span className="min-w-0 flex-1 truncate">{t(option.labelKey)}</span>
-              </button>
-            );
-          }) : null}
+          {openMenu === "mode" ? (
+            <>
+              {localModeOptions.map(renderModeOption)}
+              <div
+                className="app-dropdown-separator mx-1 my-1 h-px shrink-0"
+                role="separator"
+              />
+              {cloudModeOptions.map(renderModeOption)}
+            </>
+          ) : null}
           {openMenu === "scope" ? scopeOptions.map((option) => {
             const isSelected = option.value === scope;
+            const Icon = option.icon;
             return (
               <button
                 key={option.value}
@@ -294,12 +423,18 @@ export function AnnotationExecutionDialog({
                 <span className="flex w-4 shrink-0 justify-center">
                   {isSelected ? <Check size={14} /> : null}
                 </span>
+                <Icon
+                  className="h-4 w-4 shrink-0"
+                  strokeWidth={1.8}
+                  aria-hidden="true"
+                />
                 <span className="min-w-0 flex-1 truncate">{option.label}</span>
               </button>
             );
           }) : null}
           {openMenu === "conflict" ? conflictOptions.map((option) => {
             const isSelected = option.value === conflictStrategy;
+            const Icon = option.icon;
             return (
               <button
                 key={option.value}
@@ -315,6 +450,11 @@ export function AnnotationExecutionDialog({
                 <span className="flex w-4 shrink-0 justify-center">
                   {isSelected ? <Check size={14} /> : null}
                 </span>
+                <Icon
+                  className="h-4 w-4 shrink-0"
+                  strokeWidth={1.8}
+                  aria-hidden="true"
+                />
                 <span className="min-w-0 flex-1 truncate">{t(option.labelKey)}</span>
               </button>
             );

@@ -30,6 +30,7 @@ import {
   defaultGeminiTextModels,
   modelForGoogleSource
 } from "../../lib/geminiModels";
+import type { ProviderIconName } from "../../lib/providerIcons";
 import { hasTauriRuntime, invokeCommand } from "../../lib/tauri";
 import {
   getBottomUiOpacity,
@@ -51,6 +52,7 @@ import { AnimatedPortal, useAnimatedPortalClose } from "../ui/AnimatedPortal";
 import { AppSelect } from "../ui/AppSelect";
 import { Button } from "../ui/Button";
 import { HierarchyDisclosureButton } from "../ui/HierarchyDisclosureButton";
+import { ProviderIcon } from "../ui/ProviderIcon";
 import { Slider } from "../ui/Slider";
 import { Switch } from "../ui/Switch";
 
@@ -82,24 +84,13 @@ interface SettingsSection {
 
 type ChildIcon =
   | { kind: "lucide"; icon: typeof Settings2 }
-  | { kind: "svg"; src: string; alt: string };
+  | { kind: "provider"; provider: ProviderIconName };
 
 interface SettingsChildItem<T extends string> {
   key: T;
   label: string;
   icon: ChildIcon;
 }
-
-const providerIcons = {
-  gemini: new URL("../../../assets/svg/googlegemini.svg", import.meta.url).href,
-  openai: new URL("../../../assets/svg/openai.svg", import.meta.url).href,
-  anthropic: new URL("../../../assets/svg/anthropic.svg", import.meta.url).href,
-  grok: new URL("../../../assets/svg/grok.svg", import.meta.url).href,
-  doubao: new URL("../../../assets/svg/bytedance.svg", import.meta.url).href,
-  qwen: new URL("../../../assets/svg/qwen.svg", import.meta.url).href,
-  deepseek: new URL("../../../assets/svg/deepseek.svg", import.meta.url).href,
-  zhipu: new URL("../../../assets/svg/zhipu.svg", import.meta.url).href
-};
 
 const sections: SettingsSection[] = [
   { key: "general", labelKey: "settings.general", icon: Settings2 },
@@ -616,20 +607,8 @@ function EditableModelSelect({
 }
 
 function SettingsTreeIcon({ icon }: { icon: ChildIcon }) {
-  if (icon.kind === "svg") {
-    return (
-      <span
-        className="h-4 w-4 shrink-0 bg-current"
-        aria-label={icon.alt}
-        role="img"
-        style={{
-          WebkitMask: `url("${icon.src}") center / contain no-repeat`,
-          mask: `url("${icon.src}") center / contain no-repeat`,
-          transform: "scale(1.2)",
-          transformOrigin: "center"
-        }}
-      />
-    );
+  if (icon.kind === "provider") {
+    return <ProviderIcon provider={icon.provider} scale={1.2} />;
   }
 
   const Icon = icon.icon;
@@ -748,42 +727,42 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
     {
       key: "gemini",
       label: t("settings.apiBackendGemini"),
-      icon: { kind: "svg", src: providerIcons.gemini, alt: "Gemini" }
+      icon: { kind: "provider", provider: "gemini" }
     },
     {
       key: "openai",
       label: t("settings.apiBackendOpenAi"),
-      icon: { kind: "svg", src: providerIcons.openai, alt: "OpenAI" }
+      icon: { kind: "provider", provider: "openai" }
     },
     {
       key: "anthropic",
       label: t("settings.apiBackendAnthropic"),
-      icon: { kind: "svg", src: providerIcons.anthropic, alt: "Anthropic" }
+      icon: { kind: "provider", provider: "anthropic" }
     },
     {
       key: "grok",
       label: t("settings.apiBackendGrok"),
-      icon: { kind: "svg", src: providerIcons.grok, alt: "Grok" }
+      icon: { kind: "provider", provider: "grok" }
     },
     {
       key: "doubao",
       label: t("settings.apiBackendDoubao"),
-      icon: { kind: "svg", src: providerIcons.doubao, alt: "ByteDance" }
+      icon: { kind: "provider", provider: "doubao" }
     },
     {
       key: "qwen",
       label: t("settings.apiBackendQwen"),
-      icon: { kind: "svg", src: providerIcons.qwen, alt: "Qwen" }
+      icon: { kind: "provider", provider: "qwen" }
     },
     {
       key: "deepseek",
       label: t("settings.apiBackendDeepSeek"),
-      icon: { kind: "svg", src: providerIcons.deepseek, alt: "DeepSeek" }
+      icon: { kind: "provider", provider: "deepseek" }
     },
     {
       key: "zhipu",
       label: t("settings.apiBackendZhipu"),
-      icon: { kind: "svg", src: providerIcons.zhipu, alt: "Zhipu" }
+      icon: { kind: "provider", provider: "zhipu" }
     },
     {
       key: "llmLoader",
