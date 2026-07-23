@@ -980,7 +980,7 @@ export function TitleMenuBar({
     openExportDialog,
     openImportDatabaseDialog,
     openExportDatabaseDialog,
-    load,
+    refreshImages,
     applyGeneratedAnnotationDraft,
     applyBatchTableDrafts,
     recordDraftHistory,
@@ -1017,7 +1017,7 @@ export function TitleMenuBar({
       openExportDialog: state.openExportDialog,
       openImportDatabaseDialog: state.openImportDatabaseDialog,
       openExportDatabaseDialog: state.openExportDatabaseDialog,
-      load: state.load,
+      refreshImages: state.refreshImages,
       applyGeneratedAnnotationDraft: state.applyGeneratedAnnotationDraft,
       applyBatchTableDrafts: state.applyBatchTableDrafts,
       recordDraftHistory: state.recordDraftHistory,
@@ -1975,7 +1975,7 @@ export function TitleMenuBar({
       {
         label: t("menu.refresh"),
         disabled: isLoading,
-        onSelect: load
+        onSelect: refreshImages
       },
       { type: "separator" },
       {
