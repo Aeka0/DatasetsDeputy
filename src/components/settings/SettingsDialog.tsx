@@ -6,6 +6,7 @@ import {
   Globe2,
   HardDrive,
   ImageUp,
+  KeyRound,
   Languages,
   MonitorCog,
   Network,
@@ -56,10 +57,11 @@ import { Switch } from "../ui/Switch";
 type SettingsSectionKey =
   | "general"
   | "language"
+  | "apiBackend"
   | "network"
   | "localFiles"
   | "appearance";
-type NetworkSectionKey =
+type ApiBackendSectionKey =
   | "gemini"
   | "openai"
   | "anthropic"
@@ -68,9 +70,8 @@ type NetworkSectionKey =
   | "qwen"
   | "deepseek"
   | "zhipu"
-  | "llmLoader"
-  | "proxy"
-  | "imageTransfer";
+  | "llmLoader";
+type NetworkSectionKey = "proxy" | "imageTransfer";
 type LocalFilesSectionKey = "environment" | "models" | "tempFiles";
 
 interface SettingsSection {
@@ -104,6 +105,7 @@ const sections: SettingsSection[] = [
   { key: "general", labelKey: "settings.general", icon: Settings2 },
   { key: "language", labelKey: "settings.language", icon: Languages },
   { key: "network", labelKey: "settings.network", icon: Wifi },
+  { key: "apiBackend", labelKey: "settings.apiBackend", icon: KeyRound },
   { key: "localFiles", labelKey: "settings.localFiles", icon: HardDrive },
   { key: "appearance", labelKey: "settings.appearance", icon: MonitorCog }
 ];
@@ -638,12 +640,14 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
   const { i18n, t } = useTranslation();
   const { open, close } = useAnimatedPortalClose(onClose);
   const [activeSection, setActiveSection] = useState<SettingsSectionKey>("general");
+  const [activeApiBackendSection, setActiveApiBackendSection] =
+    useState<ApiBackendSectionKey>("gemini");
   const [activeNetworkSection, setActiveNetworkSection] =
-    useState<NetworkSectionKey>("gemini");
+    useState<NetworkSectionKey>("proxy");
   const [activeLocalFilesSection, setActiveLocalFilesSection] =
     useState<LocalFilesSectionKey>("environment");
   const [expandedSettingsSections, setExpandedSettingsSections] = useState<Set<SettingsSectionKey>>(
-    () => new Set(["network", "localFiles"])
+    () => new Set(["apiBackend", "network", "localFiles"])
   );
   const [themePreference, setThemePreferenceState] =
     useState<ThemePreference>(getThemePreference);
@@ -740,52 +744,54 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
   const [isTemporaryFilesBusy, setIsTemporaryFilesBusy] = useState(false);
   const [localFilesMessage, setLocalFilesMessage] = useState("");
   const active = sections.find((section) => section.key === activeSection) ?? sections[0];
-  const networkChildItems: Array<SettingsChildItem<NetworkSectionKey>> = [
+  const apiBackendChildItems: Array<SettingsChildItem<ApiBackendSectionKey>> = [
     {
       key: "gemini",
-      label: t("settings.networkGemini"),
+      label: t("settings.apiBackendGemini"),
       icon: { kind: "svg", src: providerIcons.gemini, alt: "Gemini" }
     },
     {
       key: "openai",
-      label: t("settings.networkOpenAi"),
+      label: t("settings.apiBackendOpenAi"),
       icon: { kind: "svg", src: providerIcons.openai, alt: "OpenAI" }
     },
     {
       key: "anthropic",
-      label: t("settings.networkAnthropic"),
+      label: t("settings.apiBackendAnthropic"),
       icon: { kind: "svg", src: providerIcons.anthropic, alt: "Anthropic" }
     },
     {
       key: "grok",
-      label: t("settings.networkGrok"),
+      label: t("settings.apiBackendGrok"),
       icon: { kind: "svg", src: providerIcons.grok, alt: "Grok" }
     },
     {
       key: "doubao",
-      label: t("settings.networkDoubao"),
+      label: t("settings.apiBackendDoubao"),
       icon: { kind: "svg", src: providerIcons.doubao, alt: "ByteDance" }
     },
     {
       key: "qwen",
-      label: t("settings.networkQwen"),
+      label: t("settings.apiBackendQwen"),
       icon: { kind: "svg", src: providerIcons.qwen, alt: "Qwen" }
     },
     {
       key: "deepseek",
-      label: t("settings.networkDeepSeek"),
+      label: t("settings.apiBackendDeepSeek"),
       icon: { kind: "svg", src: providerIcons.deepseek, alt: "DeepSeek" }
     },
     {
       key: "zhipu",
-      label: t("settings.networkZhipu"),
+      label: t("settings.apiBackendZhipu"),
       icon: { kind: "svg", src: providerIcons.zhipu, alt: "Zhipu" }
     },
     {
       key: "llmLoader",
-      label: t("settings.networkLlmLoader"),
+      label: t("settings.apiBackendLlmLoader"),
       icon: { kind: "lucide", icon: Server }
-    },
+    }
+  ];
+  const networkChildItems: Array<SettingsChildItem<NetworkSectionKey>> = [
     {
       key: "proxy",
       label: t("settings.networkProxyShort"),
@@ -815,11 +821,16 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
     }
   ];
   const activeTitle =
-    activeSection === "network"
-      ? networkChildItems.find((item) => item.key === activeNetworkSection)?.label ?? t(active.labelKey)
-      : activeSection === "localFiles"
-        ? localFilesChildItems.find((item) => item.key === activeLocalFilesSection)?.label ?? t(active.labelKey)
-        : t(active.labelKey);
+    activeSection === "apiBackend"
+      ? apiBackendChildItems.find((item) => item.key === activeApiBackendSection)?.label ??
+        t(active.labelKey)
+      : activeSection === "network"
+        ? networkChildItems.find((item) => item.key === activeNetworkSection)?.label ??
+          t(active.labelKey)
+        : activeSection === "localFiles"
+          ? localFilesChildItems.find((item) => item.key === activeLocalFilesSection)?.label ??
+            t(active.labelKey)
+          : t(active.labelKey);
   const currentLanguage = i18n.language.startsWith("zh") ? "zh-CN" : "en-US";
 
   const toggleSettingsSection = (section: SettingsSectionKey) => {
@@ -1931,14 +1942,19 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
               {sections.map((section) => {
                 const Icon = section.icon;
                 const isActive = section.key === activeSection;
-                const hasChildren = section.key === "network" || section.key === "localFiles";
+                const hasChildren =
+                  section.key === "apiBackend" ||
+                  section.key === "network" ||
+                  section.key === "localFiles";
                 const isExpanded = expandedSettingsSections.has(section.key);
                 const childItems =
-                  section.key === "network"
-                    ? networkChildItems
-                    : section.key === "localFiles"
-                      ? localFilesChildItems
-                      : [];
+                  section.key === "apiBackend"
+                    ? apiBackendChildItems
+                    : section.key === "network"
+                      ? networkChildItems
+                      : section.key === "localFiles"
+                        ? localFilesChildItems
+                        : [];
 
                 return (
                   <div key={section.key}>
@@ -1988,9 +2004,14 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
                           <div className="ml-8 space-y-1 py-1 pl-3 pr-1">
                             {childItems.map((item) => {
                               const childActive =
-                                section.key === "network"
-                                  ? activeSection === "network" && item.key === activeNetworkSection
-                                  : activeSection === "localFiles" && item.key === activeLocalFilesSection;
+                                section.key === "apiBackend"
+                                  ? activeSection === "apiBackend" &&
+                                    item.key === activeApiBackendSection
+                                  : section.key === "network"
+                                    ? activeSection === "network" &&
+                                      item.key === activeNetworkSection
+                                    : activeSection === "localFiles" &&
+                                      item.key === activeLocalFilesSection;
                               return (
                                 <button
                                   key={item.key}
@@ -2002,7 +2023,9 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
                                   aria-current={childActive ? "page" : undefined}
                                   onClick={() => {
                                     setActiveSection(section.key);
-                                    if (section.key === "network") {
+                                    if (section.key === "apiBackend") {
+                                      setActiveApiBackendSection(item.key as ApiBackendSectionKey);
+                                    } else if (section.key === "network") {
                                       setActiveNetworkSection(item.key as NetworkSectionKey);
                                     } else {
                                       setActiveLocalFilesSection(item.key as LocalFilesSectionKey);
@@ -2618,9 +2641,9 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
                   </div>
                 </div>
               </div>
-            ) : activeSection === "network" ? (
+            ) : activeSection === "apiBackend" ? (
               <div className="space-y-3">
-                {activeNetworkSection === "gemini" ? (
+                {activeApiBackendSection === "gemini" ? (
                   <div className="rounded-lg border border-neutral-200 bg-white">
                     <div className="flex items-center justify-between gap-3 border-b border-neutral-100 px-4 py-3">
                       <div className="min-w-0">
@@ -2801,7 +2824,7 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
                   </div>
                 ) : null}
 
-                {activeNetworkSection === "openai"
+                {activeApiBackendSection === "openai"
                   ? renderRemoteLlmSettings(
                       "openai",
                       openAiSettings,
@@ -2811,7 +2834,7 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
                     )
                   : null}
 
-                {activeNetworkSection === "anthropic"
+                {activeApiBackendSection === "anthropic"
                   ? renderRemoteLlmSettings(
                       "anthropic",
                       anthropicSettings,
@@ -2821,7 +2844,7 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
                     )
                   : null}
 
-                {activeNetworkSection === "grok"
+                {activeApiBackendSection === "grok"
                   ? renderRemoteLlmSettings(
                       "grok",
                       grokSettings,
@@ -2831,7 +2854,7 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
                     )
                   : null}
 
-                {activeNetworkSection === "doubao"
+                {activeApiBackendSection === "doubao"
                   ? renderRemoteLlmSettings(
                       "doubao",
                       doubaoSettings,
@@ -2841,7 +2864,7 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
                     )
                   : null}
 
-                {activeNetworkSection === "qwen"
+                {activeApiBackendSection === "qwen"
                   ? renderRemoteLlmSettings(
                       "qwen",
                       qwenSettings,
@@ -2851,7 +2874,7 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
                     )
                   : null}
 
-                {activeNetworkSection === "deepseek"
+                {activeApiBackendSection === "deepseek"
                   ? renderRemoteLlmSettings(
                       "deepseek",
                       deepSeekSettings,
@@ -2861,7 +2884,7 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
                     )
                   : null}
 
-                {activeNetworkSection === "zhipu"
+                {activeApiBackendSection === "zhipu"
                   ? renderRemoteLlmSettings(
                       "zhipu",
                       zhipuSettings,
@@ -2871,8 +2894,10 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
                     )
                   : null}
 
-                {activeNetworkSection === "llmLoader" ? renderLlmLoaderSettings() : null}
-
+                {activeApiBackendSection === "llmLoader" ? renderLlmLoaderSettings() : null}
+              </div>
+            ) : activeSection === "network" ? (
+              <div className="space-y-3">
                 {activeNetworkSection === "proxy" ? (
                   <div className="rounded-lg border border-neutral-200 bg-white">
                     <div className="border-b border-neutral-100 px-4 py-3">

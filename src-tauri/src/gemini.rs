@@ -1,4 +1,4 @@
-use std::{fs, path::Path};
+use std::{fs, path::Path, time::Duration};
 
 use base64::{engine::general_purpose, Engine as _};
 use serde::{Deserialize, Serialize};
@@ -27,6 +27,8 @@ const OUTDATED_DEFAULT_MODEL_SETS: &[&[&str]] = &[
     &["gemini-1.5-pro-002", "gemini-1.5-flash-002"],
 ];
 const UNSUPPORTED_VERTEX_MODEL_ALIASES: &[&str] = &["gemini-flash-latest", "gemini-pro-latest"];
+const GENERATE_CONTENT_MAX_ATTEMPTS: usize = 3;
+const GENERATE_CONTENT_RETRY_BASE_DELAY_MS: u64 = 400;
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -448,17 +450,11 @@ async fn generate_content(
             .post(endpoint)
             .query(&[("key", settings.api_key.trim())])
     };
-    let response = request_builder
-        .json(&request)
-        .send()
-        .await
-        .map_err(|error| AppError::InvalidInput(format!("Annotation request failed: {error}")))?;
-
-    let response = checked_google_response(response, "Annotation request").await?;
-
-    let payload: GenerateContentResponse = response.json().await.map_err(|error| {
-        AppError::InvalidInput(format!("Annotation response parse failed: {error}"))
-    })?;
+    let response_body = send_generate_content_request(request_builder.json(&request)).await?;
+    let payload: GenerateContentResponse =
+        serde_json::from_slice(&response_body).map_err(|error| {
+            AppError::InvalidInput(format!("Annotation response parse failed: {error}"))
+        })?;
     let text = payload
         .candidates
         .unwrap_or_default()
@@ -478,6 +474,64 @@ async fn generate_content(
     }
 
     Ok(text)
+}
+
+async fn send_generate_content_request(
+    request_builder: reqwest::RequestBuilder,
+) -> AppResult<Vec<u8>> {
+    if request_builder.try_clone().is_none() {
+        return Err(AppError::InvalidInput(
+            "Annotation request could not be prepared for retry".to_owned(),
+        ));
+    }
+
+    for attempt in 1..=GENERATE_CONTENT_MAX_ATTEMPTS {
+        let request = request_builder.try_clone().ok_or_else(|| {
+            AppError::InvalidInput("Annotation request retry could not be prepared".to_owned())
+        })?;
+        let response = match request.send().await {
+            Ok(response) => response,
+            Err(error) if attempt < GENERATE_CONTENT_MAX_ATTEMPTS => {
+                wait_before_generate_content_retry(attempt, "request send", &error).await;
+                continue;
+            }
+            Err(error) => {
+                return Err(AppError::InvalidInput(format!(
+                    "Annotation request failed after {attempt} attempts: {error}"
+                )));
+            }
+        };
+
+        let response = checked_google_response(response, "Annotation request").await?;
+        match response.bytes().await {
+            Ok(body) => return Ok(body.to_vec()),
+            Err(error) if attempt < GENERATE_CONTENT_MAX_ATTEMPTS => {
+                wait_before_generate_content_retry(attempt, "response body read", &error).await;
+            }
+            Err(error) => {
+                return Err(AppError::InvalidInput(format!(
+                    "Annotation response read failed after {attempt} attempts: {error}"
+                )));
+            }
+        }
+    }
+
+    unreachable!("generateContent retry loop always returns on its final attempt")
+}
+
+async fn wait_before_generate_content_retry(attempt: usize, stage: &str, error: &reqwest::Error) {
+    let delay = Duration::from_millis(
+        GENERATE_CONTENT_RETRY_BASE_DELAY_MS * (1_u64 << (attempt.saturating_sub(1) as u32)),
+    );
+    tracing::warn!(
+        attempt,
+        max_attempts = GENERATE_CONTENT_MAX_ATTEMPTS,
+        stage,
+        delay_ms = delay.as_millis(),
+        error = %error,
+        "Retrying Gemini generateContent after a transient transport failure"
+    );
+    tokio::time::sleep(delay).await;
 }
 
 pub async fn generate_text(
@@ -640,7 +694,50 @@ async fn checked_google_response(
 
 #[cfg(test)]
 mod tests {
+    use std::{
+        io::{Read, Write},
+        net::{TcpListener, TcpStream},
+        thread,
+    };
+
     use super::*;
+
+    fn read_http_request(stream: &mut TcpStream) {
+        let mut request = Vec::new();
+        let mut buffer = [0_u8; 1024];
+        let header_end = loop {
+            let count = stream.read(&mut buffer).unwrap();
+            assert!(count > 0, "client closed before sending request headers");
+            request.extend_from_slice(&buffer[..count]);
+            if let Some(index) = request.windows(4).position(|value| value == b"\r\n\r\n") {
+                break index + 4;
+            }
+        };
+        let headers = String::from_utf8_lossy(&request[..header_end]);
+        let content_length = headers
+            .lines()
+            .find_map(|line| {
+                let (name, value) = line.split_once(':')?;
+                name.eq_ignore_ascii_case("content-length")
+                    .then(|| value.trim().parse::<usize>().unwrap())
+            })
+            .unwrap_or(0);
+        while request.len() - header_end < content_length {
+            let count = stream.read(&mut buffer).unwrap();
+            assert!(count > 0, "client closed before sending request body");
+            request.extend_from_slice(&buffer[..count]);
+        }
+    }
+
+    fn write_http_response(stream: &mut TcpStream, body: &[u8], declared_length: usize) {
+        write!(
+            stream,
+            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {declared_length}\r\nConnection: close\r\n\r\n"
+        )
+        .unwrap();
+        stream.write_all(body).unwrap();
+        stream.flush().unwrap();
+    }
 
     #[test]
     fn legacy_settings_receive_google_source_defaults() {
@@ -726,5 +823,34 @@ mod tests {
                 }]
             })
         );
+    }
+
+    #[tokio::test]
+    async fn retries_when_a_success_response_body_is_truncated() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = thread::spawn(move || {
+            let (mut first, _) = listener.accept().unwrap();
+            read_http_request(&mut first);
+            write_http_response(&mut first, br#"{"candidates":["#, 128);
+            drop(first);
+
+            let complete_body = br#"{"candidates":[]}"#;
+            let (mut second, _) = listener.accept().unwrap();
+            read_http_request(&mut second);
+            write_http_response(&mut second, complete_body, complete_body.len());
+        });
+
+        let client = reqwest::Client::builder().no_proxy().build().unwrap();
+        let request = client
+            .post(format!("http://{address}/generateContent"))
+            .json(&serde_json::json!({ "contents": [] }));
+        let body = send_generate_content_request(request).await.unwrap();
+
+        assert_eq!(
+            serde_json::from_slice::<serde_json::Value>(&body).unwrap(),
+            serde_json::json!({ "candidates": [] })
+        );
+        server.join().unwrap();
     }
 }
