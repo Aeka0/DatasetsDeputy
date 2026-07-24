@@ -113,7 +113,7 @@ impl Database {
               height INTEGER,
               file_size INTEGER,
               file_mtime INTEGER,
-              file_hash TEXT NOT NULL UNIQUE,
+              file_hash TEXT NOT NULL,
               imported_at TEXT NOT NULL,
               updated_at TEXT NOT NULL
             );
@@ -148,6 +148,9 @@ impl Database {
             self.conn
                 .execute("ALTER TABLE images ADD COLUMN file_mtime INTEGER", [])?;
         }
+        if self.has_unique_file_hash_index()? {
+            self.remove_unique_file_hash_constraint()?;
+        }
         Ok(())
     }
 
@@ -160,6 +163,105 @@ impl Database {
             }
         }
         Ok(false)
+    }
+
+    fn has_unique_file_hash_index(&self) -> AppResult<bool> {
+        let indexes = {
+            let mut stmt = self.conn.prepare("PRAGMA index_list(images)")?;
+            let rows = stmt.query_map([], |row| {
+                Ok((row.get::<_, String>(1)?, row.get::<_, bool>(2)?))
+            })?;
+            rows.collect::<Result<Vec<_>, _>>()?
+        };
+
+        for (index_name, is_unique) in indexes {
+            if !is_unique {
+                continue;
+            }
+
+            let escaped_name = index_name.replace('"', "\"\"");
+            let mut stmt = self
+                .conn
+                .prepare(&format!("PRAGMA index_info(\"{escaped_name}\")"))?;
+            let columns = stmt
+                .query_map([], |row| row.get::<_, Option<String>>(2))?
+                .collect::<Result<Vec<_>, _>>()?;
+            if columns.as_slice() == [Some("file_hash".to_owned())] {
+                return Ok(true);
+            }
+        }
+
+        Ok(false)
+    }
+
+    fn remove_unique_file_hash_constraint(&self) -> AppResult<()> {
+        self.conn.pragma_update(None, "foreign_keys", "OFF")?;
+        let migration_result = self.conn.execute_batch(
+            r#"
+            BEGIN IMMEDIATE;
+
+            CREATE TABLE images_without_unique_hash (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              path TEXT NOT NULL UNIQUE,
+              dataset_path TEXT NOT NULL,
+              file_name TEXT NOT NULL,
+              storage_path TEXT,
+              thumbnail_path TEXT,
+              width INTEGER,
+              height INTEGER,
+              file_size INTEGER,
+              file_mtime INTEGER,
+              file_hash TEXT NOT NULL,
+              imported_at TEXT NOT NULL,
+              updated_at TEXT NOT NULL
+            );
+
+            INSERT INTO images_without_unique_hash (
+              id,
+              path,
+              dataset_path,
+              file_name,
+              storage_path,
+              thumbnail_path,
+              width,
+              height,
+              file_size,
+              file_mtime,
+              file_hash,
+              imported_at,
+              updated_at
+            )
+            SELECT
+              id,
+              path,
+              dataset_path,
+              file_name,
+              storage_path,
+              thumbnail_path,
+              width,
+              height,
+              file_size,
+              file_mtime,
+              file_hash,
+              imported_at,
+              updated_at
+            FROM images;
+
+            DROP TABLE images;
+            ALTER TABLE images_without_unique_hash RENAME TO images;
+
+            COMMIT;
+            "#,
+        );
+
+        if migration_result.is_err() {
+            let _ = self.conn.execute_batch("ROLLBACK");
+        }
+        let foreign_keys_result = self.conn.pragma_update(None, "foreign_keys", "ON");
+
+        migration_result?;
+        foreign_keys_result?;
+        Ok(())
     }
 
     pub fn set_dataset_metadata(
@@ -1198,4 +1300,119 @@ fn escape_like_pattern(value: &str) -> String {
         .replace('\\', "\\\\")
         .replace('%', "\\%")
         .replace('_', "\\_")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn in_memory_database() -> Database {
+        let conn = Connection::open_in_memory().expect("open in-memory database");
+        conn.pragma_update(None, "foreign_keys", "ON")
+            .expect("enable foreign keys");
+        Database { conn }
+    }
+
+    fn new_image(path: &str, dataset_path: &str, file_hash: &str) -> NewImage {
+        NewImage {
+            path: PathBuf::from(path),
+            dataset_path: PathBuf::from(dataset_path),
+            storage_path: None,
+            thumbnail_path: None,
+            width: Some(1),
+            height: Some(1),
+            file_size: Some(4),
+            file_mtime: Some(1),
+            file_hash: file_hash.to_owned(),
+        }
+    }
+
+    #[test]
+    fn allows_different_images_to_share_file_hash() {
+        let db = in_memory_database();
+        db.migrate().expect("migrate database");
+
+        db.insert_image(&new_image("first.png", "first.png", "same-hash"))
+            .expect("insert first image");
+        db.insert_image(&new_image("second.png", "second.png", "same-hash"))
+            .expect("insert duplicate-content image");
+
+        assert_eq!(db.list_images().expect("list images").len(), 2);
+    }
+
+    #[test]
+    fn removes_legacy_file_hash_constraint_without_losing_annotations() {
+        let db = in_memory_database();
+        db.conn
+            .execute_batch(
+                r#"
+                CREATE TABLE images (
+                  id INTEGER PRIMARY KEY AUTOINCREMENT,
+                  path TEXT NOT NULL UNIQUE,
+                  dataset_path TEXT NOT NULL,
+                  file_name TEXT NOT NULL,
+                  storage_path TEXT,
+                  thumbnail_path TEXT,
+                  width INTEGER,
+                  height INTEGER,
+                  file_size INTEGER,
+                  file_mtime INTEGER,
+                  file_hash TEXT NOT NULL UNIQUE,
+                  imported_at TEXT NOT NULL,
+                  updated_at TEXT NOT NULL
+                );
+                CREATE TABLE annotation_profiles (
+                  id INTEGER PRIMARY KEY AUTOINCREMENT,
+                  name TEXT NOT NULL COLLATE NOCASE UNIQUE
+                );
+                CREATE TABLE annotations (
+                  id INTEGER PRIMARY KEY AUTOINCREMENT,
+                  image_id INTEGER NOT NULL REFERENCES images(id) ON DELETE CASCADE,
+                  profile_id INTEGER NOT NULL REFERENCES annotation_profiles(id) ON DELETE CASCADE,
+                  content TEXT NOT NULL,
+                  instruction TEXT NOT NULL DEFAULT '',
+                  confidence REAL,
+                  created_at TEXT NOT NULL,
+                  updated_at TEXT NOT NULL,
+                  UNIQUE(image_id, profile_id)
+                );
+
+                INSERT INTO images (
+                  id, path, dataset_path, file_name, file_hash, imported_at, updated_at
+                ) VALUES (
+                  1, 'first.png', 'first.png', 'first.png', 'same-hash', 'now', 'now'
+                );
+                INSERT INTO annotation_profiles (id, name) VALUES (1, 'Manual');
+                INSERT INTO annotations (
+                  id, image_id, profile_id, content, created_at, updated_at
+                ) VALUES (
+                  1, 1, 1, 'preserved', 'now', 'now'
+                );
+                "#,
+            )
+            .expect("create legacy database");
+
+        db.migrate().expect("migrate legacy database");
+        db.insert_image(&new_image("second.png", "second.png", "same-hash"))
+            .expect("insert duplicate-content image after migration");
+
+        let annotation_content: String = db
+            .conn
+            .query_row("SELECT content FROM annotations WHERE id = 1", [], |row| {
+                row.get(0)
+            })
+            .expect("read preserved annotation");
+        assert_eq!(annotation_content, "preserved");
+
+        let mut foreign_key_check = db
+            .conn
+            .prepare("PRAGMA foreign_key_check")
+            .expect("prepare foreign key check");
+        assert!(foreign_key_check
+            .query([])
+            .expect("run foreign key check")
+            .next()
+            .expect("read foreign key check")
+            .is_none());
+    }
 }
