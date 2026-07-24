@@ -557,11 +557,16 @@ textarea {
 .dataset-preview-image {
   position: relative;
   z-index: 1;
-  opacity: 1;
 }
 
-.dataset-preview-image-loaded {
-  opacity: 1;
+.fade-in-image {
+  opacity: 0;
+  transition: none;
+}
+
+.fade-in-image[data-load-state="loaded"] {
+  opacity: var(--fade-in-image-opacity, 1);
+  transition: opacity var(--app-motion-duration) var(--app-motion-ease);
 }
 
 .dataset-preview-placeholder-icon {
@@ -1109,6 +1114,11 @@ html[data-ui-animation="off"] .workspace-view-transition,
 html[data-ui-animation="off"] .workspace-heading-transition,
 html[data-ui-animation="off"] .import-wizard-option-attention::after {
   animation: none !important;
+}
+
+html[data-ui-animation="off"] .fade-in-image {
+  opacity: var(--fade-in-image-opacity, 1);
+  transition: none !important;
 }
 
 /* ── Dark theme ───────────────────────────────────────────── */

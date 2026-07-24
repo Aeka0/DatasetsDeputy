@@ -10,6 +10,7 @@ import { resolveAssetSrc } from "../../lib/tauri";
 import { getTableDraftProfileMaps } from "../../lib/tableDrafts";
 import { useDatasetStore } from "../../stores/datasetStore";
 import type { AnnotationProfile } from "../../types";
+import { FadeInImage } from "../ui/FadeInImage";
 
 type DraftTab = "annotation" | "instruction";
 type ImageDimensions = { imageId: number; width: number; height: number };
@@ -377,10 +378,11 @@ export function ImagePreviewView() {
             {selectedImage.sourceMissing ? (
               <CircleAlert size={72} className="text-red-600" />
             ) : previewSrc ? (
-              <img
+              <FadeInImage
                 src={previewSrc}
                 alt=""
                 className="max-h-full max-w-full object-contain"
+                decoding="async"
                 onLoad={rememberLoadedDimensions}
               />
             ) : (

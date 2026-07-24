@@ -12,6 +12,7 @@ import { getImageSelectionClickUpdate } from "../../lib/imageSelection";
 import { getLatestVisibleTableCellState } from "../../lib/tableCellState";
 import { useDatasetStore } from "../../stores/datasetStore";
 import type { DatasetImage } from "../../types";
+import { FadeInImage } from "../ui/FadeInImage";
 
 const minCardWidth = 150;
 const gridGap = 12;
@@ -66,7 +67,6 @@ export function DatasetGrid({
   );
   const parentRef = useRef<HTMLDivElement>(null);
   const [containerWidth, setContainerWidth] = useState(0);
-  const [loadedPreviewKeys, setLoadedPreviewKeys] = useState<Set<string>>(new Set());
   const [failedPreviewKeys, setFailedPreviewKeys] = useState<Set<string>>(new Set());
   const profiles = useDatasetStore((state) => state.profiles);
   const datasetAnnotationTypeCount = useMemo(() => {
@@ -112,25 +112,6 @@ export function DatasetGrid({
   const rowCount = Math.ceil(images.length / columnCount);
   const getPreviewLoadKey = (image: DatasetImage) =>
     `${image.id}:${image.thumbnailPath ?? ""}:${thumbnailCacheKey}`;
-  const markPreviewLoaded = (image: DatasetImage) => {
-    const key = getPreviewLoadKey(image);
-    window.requestAnimationFrame(() => {
-      window.requestAnimationFrame(() => {
-        setLoadedPreviewKeys((current) => {
-          if (current.has(key)) return current;
-          const next = new Set(current);
-          next.add(key);
-          return next;
-        });
-        setFailedPreviewKeys((current) => {
-          if (!current.has(key)) return current;
-          const next = new Set(current);
-          next.delete(key);
-          return next;
-        });
-      });
-    });
-  };
   const markPreviewFailed = (image: DatasetImage) => {
     const key = getPreviewLoadKey(image);
     setFailedPreviewKeys((current) => {
@@ -265,20 +246,15 @@ export function DatasetGrid({
                       {image.sourceMissing ? (
                         <CircleAlert size={issueIconSize} className="text-red-600" />
                       ) : image.thumbnailPath && !failedPreviewKeys.has(getPreviewLoadKey(image)) ? (
-                        <img
+                        <FadeInImage
                           src={resolveAssetSrc(
                             image.thumbnailPath,
                             `${image.updatedAt}:${thumbnailCacheKey}`
                           )}
                           alt=""
-                          className={cn(
-                            "dataset-preview-image h-full w-full object-cover",
-                            loadedPreviewKeys.has(getPreviewLoadKey(image)) &&
-                              "dataset-preview-image-loaded"
-                          )}
+                          className="dataset-preview-image h-full w-full object-cover"
                           loading="lazy"
                           decoding="async"
-                          onLoad={() => markPreviewLoaded(image)}
                           onError={() => markPreviewFailed(image)}
                         />
                       ) : (

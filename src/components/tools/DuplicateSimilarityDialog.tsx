@@ -18,6 +18,7 @@ import { formatAppError } from "../../lib/errors";
 import { formatBytes } from "../../lib/format";
 import { invokeCommand, resolveAssetSrc } from "../../lib/tauri";
 import { AnimatedPortal, useAnimatedPortalClose } from "../ui/AnimatedPortal";
+import { FadeInImage } from "../ui/FadeInImage";
 import { Slider } from "../ui/Slider";
 
 interface SimilarityWarning {
@@ -317,11 +318,13 @@ export function DuplicateSimilarityDialog({ onClose }: DuplicateSimilarityDialog
                             <div className="grid grid-cols-[104px_minmax(0,1fr)] gap-3 p-3">
                               <div className="grid h-[96px] grid-cols-2 grid-rows-2 gap-1 overflow-hidden rounded-md bg-neutral-100">
                                 {group.images.slice(0, 4).map((image) => (
-                                  <img
+                                  <FadeInImage
                                     key={image.filePath}
                                     src={resolveAssetSrc(image.filePath)}
+                                    alt=""
                                     className="h-full w-full object-cover"
                                     loading="lazy"
+                                    decoding="async"
                                   />
                                 ))}
                               </div>

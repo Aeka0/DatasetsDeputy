@@ -19,6 +19,7 @@ import { getUnsavedTableDraftState } from "../../lib/tableDrafts";
 import { resolveAssetSrc } from "../../lib/tauri";
 import { useDatasetStore } from "../../stores/datasetStore";
 import type { AnnotationChange, AnnotationProfile, DatasetImage } from "../../types";
+import { FadeInImage } from "../ui/FadeInImage";
 import { AnimatedLayer, AnimatedLayerPortal, useUiAnimationEnabled } from "../ui/layerMotion";
 import {
   estimateDropdownHeight,
@@ -176,7 +177,6 @@ export function DatasetTable({
     });
   const [isSaving, setIsSaving] = useState(false);
   const [columnWidths, setColumnWidths] = useState(loadColumnWidths);
-  const [loadedPreviewKeys, setLoadedPreviewKeys] = useState<Set<string>>(new Set());
   const [failedPreviewKeys, setFailedPreviewKeys] = useState<Set<string>>(new Set());
   const searchQuery = search?.trim() ?? "";
 
@@ -330,25 +330,6 @@ export function DatasetTable({
     columnWidths.filename + columnWidths.preview + columnWidths.annotation + columnWidths.instruction;
   const getPreviewLoadKey = (image: DatasetImage) =>
     `${image.id}:${image.thumbnailPath ?? ""}:${thumbnailCacheKey}`;
-  const markPreviewLoaded = (image: DatasetImage) => {
-    const key = getPreviewLoadKey(image);
-    window.requestAnimationFrame(() => {
-      window.requestAnimationFrame(() => {
-        setLoadedPreviewKeys((current) => {
-          if (current.has(key)) return current;
-          const next = new Set(current);
-          next.add(key);
-          return next;
-        });
-        setFailedPreviewKeys((current) => {
-          if (!current.has(key)) return current;
-          const next = new Set(current);
-          next.delete(key);
-          return next;
-        });
-      });
-    });
-  };
   const markPreviewFailed = (image: DatasetImage) => {
     const key = getPreviewLoadKey(image);
     setFailedPreviewKeys((current) => {
@@ -794,20 +775,15 @@ export function DatasetTable({
                     {image.sourceMissing ? (
                       <CircleAlert size={34} className="text-red-600" />
                     ) : image.thumbnailPath && !failedPreviewKeys.has(getPreviewLoadKey(image)) ? (
-                      <img
+                      <FadeInImage
                         src={resolveAssetSrc(
                           image.thumbnailPath,
                           `${image.updatedAt}:${thumbnailCacheKey}`
                         )}
                         alt=""
-                        className={cn(
-                          "dataset-preview-image h-full w-full object-contain",
-                          loadedPreviewKeys.has(getPreviewLoadKey(image)) &&
-                            "dataset-preview-image-loaded"
-                        )}
+                        className="dataset-preview-image h-full w-full object-contain"
                         loading="lazy"
                         decoding="async"
-                        onLoad={() => markPreviewLoaded(image)}
                         onError={() => markPreviewFailed(image)}
                       />
                     ) : (
