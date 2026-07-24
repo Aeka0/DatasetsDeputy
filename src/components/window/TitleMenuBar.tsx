@@ -1,5 +1,43 @@
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import { Check, ChevronRight } from "lucide-react";
+import {
+  ArrowDown,
+  ArrowLeftRight,
+  ArrowUp,
+  Bug,
+  Check,
+  ChevronRight,
+  Database,
+  Eraser,
+  FileCheck2,
+  FileQuestion,
+  Files,
+  Filter,
+  House,
+  ImageDown,
+  ImageUp,
+  Info,
+  ListChecks,
+  ListPlus,
+  LogOut,
+  MessageSquareText,
+  PanelLeftClose,
+  PanelLeftOpen,
+  Redo2,
+  RefreshCw,
+  ReplaceAll,
+  Save,
+  SaveAll,
+  SaveOff,
+  ScanSearch,
+  ScrollText,
+  Settings,
+  Square,
+  Tags,
+  Trash2,
+  Undo2,
+  WandSparkles,
+  type LucideIcon
+} from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useShallow } from "zustand/react/shallow";
@@ -83,6 +121,8 @@ type DialogKey =
 interface MenuAction {
   type?: "action";
   label: string;
+  icon: LucideIcon;
+  iconOverlay?: LucideIcon;
   disabled?: boolean;
   checked?: boolean;
   opensDialog?: boolean;
@@ -92,6 +132,8 @@ interface MenuAction {
 interface MenuSubmenu {
   type: "submenu";
   label: string;
+  icon: LucideIcon;
+  iconOverlay?: LucideIcon;
   entries: MenuAction[];
 }
 
@@ -207,6 +249,30 @@ function getAppOverlayRoot() {
 
 function formatMenuActionLabel(action: MenuAction) {
   return action.opensDialog ? formatDialogMenuLabel(action.label) : action.label;
+}
+
+function MenuEntryIcon({ entry }: { entry: MenuAction | MenuSubmenu }) {
+  const Icon = entry.icon;
+  const OverlayIcon = entry.iconOverlay;
+
+  return (
+    <span className="relative flex h-4 w-4 shrink-0 items-center justify-center opacity-70">
+      <Icon
+        size={OverlayIcon ? 12 : 14}
+        strokeWidth={1.75}
+        className={OverlayIcon ? "-translate-x-0.5" : undefined}
+        aria-hidden="true"
+      />
+      {OverlayIcon ? (
+        <OverlayIcon
+          size={8}
+          strokeWidth={2.25}
+          className="absolute -bottom-0.5 -right-0.5"
+          aria-hidden="true"
+        />
+      ) : null}
+    </span>
+  );
 }
 
 function estimateSubmenuHeight(entryCount: number) {
@@ -1938,23 +2004,27 @@ export function TitleMenuBar({
     file: [
       {
         label: t("menu.saveAllCurrentChanges"),
+        icon: SaveAll,
         disabled: allUnsavedChanges.length === 0 || isSavingChanges,
         onSelect: () => saveDraftChanges(allUnsavedChanges, "allChangesSaved")
       },
       {
         label: t("menu.saveCurrentDatasetChanges"),
+        icon: Save,
         disabled: selectedDatasetUnsavedChanges.length === 0 || isSavingChanges,
         onSelect: () => saveDraftChanges(selectedDatasetUnsavedChanges, "datasetChangesSaved")
       },
       { type: "separator" },
       {
         label: t("menu.importDataset"),
+        icon: ImageUp,
         disabled: isLoading,
         opensDialog: true,
         onSelect: openImportWizard
       },
       {
         label: t("menu.exportTxt"),
+        icon: ImageDown,
         disabled: images.length === 0 || isLoading,
         opensDialog: true,
         onSelect: openExportDialog
@@ -1962,24 +2032,30 @@ export function TitleMenuBar({
       { type: "separator" },
       {
         label: t("menu.importDatabase"),
+        icon: Database,
+        iconOverlay: ArrowUp,
         disabled: isLoading,
         opensDialog: true,
         onSelect: openImportDatabaseDialog
       },
       {
         label: t("menu.exportDatabase"),
+        icon: Database,
+        iconOverlay: ArrowDown,
         disabled: !hasDatabaseDatasets || isLoading,
         opensDialog: true,
         onSelect: openExportDatabaseDialog
       },
       {
         label: t("menu.refresh"),
+        icon: RefreshCw,
         disabled: isLoading,
         onSelect: refreshImages
       },
       { type: "separator" },
       {
         label: t("menu.exit"),
+        icon: LogOut,
         onSelect: onExit
       }
     ],
@@ -1988,6 +2064,7 @@ export function TitleMenuBar({
         label: historyState.undoLabel
           ? `${t("menu.undo")}: ${translateHistoryLabel(historyState.undoLabel, t)}`
           : t("menu.undo"),
+        icon: Undo2,
         disabled: !historyState.canUndo,
         onSelect: () => void undo()
       },
@@ -1995,30 +2072,35 @@ export function TitleMenuBar({
         label: historyState.redoLabel
           ? `${t("menu.redo")}: ${translateHistoryLabel(historyState.redoLabel, t)}`
           : t("menu.redo"),
+        icon: Redo2,
         disabled: !historyState.canRedo,
         onSelect: () => void redo()
       },
       { type: "separator" },
       {
         label: t("menu.batchAdd"),
+        icon: ListPlus,
         disabled: !canBatchEdit || isBatchActionRunning,
         opensDialog: true,
         onSelect: () => setDialog("batchAdd")
       },
       {
         label: t("menu.batchReplace"),
+        icon: ReplaceAll,
         disabled: !canBatchEdit || isBatchActionRunning,
         opensDialog: true,
         onSelect: () => setDialog("batchReplace")
       },
       {
         label: t("menu.batchAnnotationFormatConversion"),
+        icon: ArrowLeftRight,
         disabled: !canBatchEdit || isBatchActionRunning,
         opensDialog: true,
         onSelect: () => setDialog("batchAnnotationFormatConversion")
       },
       {
         label: t("menu.batchAnnotationNormalization"),
+        icon: ListChecks,
         disabled: !canBatchEdit || isBatchActionRunning,
         opensDialog: true,
         onSelect: () => setDialog("batchAnnotationNormalization")
@@ -2026,6 +2108,7 @@ export function TitleMenuBar({
       { type: "separator" },
       {
         label: t("menu.stopAction"),
+        icon: Square,
         disabled: !isBatchActionRunning,
         onSelect: stopBatchAction
       }
@@ -2033,23 +2116,27 @@ export function TitleMenuBar({
     annotation: [
       {
         label: t("menu.executeAnnotation"),
+        icon: WandSparkles,
         disabled: !canRunAnnotation,
         opensDialog: true,
         onSelect: () => setDialog("annotationExecution")
       },
       {
         label: t("menu.stopAnnotation"),
+        icon: Square,
         disabled: !isAnnotationRunning,
         onSelect: stopAnnotationRun
       },
       { type: "separator" },
       {
         label: t("menu.promptManagement"),
+        icon: MessageSquareText,
         opensDialog: true,
         onSelect: () => setDialog("promptManagement")
       },
       {
         label: t("menu.wd14Settings"),
+        icon: Tags,
         opensDialog: true,
         onSelect: () => setDialog("wd14Settings")
       }
@@ -2057,33 +2144,40 @@ export function TitleMenuBar({
     view: [
       {
         label: isProjectTreeCollapsed ? t("menu.expandFileTree") : t("menu.collapseFileTree"),
+        icon: isProjectTreeCollapsed ? PanelLeftOpen : PanelLeftClose,
         onSelect: onToggleProjectTree
       },
       { type: "separator" },
       {
         label: t("menu.initialPage"),
+        icon: House,
         onSelect: () => setAppView("initial")
       },
       {
         label: t("menu.logPage"),
+        icon: ScrollText,
         onSelect: () => setAppView("logs")
       },
       {
         type: "submenu",
         label: t("menu.filterView"),
+        icon: Filter,
         entries: [
           {
             label: t("menu.filterUnannotated"),
+            icon: FileQuestion,
             checked: viewFilterMode === "unannotated",
             onSelect: () => selectViewFilter("unannotated")
           },
           {
             label: t("menu.filterUnsaved"),
+            icon: SaveOff,
             checked: viewFilterMode === "unsaved",
             onSelect: () => selectViewFilter("unsaved")
           },
           {
             label: t("menu.filterAll"),
+            icon: Files,
             checked: viewFilterMode === "all",
             onSelect: () => selectViewFilter("all")
           }
@@ -2092,6 +2186,7 @@ export function TitleMenuBar({
       { type: "separator" },
       {
         label: t("menu.clearSavedMarks"),
+        icon: Eraser,
         onSelect: () => {
           clearTableSavedCellMarks();
           addAppLog(t("appLog.savedMarksCleared"));
@@ -2101,12 +2196,14 @@ export function TitleMenuBar({
     tools: [
       {
         label: t("menu.duplicateSimilarity"),
+        icon: ScanSearch,
         opensDialog: true,
         onSelect: () => setDialog("duplicateSimilarity")
       },
       { type: "separator" },
       {
         label: t("menu.trainingCacheCleaner"),
+        icon: Trash2,
         opensDialog: true,
         onSelect: () => setDialog("trainingCacheCleaner")
       },
@@ -2114,9 +2211,11 @@ export function TitleMenuBar({
       {
         type: "submenu",
         label: t("menu.datasetDebug"),
+        icon: Bug,
         entries: [
           {
             label: t("menu.formatValidator"),
+            icon: FileCheck2,
             opensDialog: true,
             onSelect: () => setDialog("formatValidator")
           }
@@ -2126,6 +2225,7 @@ export function TitleMenuBar({
     settings: [
       {
         label: t("menu.settings"),
+        icon: Settings,
         opensDialog: true,
         onSelect: () => setDialog("settings")
       }
@@ -2133,6 +2233,7 @@ export function TitleMenuBar({
     about: [
       {
         label: "Datasets Deputy",
+        icon: Info,
         opensDialog: true,
         onSelect: () => setDialog("about")
       }
@@ -2626,7 +2727,7 @@ export function TitleMenuBar({
                       openSubmenuForEntry(entry, event.currentTarget);
                     }}
                   >
-                    <span className="flex w-4 shrink-0 justify-center" />
+                    <MenuEntryIcon entry={entry} />
                     <span className="min-w-0 flex-1 truncate">{entry.label}</span>
                     <ChevronRight size={14} className="shrink-0 text-neutral-400" />
                   </button>
@@ -2642,10 +2743,15 @@ export function TitleMenuBar({
                   disabled={entry.disabled}
                   onClick={() => selectAction(entry)}
                 >
-                  <span className="flex w-4 shrink-0 justify-center">
-                    {entry.checked ? <Check size={14} /> : null}
+                  <MenuEntryIcon entry={entry} />
+                  <span className="min-w-0 flex-1 truncate">
+                    {formatMenuActionLabel(entry)}
                   </span>
-                  <span className="truncate">{formatMenuActionLabel(entry)}</span>
+                  {typeof entry.checked === "boolean" ? (
+                    <span className="flex w-4 shrink-0 justify-center">
+                      {entry.checked ? <Check size={14} /> : null}
+                    </span>
+                  ) : null}
                 </button>
               )
             )}
@@ -2672,12 +2778,15 @@ export function TitleMenuBar({
                 disabled={subEntry.disabled}
                 onClick={() => selectAction(subEntry)}
               >
-                <span className="flex w-4 shrink-0 justify-center">
-                  {subEntry.checked ? <Check size={14} /> : null}
-                </span>
+                <MenuEntryIcon entry={subEntry} />
                 <span className="min-w-0 flex-1 truncate">
                   {formatMenuActionLabel(subEntry)}
                 </span>
+                {typeof subEntry.checked === "boolean" ? (
+                  <span className="flex w-4 shrink-0 justify-center">
+                    {subEntry.checked ? <Check size={14} /> : null}
+                  </span>
+                ) : null}
               </button>
             ))}
           </AnimatedLayer>

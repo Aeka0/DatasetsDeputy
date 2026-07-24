@@ -3,7 +3,6 @@ import {
   ChevronDown,
   Boxes,
   FileInput,
-  Globe2,
   HardDrive,
   ImageUp,
   KeyRound,
@@ -11,6 +10,7 @@ import {
   MonitorCog,
   Network,
   Server,
+  Settings,
   Settings2,
   Trash2,
   Waypoints,
@@ -1956,7 +1956,7 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
       >
         <aside className="flex w-[220px] shrink-0 flex-col border-r border-neutral-200 bg-neutral-50/90">
           <div className="flex h-14 items-center gap-2 border-b border-neutral-200 px-4">
-            <Globe2 size={17} className="text-neutral-700" />
+            <Settings size={17} className="text-neutral-700" />
             <h2 id="settings-title" className="m-0 text-[15px] font-semibold text-neutral-950">
               {t("settings.title")}
             </h2>
