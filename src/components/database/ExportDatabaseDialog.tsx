@@ -1,5 +1,5 @@
 import { save } from "@tauri-apps/plugin-dialog";
-import { Check, ChevronDown, Database, FileArchive, FolderOpen, X } from "lucide-react";
+import { Database, FileArchive, FolderOpen, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useShallow } from "zustand/react/shallow";
@@ -10,6 +10,7 @@ import { findProjectTrail, getProjectDisplayName } from "../../lib/projects";
 import { useDatasetStore } from "../../stores/datasetStore";
 import type { DatabaseExportRequest, DatasetProject } from "../../types";
 import { AnimatedPortal } from "../ui/AnimatedPortal";
+import { AppSelect } from "../ui/AppSelect";
 
 function databaseProjects(projects: DatasetProject[]) {
   return projects.filter(
@@ -44,7 +45,6 @@ export function ExportDatabaseDialog() {
     }))
   );
   const [selectedDatasetId, setSelectedDatasetId] = useState<string>();
-  const [datasetMenuOpen, setDatasetMenuOpen] = useState(false);
   const [includeImages, setIncludeImages] = useState(false);
   const [outputPath, setOutputPath] = useState("");
   const [error, setError] = useState("");
@@ -57,6 +57,20 @@ export function ExportDatabaseDialog() {
     );
   }, [projects, selectedProjectId]);
   const selectedDataset = datasets.find((project) => project.datasetId === selectedDatasetId);
+  const datasetOptions = useMemo(
+    () =>
+      datasets.flatMap((project) =>
+        project.datasetId
+          ? [{
+              value: project.datasetId,
+              label: getProjectDisplayName(project, () => t("tree.looseFiles")),
+              leading: <Database size={14} className="shrink-0 text-neutral-400" />,
+              detail: project.sourceKind
+            }]
+          : []
+      ),
+    [datasets, t]
+  );
   const isExporting = Boolean(databaseExportProgress && !databaseExportProgress.done);
   const progressPercent =
     databaseExportProgress && databaseExportProgress.total > 0
@@ -67,7 +81,6 @@ export function ExportDatabaseDialog() {
     if (!showExportDatabaseDialog) return;
     setError("");
     setOutputPath("");
-    setDatasetMenuOpen(false);
     setSelectedDatasetId((current) => {
       if (datasets.some((project) => project.datasetId === current)) return current;
       if (selectedFromTree?.datasetId) return selectedFromTree.datasetId;
@@ -153,51 +166,13 @@ export function ExportDatabaseDialog() {
                 <div className="text-[13px] font-semibold text-neutral-900">
                   {t("databaseExport.dataset")}
                 </div>
-                <div className="relative">
-                  <button
-                    type="button"
-                    className="glass-input no-drag flex h-8 w-full items-center gap-2 px-2.5 text-left text-[13px]"
-                    disabled={isExporting}
-                    onClick={() => setDatasetMenuOpen((open) => !open)}
-                  >
-                    <Database size={14} className="shrink-0 text-neutral-400" />
-                    <span className="min-w-0 flex-1 truncate">
-                      {selectedDataset
-                        ? getProjectDisplayName(selectedDataset, () => t("tree.looseFiles"))
-                        : t("databaseExport.noDataset")}
-                    </span>
-                    <ChevronDown size={14} className="shrink-0 text-neutral-400" />
-                  </button>
-                  {datasetMenuOpen ? (
-                    <div className="app-dropdown-menu no-drag absolute left-0 top-9 z-[70] w-full rounded-lg py-2">
-                      <div className="app-dropdown-backdrop" />
-                      {datasets.map((project) => {
-                        const isSelected = project.datasetId === selectedDatasetId;
-                        return (
-                          <button
-                            key={project.datasetId}
-                            type="button"
-                            className="app-dropdown-item flex h-9 w-full items-center gap-2 px-3.5 text-left text-[13px] font-medium text-neutral-700 transition hover:bg-neutral-100"
-                            onClick={() => {
-                              setSelectedDatasetId(project.datasetId);
-                              setDatasetMenuOpen(false);
-                            }}
-                          >
-                            <span className="flex w-4 shrink-0 justify-center">
-                              {isSelected ? <Check size={14} /> : null}
-                            </span>
-                            <span className="min-w-0 flex-1 truncate">
-                              {getProjectDisplayName(project, () => t("tree.looseFiles"))}
-                            </span>
-                            <span className="shrink-0 text-[11px] text-neutral-400">
-                              {project.sourceKind}
-                            </span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  ) : null}
-                </div>
+                <AppSelect
+                  value={selectedDatasetId ?? ""}
+                  options={datasetOptions}
+                  placeholder={t("databaseExport.noDataset")}
+                  disabled={isExporting}
+                  onChange={setSelectedDatasetId}
+                />
               </div>
 
               <div className="grid min-h-12 grid-cols-[116px_minmax(0,1fr)] items-center gap-3 border-t border-neutral-100 px-4 py-3">

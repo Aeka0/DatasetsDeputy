@@ -2597,7 +2597,7 @@ export function TitleMenuBar({
             className="app-dropdown-menu no-drag pointer-events-auto fixed z-0"
             style={floatingStyles}
             animateUi={shouldAnimateUi}
-            preset="menu"
+            preset="fade"
           >
             <div className="app-dropdown-backdrop" />
             {menus[openMenu].map((entry, index) =>
@@ -2615,7 +2615,7 @@ export function TitleMenuBar({
                   <button
                     type="button"
                     className={cn(
-                      "app-dropdown-item flex h-9 w-full items-center gap-2 px-3.5 text-left text-[12px] font-medium leading-4 transition",
+                      "app-dropdown-item flex items-center gap-2 text-left text-[12px] font-medium leading-4 transition",
                       activeSubmenu?.label === entry.label && "app-dropdown-item-selected"
                     )}
                     aria-haspopup="menu"
@@ -2636,7 +2636,7 @@ export function TitleMenuBar({
                   key={entry.label}
                   type="button"
                   className={cn(
-                    "app-dropdown-item flex h-9 w-full items-center gap-2 px-3.5 text-left text-[12px] font-medium leading-4 transition",
+                    "app-dropdown-item flex items-center gap-2 text-left text-[12px] font-medium leading-4 transition",
                     entry.checked && "app-dropdown-item-selected"
                   )}
                   disabled={entry.disabled}
@@ -2666,7 +2666,7 @@ export function TitleMenuBar({
                 key={subEntry.label}
                 type="button"
                 className={cn(
-                  "app-dropdown-item flex h-9 w-full items-center gap-2 px-3.5 text-left text-[12px] font-medium leading-4 transition",
+                  "app-dropdown-item flex items-center gap-2 text-left text-[12px] font-medium leading-4 transition",
                   subEntry.checked && "app-dropdown-item-selected"
                 )}
                 disabled={subEntry.disabled}

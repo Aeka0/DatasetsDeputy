@@ -1103,7 +1103,7 @@ export function ProjectTree() {
               {isLooseFilesProject(contextMenu.project) ? (
                 <>
                   <button
-                    className="app-dropdown-item flex h-9 w-full items-center px-3.5 text-left text-[12px] font-medium text-neutral-700 transition hover:bg-neutral-100"
+                    className="app-dropdown-item flex items-center text-left text-[12px] font-medium transition"
                     onClick={() => {
                       setPendingConsolidation(contextMenu.project);
                       setConsolidationName("");
@@ -1114,7 +1114,7 @@ export function ProjectTree() {
                     {formatDialogMenuLabel(t("tree.consolidateLooseFiles"))}
                   </button>
                   <button
-                    className="app-dropdown-item flex h-9 w-full items-center px-3.5 text-left text-[12px] font-medium text-neutral-700 transition hover:bg-neutral-100"
+                    className="app-dropdown-item flex items-center text-left text-[12px] font-medium transition"
                     onClick={() => {
                       setPendingLooseDeletion(contextMenu.project);
                       setContextMenu(undefined);
@@ -1126,7 +1126,7 @@ export function ProjectTree() {
               ) : (
                 <>
                   <button
-                    className="app-dropdown-item flex h-9 w-full items-center px-3.5 text-left text-[12px] font-medium text-neutral-700 transition hover:bg-neutral-100 disabled:cursor-not-allowed disabled:opacity-50"
+                    className="app-dropdown-item flex items-center text-left text-[12px] font-medium transition disabled:cursor-not-allowed disabled:opacity-50"
                     disabled={!contextMenu.project.children?.length}
                     onClick={() => {
                       const project = contextMenu.project;
@@ -1137,7 +1137,7 @@ export function ProjectTree() {
                     {expandedIds.has(contextMenu.project.id) ? t("tree.collapse") : t("tree.expand")}
                   </button>
                   <button
-                    className="app-dropdown-item flex h-9 w-full items-center px-3.5 text-left text-[12px] font-medium text-neutral-700 transition hover:bg-neutral-100"
+                    className="app-dropdown-item flex items-center text-left text-[12px] font-medium transition"
                     onClick={() => {
                       setContextMenu(undefined);
                       void refreshImages();
@@ -1146,14 +1146,14 @@ export function ProjectTree() {
                     {t("tree.refresh")}
                   </button>
                   <button
-                    className="app-dropdown-item flex h-9 w-full items-center px-3.5 text-left text-[12px] font-medium text-neutral-700 transition hover:bg-neutral-100"
+                    className="app-dropdown-item flex items-center text-left text-[12px] font-medium transition"
                     onClick={() => void runProjectCheck(contextMenu.project)}
                   >
                     {t("tree.checkProblems")}
                   </button>
                   {canCreateChildFolder(contextMenu.project) ? (
                     <button
-                      className="app-dropdown-item flex h-9 w-full items-center px-3.5 text-left text-[12px] font-medium text-neutral-700 transition hover:bg-neutral-100"
+                      className="app-dropdown-item flex items-center text-left text-[12px] font-medium transition"
                       onClick={() => {
                         setPendingNewChild(contextMenu.project);
                         setNewChildName("");
@@ -1165,9 +1165,9 @@ export function ProjectTree() {
                   ) : null}
                   {!isVirtualRoot(contextMenu.project) && !isDatasetRoot(contextMenu.project) ? (
                     <>
-                      <div className="app-dropdown-separator my-1.5 h-px bg-neutral-200" />
+                      <div className="app-dropdown-separator" />
                       <button
-                        className="app-dropdown-item flex h-9 w-full items-center px-3.5 text-left text-[12px] font-medium text-neutral-700 transition hover:bg-neutral-100"
+                        className="app-dropdown-item flex items-center text-left text-[12px] font-medium transition"
                         onClick={() => startRename(contextMenu.project)}
                       >
                         {formatDialogMenuLabel(t("tree.renameFolder"))}
@@ -1176,7 +1176,7 @@ export function ProjectTree() {
                   ) : null}
                   {!isVirtualRoot(contextMenu.project) && !isDatasetRoot(contextMenu.project) ? (
                     <button
-                      className="app-dropdown-item flex h-9 w-full items-center px-3.5 text-left text-[12px] font-medium text-neutral-700 transition hover:bg-neutral-100"
+                      className="app-dropdown-item flex items-center text-left text-[12px] font-medium transition"
                       onClick={() => {
                         const project = contextMenu.project;
                         setContextMenu(undefined);
@@ -1191,7 +1191,7 @@ export function ProjectTree() {
                     </button>
                   ) : null}
                   <button
-                    className="app-dropdown-item flex h-9 w-full items-center px-3.5 text-left text-[12px] font-medium text-neutral-700 transition hover:bg-neutral-100"
+                    className="app-dropdown-item flex items-center text-left text-[12px] font-medium transition"
                     hidden={isVirtualRoot(contextMenu.project) || !isDatasetRoot(contextMenu.project)}
                     onClick={() => {
                       const project = contextMenu.project;

@@ -1,6 +1,5 @@
 import {
   Check,
-  ChevronDown,
   Clock,
   Copy,
   Ellipsis,
@@ -42,6 +41,7 @@ import type {
 import { DatasetGrid } from "../grid/DatasetGrid";
 import { DatasetTable } from "../table/DatasetTable";
 import { AnimatedPortal, useAnimatedPortalClose } from "../ui/AnimatedPortal";
+import { AppSelect } from "../ui/AppSelect";
 import { AnimatedLayer, AnimatedLayerPortal, useUiAnimationEnabled } from "../ui/layerMotion";
 
 type WorkspaceTab = "overview" | "grid" | "table";
@@ -355,10 +355,9 @@ function FolderImageImportDialog({
 }) {
   const { t } = useTranslation();
   const { open, close } = useAnimatedPortalClose(onClose);
-  const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const needsProfile = preview.annotationCount > 0 || preview.instructionCount > 0;
   const canImport = preview.imageCount > 0 && (!needsProfile || selectedProfileId !== undefined);
-  const selectedProfile = profiles.find((profile) => profile.id === selectedProfileId);
+  const profileOptions = profiles.map((profile) => ({ value: profile.id, label: profile.name }));
   const locationLabel =
     sourceKind === "database"
       ? t("folderImport.sourceLocation")
@@ -437,43 +436,14 @@ function FolderImageImportDialog({
             <label className="block font-medium text-neutral-600">
               {t("folderImport.annotationType")}
             </label>
-            <div className="relative mt-2">
-              <button
-                type="button"
-                className="glass-input no-drag flex h-9 w-full items-center gap-2 px-3 text-left text-[13px] disabled:cursor-not-allowed disabled:text-neutral-400"
-                disabled={profiles.length === 0 || isImporting}
-                onClick={() => setProfileMenuOpen((open) => !open)}
-              >
-                <span className="min-w-0 flex-1 truncate">
-                  {selectedProfile?.name ?? t("folderImport.noProfiles")}
-                </span>
-                <ChevronDown size={15} className="shrink-0 text-neutral-400" />
-              </button>
-              {profileMenuOpen ? (
-                <div className="app-dropdown-menu no-drag absolute left-0 top-10 z-[70] w-full rounded-lg py-2">
-                  <div className="app-dropdown-backdrop" />
-                  {profiles.map((profile) => {
-                    const isSelected = profile.id === selectedProfileId;
-                    return (
-                      <button
-                        key={profile.id}
-                        type="button"
-                        className="app-dropdown-item flex h-9 w-full items-center gap-2 px-3.5 text-left text-[13px] font-medium text-neutral-700 transition hover:bg-neutral-100"
-                        onClick={() => {
-                          onProfileChange(profile.id);
-                          setProfileMenuOpen(false);
-                        }}
-                      >
-                        <span className="flex w-4 shrink-0 justify-center">
-                          {isSelected ? <Check size={14} /> : null}
-                        </span>
-                        <span className="min-w-0 flex-1 truncate">{profile.name}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-              ) : null}
-            </div>
+            <AppSelect
+              className="mt-2"
+              value={selectedProfileId ?? 0}
+              options={profileOptions}
+              placeholder={t("folderImport.noProfiles")}
+              disabled={isImporting}
+              onChange={onProfileChange}
+            />
             {profiles.length === 0 ? (
               <div className="mt-1 text-[12px] text-red-600">
                 {t("folderImport.noProfiles")}
@@ -775,12 +745,14 @@ function DatasetOverview({
   addAppLog: (message: string, level?: "info" | "warning" | "error") => void;
 }) {
   const { t } = useTranslation();
+  const shouldAnimateUi = useUiAnimationEnabled();
   const [isCreatingProfile, setIsCreatingProfile] = useState(false);
   const [newProfileName, setNewProfileName] = useState("");
   const [createProfileError, setCreateProfileError] = useState("");
   const [isSubmittingProfile, setIsSubmittingProfile] = useState(false);
 
   const [profileMenuId, setProfileMenuId] = useState<number>();
+  const [profileMenuPosition, setProfileMenuPosition] = useState({ left: 0, top: 0 });
   const [renamingProfileId, setRenamingProfileId] = useState<number>();
   const [renameValue, setRenameValue] = useState("");
   const [renameError, setRenameError] = useState("");
@@ -797,9 +769,11 @@ function DatasetOverview({
     };
     window.addEventListener("mousedown", close);
     window.addEventListener("keydown", closeOnEscape);
+    window.addEventListener("scroll", close, true);
     return () => {
       window.removeEventListener("mousedown", close);
       window.removeEventListener("keydown", closeOnEscape);
+      window.removeEventListener("scroll", close, true);
     };
   }, [profileMenuId]);
 
@@ -848,6 +822,9 @@ function DatasetOverview({
       )
     ).length
   }));
+  const activeProfileMenu = annotationTypeStats.find(
+    (profile) => profile.id === profileMenuId
+  );
   const latestUpdate = images
     .map((image) => image.updatedAt)
     .filter(Boolean)
@@ -1122,58 +1099,25 @@ function DatasetOverview({
                               onMouseDown={(e) => e.stopPropagation()}
                               onClick={(e) => {
                                 e.stopPropagation();
-                                setProfileMenuId(isMenuOpen ? undefined : profile.id);
+                                if (isMenuOpen) {
+                                  setProfileMenuId(undefined);
+                                  return;
+                                }
+                                const rect = e.currentTarget.getBoundingClientRect();
+                                const position = clampContextMenuPosition(
+                                  rect.right - 188,
+                                  rect.bottom + 4,
+                                  { width: 188, height: 122 }
+                                );
+                                setProfileMenuPosition({
+                                  left: position.x,
+                                  top: position.y
+                                });
+                                setProfileMenuId(profile.id);
                               }}
                             >
                               <Ellipsis size={15} />
                             </button>
-                            {isMenuOpen ? (
-                              <div
-                                className="app-dropdown-menu no-drag absolute right-0 top-8 z-50 min-w-[148px] rounded-lg py-1.5"
-                                onMouseDown={(e) => e.stopPropagation()}
-                              >
-                                <div className="app-dropdown-backdrop" />
-                                <button
-                                  type="button"
-                                  className="app-dropdown-item flex h-8 w-full items-center gap-2.5 px-3 text-left text-[12px] font-medium text-neutral-700 transition hover:bg-neutral-100"
-                                  onClick={() => {
-                                    setProfileMenuId(undefined);
-                                    setRenamingProfileId(profile.id);
-                                    setRenameValue(profile.name);
-                                    setRenameError("");
-                                  }}
-                                >
-                                  <Pencil size={13} />
-                                  {formatDialogMenuLabel(t("workspace.renameAnnotationType"))}
-                                </button>
-                                <button
-                                  type="button"
-                                  className="app-dropdown-item flex h-8 w-full items-center gap-2.5 px-3 text-left text-[12px] font-medium text-neutral-700 transition hover:bg-neutral-100"
-                                  onClick={() =>
-                                    void handleDuplicateProfile(profile.id, profile.name)
-                                  }
-                                >
-                                  <Copy size={13} />
-                                  {t("workspace.duplicateAnnotationType")}
-                                </button>
-                                <div className="app-dropdown-separator my-1 h-px bg-neutral-200" />
-                                <button
-                                  type="button"
-                                  className="app-dropdown-item flex h-8 w-full items-center gap-2.5 px-3 text-left text-[12px] font-medium text-red-600 transition hover:bg-neutral-100"
-                                  onClick={() => {
-                                    setProfileMenuId(undefined);
-                                    setDeletingProfile({
-                                      id: profile.id,
-                                      name: profile.name
-                                    });
-                                    setDeleteError("");
-                                  }}
-                                >
-                                  <Trash2 size={13} />
-                                  {formatDialogMenuLabel(t("workspace.deleteAnnotationType"))}
-                                </button>
-                              </div>
-                            ) : null}
                           </div>
                         ) : null}
                       </>
@@ -1253,6 +1197,62 @@ function DatasetOverview({
           ) : null}
         </div>
       </div>
+
+      <AnimatedLayerPortal root={document.body}>
+        {activeProfileMenu ? (
+          <AnimatedLayer
+            className="app-dropdown-menu no-drag pointer-events-auto fixed z-[1010]"
+            style={{
+              left: profileMenuPosition.left,
+              top: profileMenuPosition.top
+            }}
+            animateUi={shouldAnimateUi}
+            preset="fade"
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <div className="app-dropdown-backdrop" />
+            <button
+              type="button"
+              className="app-dropdown-item flex items-center gap-2.5 text-left text-[12px] font-medium transition"
+              onClick={() => {
+                setProfileMenuId(undefined);
+                setRenamingProfileId(activeProfileMenu.id);
+                setRenameValue(activeProfileMenu.name);
+                setRenameError("");
+              }}
+            >
+              <Pencil size={13} />
+              {formatDialogMenuLabel(t("workspace.renameAnnotationType"))}
+            </button>
+            <button
+              type="button"
+              className="app-dropdown-item flex items-center gap-2.5 text-left text-[12px] font-medium transition"
+              onClick={() =>
+                void handleDuplicateProfile(activeProfileMenu.id, activeProfileMenu.name)
+              }
+            >
+              <Copy size={13} />
+              {t("workspace.duplicateAnnotationType")}
+            </button>
+            <div className="app-dropdown-separator" />
+            <button
+              type="button"
+              className="app-dropdown-item app-dropdown-item-danger flex items-center gap-2.5 text-left text-[12px] font-medium transition"
+              onClick={() => {
+                setProfileMenuId(undefined);
+                setDeletingProfile({
+                  id: activeProfileMenu.id,
+                  name: activeProfileMenu.name
+                });
+                setDeleteError("");
+              }}
+            >
+              <Trash2 size={13} />
+              {formatDialogMenuLabel(t("workspace.deleteAnnotationType"))}
+            </button>
+          </AnimatedLayer>
+        ) : null}
+      </AnimatedLayerPortal>
 
       <AnimatedPortal open={Boolean(deletingProfile)}>
         {deletingProfile ? (
@@ -1917,7 +1917,7 @@ export function DatasetWorkspace() {
               ) : null}
               <button
                 type="button"
-                className="app-dropdown-item flex h-9 w-full items-center px-3.5 text-left text-[12px] font-medium transition disabled:cursor-not-allowed"
+                className="app-dropdown-item flex items-center text-left text-[12px] font-medium transition disabled:cursor-not-allowed"
                 disabled={
                   !contextMenuImagesAreDirty ||
                   isSavingImageChanges ||
@@ -1929,7 +1929,7 @@ export function DatasetWorkspace() {
               </button>
               <button
                 type="button"
-                className="app-dropdown-item flex h-9 w-full items-center px-3.5 text-left text-[12px] font-medium transition disabled:cursor-not-allowed"
+                className="app-dropdown-item flex items-center text-left text-[12px] font-medium transition disabled:cursor-not-allowed"
                 disabled={
                   !contextMenuImagesAreDirty ||
                   isSavingImageChanges ||
@@ -1944,7 +1944,7 @@ export function DatasetWorkspace() {
                 <>
                   <button
                     type="button"
-                    className="app-dropdown-item flex h-9 w-full items-center px-3.5 text-left text-[12px] font-medium transition"
+                    className="app-dropdown-item flex items-center text-left text-[12px] font-medium transition"
                     onClick={() => startRenameImage(imageContextMenu.image)}
                   >
                     <span>{formatDialogMenuLabel(t("itemMenu.rename"))}</span>
@@ -1954,7 +1954,7 @@ export function DatasetWorkspace() {
               ) : null}
               <button
                 type="button"
-                className="app-dropdown-item flex h-9 w-full items-center px-3.5 text-left text-[12px] font-medium transition"
+                className="app-dropdown-item flex items-center text-left text-[12px] font-medium transition"
                 onClick={() => startDeleteImages(contextMenuImages)}
               >
                 <span>{formatDialogMenuLabel(t("itemMenu.delete"))}</span>

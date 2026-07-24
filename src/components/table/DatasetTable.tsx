@@ -6,7 +6,6 @@ import type {
   PointerEvent as ReactPointerEvent
 } from "react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import { RichTextarea } from "rich-textarea";
 import { useShallow } from "zustand/react/shallow";
@@ -20,6 +19,12 @@ import { getUnsavedTableDraftState } from "../../lib/tableDrafts";
 import { resolveAssetSrc } from "../../lib/tauri";
 import { useDatasetStore } from "../../stores/datasetStore";
 import type { AnnotationChange, AnnotationProfile, DatasetImage } from "../../types";
+import { AnimatedLayer, AnimatedLayerPortal, useUiAnimationEnabled } from "../ui/layerMotion";
+import {
+  estimateDropdownHeight,
+  useStableDropdownScrollbar
+} from "../ui/useStableDropdownScrollbar";
+import { useFloatingDropdown } from "../ui/useFloatingDropdown";
 
 const rowHeight = 120;
 type CellKind = "annotation" | "instruction";
@@ -160,10 +165,15 @@ export function DatasetTable({
   const cellTextareaRefs = useRef(new Map<string, HTMLTextAreaElement>());
   const cellFocusValuesRef = useRef(new Map<string, string>());
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
-  const [profileMenuPosition, setProfileMenuPosition] = useState({ left: 0, top: 0 });
   const [isCreatingProfile, setIsCreatingProfile] = useState(false);
   const [newProfileName, setNewProfileName] = useState("");
   const [createProfileError, setCreateProfileError] = useState("");
+  const shouldAnimateUi = useUiAnimationEnabled();
+  const { refs: profileMenuRefs, floatingStyles: profileMenuFloatingStyles } =
+    useFloatingDropdown({
+      offset: 6,
+      maxHeight: Math.min(420, estimateDropdownHeight(profiles.length + 3))
+    });
   const [isSaving, setIsSaving] = useState(false);
   const [columnWidths, setColumnWidths] = useState(loadColumnWidths);
   const [loadedPreviewKeys, setLoadedPreviewKeys] = useState<Set<string>>(new Set());
@@ -201,6 +211,8 @@ export function DatasetTable({
   );
 
   const isFolderMode = images.length > 0 && images.every((image) => image.sourceKind === "folder");
+  const { scrollThumb: profileMenuScrollThumb, updateScrollThumb: updateProfileMenuScrollThumb } =
+    useStableDropdownScrollbar(profileMenuRef, profileMenuOpen && !isFolderMode);
   const selectedImageIdSet = useMemo(() => new Set(selectedImageIds), [selectedImageIds]);
   const selectedProfileId = profiles.some((profile) => profile.id === activeProfileId)
     ? activeProfileId
@@ -713,15 +725,13 @@ export function DatasetTable({
               <div className="px-1">{t("table.annotationData")}</div>
             ) : (
               <button
-                ref={profileButtonRef}
+                ref={(node) => {
+                  profileButtonRef.current = node;
+                  profileMenuRefs.setReference(node);
+                }}
                 className="no-drag flex max-w-full items-center gap-1.5 rounded px-1 text-left transition hover:bg-neutral-200/70 hover:text-neutral-900"
                 onClick={(event) => {
                   event.stopPropagation();
-                  const rect = event.currentTarget.getBoundingClientRect();
-                  setProfileMenuPosition({
-                    left: Math.min(rect.left, window.innerWidth - 232),
-                    top: rect.bottom + 6
-                  });
                   setProfileMenuOpen((open) => !open);
                   setIsCreatingProfile(false);
                 }}
@@ -897,92 +907,111 @@ export function DatasetTable({
         </div>
       </div>
 
-      {profileMenuOpen && !isFolderMode
-        ? createPortal(
-        <div
-          ref={profileMenuRef}
-          className="app-dropdown-menu no-drag fixed z-50 min-w-56 rounded-lg py-2"
-          style={{ left: profileMenuPosition.left, top: profileMenuPosition.top }}
-        >
-          <div className="app-dropdown-backdrop" />
-          {profiles.map((profile) => {
-            const isSelectedProfile = profile.id === selectedProfileId;
+      <AnimatedLayerPortal root={document.body}>
+        {profileMenuOpen && !isFolderMode ? (
+          <AnimatedLayer
+            ref={(node) => {
+              profileMenuRef.current = node;
+              profileMenuRefs.setFloating(node);
+            }}
+            className={cn(
+              "app-dropdown-menu app-scrollbar-stable pointer-events-auto no-drag fixed z-[1010] min-w-56",
+              profileMenuScrollThumb.visible && "app-dropdown-menu-scrollable"
+            )}
+            style={profileMenuFloatingStyles}
+            animateUi={shouldAnimateUi}
+            preset="fade"
+            onScroll={updateProfileMenuScrollThumb}
+          >
+            <div className="app-dropdown-backdrop" />
+            {profiles.map((profile) => {
+              const isSelectedProfile = profile.id === selectedProfileId;
 
-            return (
+              return (
+                <button
+                  key={profile.id}
+                  className={cn(
+                    "app-dropdown-item flex items-center gap-2 text-left text-[13px] font-medium transition",
+                    isSelectedProfile && "app-dropdown-item-selected"
+                  )}
+                  onClick={() => {
+                    setActiveProfile(profile.id);
+                    setProfileMenuOpen(false);
+                    setIsCreatingProfile(false);
+                  }}
+                >
+                  <span className="flex w-4 shrink-0 justify-center">
+                    {isSelectedProfile ? <Check size={14} /> : null}
+                  </span>
+                  <span className="min-w-0 flex-1 truncate">{profile.name}</span>
+                </button>
+              );
+            })}
+            <div className="app-dropdown-separator" />
+            {isCreatingProfile ? (
+              <div className="px-3 py-2">
+                <label className="mb-1 block text-[12px] font-medium text-neutral-600">
+                  {t("image.newTypeName")}
+                </label>
+                <input
+                  value={newProfileName}
+                  onChange={(event) => {
+                    setNewProfileName(event.target.value);
+                    setCreateProfileError("");
+                  }}
+                  className="glass-input h-8 w-full px-2 text-[13px]"
+                  autoFocus
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      event.preventDefault();
+                      void createProfile();
+                    }
+                  }}
+                />
+                {newProfileError ? (
+                  <div className="mt-1 text-[12px] text-red-600">{newProfileError}</div>
+                ) : null}
+                <div className="mt-2 flex gap-2">
+                  <button
+                    className="no-drag inline-flex h-8 flex-1 items-center justify-center rounded-md border border-neutral-900 bg-neutral-900 px-2 text-[12px] font-medium text-white transition hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-50"
+                    onClick={() => void createProfile()}
+                    disabled={!trimmedNewProfileName || newProfileNameExists}
+                  >
+                    {t("image.createType")}
+                  </button>
+                  <button
+                    className="no-drag inline-flex h-8 items-center justify-center rounded-md border border-neutral-200 bg-white px-2 text-[12px] text-neutral-600 transition hover:bg-neutral-50"
+                    onClick={() => setIsCreatingProfile(false)}
+                  >
+                    {t("actions.cancel")}
+                  </button>
+                </div>
+              </div>
+            ) : (
               <button
-                key={profile.id}
-                className={cn(
-                  "app-dropdown-item flex h-9 w-full items-center gap-2 px-3.5 text-left text-[13px] font-medium transition hover:bg-neutral-100",
-                  isSelectedProfile ? "text-neutral-950" : "text-neutral-600"
-                )}
-                onClick={() => {
-                  setActiveProfile(profile.id);
-                  setProfileMenuOpen(false);
-                  setIsCreatingProfile(false);
-                }}
+                className="app-dropdown-item flex items-center gap-2 text-left text-[13px] font-medium transition"
+                onClick={startCreatingProfile}
               >
                 <span className="flex w-4 shrink-0 justify-center">
-                  {isSelectedProfile ? <Check size={14} /> : null}
+                  <Plus size={14} />
                 </span>
-                <span className="min-w-0 flex-1 truncate">{profile.name}</span>
+                <span className="min-w-0 flex-1 truncate">{t("image.newAnnotation")}</span>
               </button>
-            );
-          })}
-          <div className="my-1 border-t border-neutral-100" />
-          {isCreatingProfile ? (
-            <div className="px-3 py-2">
-              <label className="mb-1 block text-[12px] font-medium text-neutral-600">
-                {t("image.newTypeName")}
-              </label>
-              <input
-                value={newProfileName}
-                onChange={(event) => {
-                  setNewProfileName(event.target.value);
-                  setCreateProfileError("");
-                }}
-                className="glass-input h-8 w-full px-2 text-[13px]"
-                autoFocus
-                onKeyDown={(event) => {
-                  if (event.key === "Enter") {
-                    event.preventDefault();
-                    void createProfile();
-                  }
-                }}
-              />
-              {newProfileError ? (
-                <div className="mt-1 text-[12px] text-red-600">{newProfileError}</div>
-              ) : null}
-              <div className="mt-2 flex gap-2">
-                <button
-                  className="no-drag inline-flex h-8 flex-1 items-center justify-center rounded-md border border-neutral-900 bg-neutral-900 px-2 text-[12px] font-medium text-white transition hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-50"
-                  onClick={() => void createProfile()}
-                  disabled={!trimmedNewProfileName || newProfileNameExists}
-                >
-                  {t("image.createType")}
-                </button>
-                <button
-                  className="no-drag inline-flex h-8 items-center justify-center rounded-md border border-neutral-200 bg-white px-2 text-[12px] text-neutral-600 transition hover:bg-neutral-50"
-                  onClick={() => setIsCreatingProfile(false)}
-                >
-                  {t("actions.cancel")}
-                </button>
-              </div>
-            </div>
-          ) : (
-            <button
-              className="app-dropdown-item flex h-9 w-full items-center gap-2 px-3.5 text-left text-[13px] font-medium text-neutral-600 transition hover:bg-neutral-100"
-              onClick={startCreatingProfile}
-            >
-              <span className="flex w-4 shrink-0 justify-center">
-                <Plus size={14} />
-              </span>
-              <span className="min-w-0 flex-1 truncate">{t("image.newAnnotation")}</span>
-            </button>
-          )}
-        </div>,
-          document.body
-        )
-        : null}
+            )}
+          </AnimatedLayer>
+        ) : null}
+        {profileMenuScrollThumb.visible ? (
+          <div
+            className="app-scrollbar-stable-thumb pointer-events-none fixed z-[1020] no-drag"
+            aria-hidden="true"
+            style={{
+              height: profileMenuScrollThumb.height,
+              left: profileMenuScrollThumb.left,
+              top: profileMenuScrollThumb.top
+            }}
+          />
+        ) : null}
+      </AnimatedLayerPortal>
     </div>
   );
 }

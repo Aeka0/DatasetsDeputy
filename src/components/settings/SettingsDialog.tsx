@@ -52,9 +52,15 @@ import { AnimatedPortal, useAnimatedPortalClose } from "../ui/AnimatedPortal";
 import { AppSelect } from "../ui/AppSelect";
 import { Button } from "../ui/Button";
 import { HierarchyDisclosureButton } from "../ui/HierarchyDisclosureButton";
+import { AnimatedLayer, AnimatedLayerPortal, useUiAnimationEnabled } from "../ui/layerMotion";
 import { ProviderIcon } from "../ui/ProviderIcon";
 import { Slider } from "../ui/Slider";
 import { Switch } from "../ui/Switch";
+import {
+  estimateDropdownHeight,
+  useStableDropdownScrollbar
+} from "../ui/useStableDropdownScrollbar";
+import { useFloatingDropdown } from "../ui/useFloatingDropdown";
 
 type SettingsSectionKey =
   | "general"
@@ -526,7 +532,14 @@ function EditableModelSelect({
 }) {
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const shouldAnimateUi = useUiAnimationEnabled();
   const normalizedOptions = Array.from(new Set([value, ...options].filter(Boolean)));
+  const { refs, floatingStyles } = useFloatingDropdown({
+    matchReferenceWidth: true,
+    maxHeight: estimateDropdownHeight(normalizedOptions.length)
+  });
+  const { scrollThumb, updateScrollThumb } = useStableDropdownScrollbar(menuRef, open);
 
   useEffect(() => {
     if (!open) return;
@@ -534,7 +547,8 @@ function EditableModelSelect({
     const close = (event: MouseEvent) => {
       if (
         event.target instanceof Node &&
-        containerRef.current?.contains(event.target)
+        (containerRef.current?.contains(event.target) ||
+          menuRef.current?.contains(event.target))
       ) {
         return;
       }
@@ -554,9 +568,18 @@ function EditableModelSelect({
     };
   }, [open]);
 
+  useEffect(() => {
+    if (!open) return;
+    const frameId = window.requestAnimationFrame(updateScrollThumb);
+    return () => window.cancelAnimationFrame(frameId);
+  }, [normalizedOptions.length, open, updateScrollThumb]);
+
   return (
     <div ref={containerRef} className="no-drag relative">
-      <div className="glass-input flex h-8 w-full items-center gap-1 rounded-md px-2.5">
+      <div
+        ref={refs.setReference}
+        className="glass-input flex h-8 w-full items-center gap-1 rounded-md px-2.5"
+      >
         <input
           className="min-w-0 flex-1 border-0 bg-transparent p-0 text-[13px] text-neutral-900 outline-none"
           value={value}
@@ -573,35 +596,61 @@ function EditableModelSelect({
         </button>
       </div>
 
-      {open ? (
-        <div className="app-dropdown-menu absolute left-0 top-9 z-[70] max-h-56 min-w-full overflow-y-auto rounded-lg py-2">
-          <div className="app-dropdown-backdrop" />
-          {normalizedOptions.map((option) => {
-            const selected = option === value;
-            return (
-              <button
-                key={option}
-                type="button"
-                className={cn(
-                  "app-dropdown-item flex h-9 w-full items-center gap-2 px-3.5 text-left text-[13px] font-medium transition hover:bg-neutral-100",
-                  selected ? "text-neutral-950" : "text-neutral-600"
-                )}
-                role="option"
-                aria-selected={selected}
-                onClick={() => {
-                  onChange(option);
-                  setOpen(false);
-                }}
-              >
-                <span className="flex w-4 shrink-0 justify-center">
-                  {selected ? <Check size={14} /> : null}
-                </span>
-                <span className="min-w-0 flex-1 truncate">{option}</span>
-              </button>
-            );
-          })}
-        </div>
-      ) : null}
+      <AnimatedLayerPortal root={document.body}>
+        {open ? (
+          <AnimatedLayer
+            ref={(node) => {
+              menuRef.current = node;
+              refs.setFloating(node);
+            }}
+            className={cn(
+              "app-dropdown-menu app-scrollbar-stable pointer-events-auto no-drag fixed z-[1010]",
+              scrollThumb.visible && "app-dropdown-menu-scrollable"
+            )}
+            style={floatingStyles}
+            animateUi={shouldAnimateUi}
+            preset="fade"
+            onScroll={updateScrollThumb}
+          >
+            <div className="app-dropdown-backdrop" />
+            {normalizedOptions.map((option) => {
+              const selected = option === value;
+              return (
+                <button
+                  key={option}
+                  type="button"
+                  className={cn(
+                    "app-dropdown-item flex items-center gap-2 text-left text-[13px] font-medium transition",
+                    selected && "app-dropdown-item-selected"
+                  )}
+                  role="option"
+                  aria-selected={selected}
+                  onClick={() => {
+                    onChange(option);
+                    setOpen(false);
+                  }}
+                >
+                  <span className="flex w-4 shrink-0 justify-center">
+                    {selected ? <Check size={14} /> : null}
+                  </span>
+                  <span className="min-w-0 flex-1 truncate">{option}</span>
+                </button>
+              );
+            })}
+          </AnimatedLayer>
+        ) : null}
+        {scrollThumb.visible ? (
+          <div
+            className="app-scrollbar-stable-thumb pointer-events-none fixed z-[1020] no-drag"
+            aria-hidden="true"
+            style={{
+              height: scrollThumb.height,
+              left: scrollThumb.left,
+              top: scrollThumb.top
+            }}
+          />
+        ) : null}
+      </AnimatedLayerPortal>
     </div>
   );
 }

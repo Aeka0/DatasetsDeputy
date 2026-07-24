@@ -1,8 +1,6 @@
 import {
   ArrowLeftToLine,
   ArrowRightToLine,
-  Check,
-  ChevronDown,
   ChevronsRight,
   FilePen,
   Server,
@@ -13,12 +11,12 @@ import {
   X,
   type LucideIcon
 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
-import { createPortal } from "react-dom";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import type { ProviderIconName } from "../../lib/providerIcons";
 import { AnimatedPortal, useAnimatedPortalClose } from "../ui/AnimatedPortal";
+import { AppSelect, type AppSelectOption } from "../ui/AppSelect";
 import { Button } from "../ui/Button";
 import { ProviderIcon } from "../ui/ProviderIcon";
 
@@ -110,8 +108,6 @@ const cloudModeOptions: ModeOption[] = [
   }
 ];
 
-const modeOptions = [...localModeOptions, ...cloudModeOptions];
-
 const conflictOptions: Array<{
   value: AnnotationConflictStrategy;
   labelKey: string;
@@ -169,14 +165,6 @@ export function AnnotationExecutionDialog({
   const [mode, setMode] = useState<AnnotationExecutionMode>("wd14");
   const [conflictStrategy, setConflictStrategy] =
     useState<AnnotationConflictStrategy>("skip");
-  const [openMenu, setOpenMenu] = useState<"mode" | "scope" | "conflict" | undefined>();
-  const [menuPosition, setMenuPosition] = useState({ left: 0, top: 0, width: 0 });
-  const modeButtonRef = useRef<HTMLButtonElement>(null);
-  const scopeButtonRef = useRef<HTMLButtonElement>(null);
-  const conflictButtonRef = useRef<HTMLButtonElement>(null);
-  const menuRef = useRef<HTMLDivElement>(null);
-  const selectedModeOption =
-    modeOptions.find((option) => option.value === mode) ?? localModeOptions[0];
   const scopeOptions: Array<{
     value: AnnotationExecutionScope;
     label: string;
@@ -192,81 +180,56 @@ export function AnnotationExecutionDialog({
     { value: "all", label: t("annotationRun.scopeAll"), icon: SquareDashedText },
     { value: "empty", label: t("annotationRun.scopeEmpty"), icon: SquareDashed }
   ];
-  const selectedScopeOption =
-    scopeOptions.find((option) => option.value === scope) ?? scopeOptions[2];
-  const selectedConflictOption =
-    conflictOptions.find((option) => option.value === conflictStrategy) ?? conflictOptions[0];
-
-  const openSelectMenu = (
-    menu: "mode" | "scope" | "conflict",
-    button: HTMLButtonElement
-  ) => {
-    const rect = button.getBoundingClientRect();
-    setMenuPosition({
-      left: rect.left,
-      top: rect.bottom + 6,
-      width: rect.width
+  const modeSelectOptions: AppSelectOption<AnnotationExecutionMode>[] = [
+    ...localModeOptions.map((option) => ({
+      value: option.value,
+      label: t(option.labelKey),
+      leading: <ModeIcon icon={option.icon} />
+    })),
+    ...cloudModeOptions.map((option, index) => ({
+      value: option.value,
+      label: t(option.labelKey),
+      leading: <ModeIcon icon={option.icon} />,
+      separatorBefore: index === 0
+    }))
+  ];
+  const scopeSelectOptions: AppSelectOption<AnnotationExecutionScope>[] =
+    scopeOptions.map((option) => {
+      const Icon = option.icon;
+      return {
+        value: option.value,
+        label: option.label,
+        disabled: option.disabled,
+        leading: (
+          <Icon
+            className="h-4 w-4 shrink-0"
+            strokeWidth={1.8}
+            aria-hidden="true"
+          />
+        )
+      };
     });
-    setOpenMenu((current) => (current === menu ? undefined : menu));
-  };
+  const conflictSelectOptions: AppSelectOption<AnnotationConflictStrategy>[] =
+    conflictOptions.map((option) => {
+      const Icon = option.icon;
+      return {
+        value: option.value,
+        label: t(option.labelKey),
+        leading: (
+          <Icon
+            className="h-4 w-4 shrink-0"
+            strokeWidth={1.8}
+            aria-hidden="true"
+          />
+        )
+      };
+    });
 
   useEffect(() => {
     if (!hasSelectedImage && scope === "selected") {
       setScope("empty");
     }
   }, [hasSelectedImage, scope]);
-
-  useEffect(() => {
-    if (!openMenu) return;
-
-    const close = (event: MouseEvent) => {
-      if (
-        event.target instanceof Node &&
-        (modeButtonRef.current?.contains(event.target) ||
-          scopeButtonRef.current?.contains(event.target) ||
-          conflictButtonRef.current?.contains(event.target) ||
-          menuRef.current?.contains(event.target))
-      ) {
-        return;
-      }
-      setOpenMenu(undefined);
-    };
-    const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        setOpenMenu(undefined);
-      }
-    };
-
-    window.addEventListener("mousedown", close);
-    window.addEventListener("keydown", closeOnEscape);
-    return () => {
-      window.removeEventListener("mousedown", close);
-      window.removeEventListener("keydown", closeOnEscape);
-    };
-  }, [openMenu]);
-
-  const renderModeOption = (option: ModeOption) => {
-    const isSelected = option.value === mode;
-    return (
-      <button
-        key={option.value}
-        type="button"
-        className={`app-dropdown-item flex h-9 w-full items-center gap-2 px-3 text-left text-[13px] font-medium transition hover:bg-neutral-100 ${
-          isSelected ? "text-neutral-950" : "text-neutral-600"
-        }`}
-        onClick={() => {
-          setMode(option.value);
-          setOpenMenu(undefined);
-        }}
-      >
-        <span className="flex w-4 shrink-0 justify-center">
-          {isSelected ? <Check size={14} /> : null}
-        </span>
-        <ModeIcon icon={option.icon} />
-        <span className="min-w-0 flex-1 truncate">{t(option.labelKey)}</span>
-      </button>
-    );
-  };
 
   return (
     <AnimatedPortal open={open}>
@@ -309,64 +272,33 @@ export function AnnotationExecutionDialog({
               <div className="text-[13px] font-semibold text-neutral-900">
                 {t("annotationRun.mode")}
               </div>
-              <button
-                ref={modeButtonRef}
-                type="button"
-                className="glass-input no-drag flex h-8 w-full items-center justify-between gap-2 px-2.5 text-left text-[13px]"
-                onClick={(event) => openSelectMenu("mode", event.currentTarget)}
-              >
-                <span className="flex min-w-0 items-center gap-2">
-                  <ModeIcon icon={selectedModeOption.icon} />
-                  <span className="min-w-0 truncate">{t(selectedModeOption.labelKey)}</span>
-                </span>
-                <ChevronDown size={14} className="shrink-0 text-neutral-400" />
-              </button>
+              <AppSelect
+                value={mode}
+                options={modeSelectOptions}
+                onChange={setMode}
+              />
             </div>
             <div className="mx-4 border-t border-neutral-100" />
             <div className="grid min-h-12 grid-cols-[112px_minmax(0,1fr)] items-center gap-3 px-4 py-3">
               <div className="text-[13px] font-semibold text-neutral-900">
                 {t("annotationRun.scope")}
               </div>
-              <button
-                ref={scopeButtonRef}
-                type="button"
-                className="glass-input no-drag flex h-8 w-full items-center justify-between gap-2 px-2.5 text-left text-[13px]"
-                onClick={(event) => openSelectMenu("scope", event.currentTarget)}
-              >
-                <span className="flex min-w-0 items-center gap-2">
-                  <selectedScopeOption.icon
-                    className="h-4 w-4 shrink-0"
-                    strokeWidth={1.8}
-                    aria-hidden="true"
-                  />
-                  <span className="min-w-0 truncate">{selectedScopeOption.label}</span>
-                </span>
-                <ChevronDown size={14} className="shrink-0 text-neutral-400" />
-              </button>
+              <AppSelect
+                value={scope}
+                options={scopeSelectOptions}
+                onChange={setScope}
+              />
             </div>
             <div className="mx-4 border-t border-neutral-100" />
             <div className="grid min-h-12 grid-cols-[112px_minmax(0,1fr)] items-center gap-3 px-4 py-3">
               <div className="text-[13px] font-semibold text-neutral-900">
                 {t("annotationRun.conflict")}
               </div>
-              <button
-                ref={conflictButtonRef}
-                type="button"
-                className="glass-input no-drag flex h-8 w-full items-center justify-between gap-2 px-2.5 text-left text-[13px]"
-                onClick={(event) => openSelectMenu("conflict", event.currentTarget)}
-              >
-                <span className="flex min-w-0 items-center gap-2">
-                  <selectedConflictOption.icon
-                    className="h-4 w-4 shrink-0"
-                    strokeWidth={1.8}
-                    aria-hidden="true"
-                  />
-                  <span className="min-w-0 truncate">
-                    {t(selectedConflictOption.labelKey)}
-                  </span>
-                </span>
-                <ChevronDown size={14} className="shrink-0 text-neutral-400" />
-              </button>
+              <AppSelect
+                value={conflictStrategy}
+                options={conflictSelectOptions}
+                onChange={setConflictStrategy}
+              />
             </div>
           </section>
 
@@ -381,88 +313,6 @@ export function AnnotationExecutionDialog({
           </div>
         </div>
       </section>
-      {openMenu
-        ? createPortal(
-        <div
-          ref={menuRef}
-          className="app-dropdown-menu no-drag fixed z-[1010] rounded-lg py-2"
-          style={{
-            left: menuPosition.left,
-            top: menuPosition.top,
-            width: menuPosition.width
-          }}
-        >
-          <div className="app-dropdown-backdrop" />
-          {openMenu === "mode" ? (
-            <>
-              {localModeOptions.map(renderModeOption)}
-              <div
-                className="app-dropdown-separator mx-1 my-1 h-px shrink-0"
-                role="separator"
-              />
-              {cloudModeOptions.map(renderModeOption)}
-            </>
-          ) : null}
-          {openMenu === "scope" ? scopeOptions.map((option) => {
-            const isSelected = option.value === scope;
-            const Icon = option.icon;
-            return (
-              <button
-                key={option.value}
-                type="button"
-                disabled={option.disabled}
-                className={`app-dropdown-item flex h-9 w-full items-center gap-2 px-3 text-left text-[13px] font-medium transition hover:bg-neutral-100 disabled:cursor-not-allowed disabled:opacity-45 ${
-                  isSelected ? "text-neutral-950" : "text-neutral-600"
-                }`}
-                onClick={() => {
-                  if (option.disabled) return;
-                  setScope(option.value);
-                  setOpenMenu(undefined);
-                }}
-              >
-                <span className="flex w-4 shrink-0 justify-center">
-                  {isSelected ? <Check size={14} /> : null}
-                </span>
-                <Icon
-                  className="h-4 w-4 shrink-0"
-                  strokeWidth={1.8}
-                  aria-hidden="true"
-                />
-                <span className="min-w-0 flex-1 truncate">{option.label}</span>
-              </button>
-            );
-          }) : null}
-          {openMenu === "conflict" ? conflictOptions.map((option) => {
-            const isSelected = option.value === conflictStrategy;
-            const Icon = option.icon;
-            return (
-              <button
-                key={option.value}
-                type="button"
-                className={`app-dropdown-item flex h-9 w-full items-center gap-2 px-3 text-left text-[13px] font-medium transition hover:bg-neutral-100 ${
-                  isSelected ? "text-neutral-950" : "text-neutral-600"
-                }`}
-                onClick={() => {
-                  setConflictStrategy(option.value);
-                  setOpenMenu(undefined);
-                }}
-              >
-                <span className="flex w-4 shrink-0 justify-center">
-                  {isSelected ? <Check size={14} /> : null}
-                </span>
-                <Icon
-                  className="h-4 w-4 shrink-0"
-                  strokeWidth={1.8}
-                  aria-hidden="true"
-                />
-                <span className="min-w-0 flex-1 truncate">{t(option.labelKey)}</span>
-              </button>
-            );
-          }) : null}
-        </div>,
-          document.body
-        )
-        : null}
     </div>
     </AnimatedPortal>
   );

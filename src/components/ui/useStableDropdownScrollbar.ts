@@ -25,8 +25,11 @@ const HIDDEN_THUMB: StableDropdownScrollbarThumb = {
   height: SCROLLBAR_THUMB_MIN_HEIGHT
 };
 
-export function estimateDropdownHeight(optionCount: number) {
-  const visibleItemCount = Math.min(optionCount, DROPDOWN_VISIBLE_ITEM_LIMIT);
+export function estimateDropdownHeight(
+  optionCount: number,
+  visibleItemLimit = DROPDOWN_VISIBLE_ITEM_LIMIT
+) {
+  const visibleItemCount = Math.min(optionCount, visibleItemLimit);
   const gapCount = Math.max(0, visibleItemCount - 1);
 
   return Math.max(

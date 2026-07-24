@@ -1,5 +1,5 @@
 import { open } from "@tauri-apps/plugin-dialog";
-import { Check, ChevronDown, FolderOpen, X } from "lucide-react";
+import { FolderOpen, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useShallow } from "zustand/react/shallow";
@@ -10,6 +10,7 @@ import { findProject, findProjectTrail, getProjectDisplayName } from "../../lib/
 import { useDatasetStore } from "../../stores/datasetStore";
 import type { DatasetProject, ExportDatasetRequest } from "../../types";
 import { AnimatedPortal } from "../ui/AnimatedPortal";
+import { AppSelect } from "../ui/AppSelect";
 
 function firstExportableProject(projects: DatasetProject[]): DatasetProject | undefined {
   for (const project of projects) {
@@ -68,7 +69,6 @@ export function ExportDialog() {
   );
   const [outputDir, setOutputDir] = useState("");
   const [selectedProfileId, setSelectedProfileId] = useState<number>();
-  const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const [error, setError] = useState("");
 
   const selectedProject = useMemo(() => {
@@ -96,7 +96,10 @@ export function ExportDialog() {
     [profiles, selectedProject?.datasetId]
   );
   const isExporting = Boolean(exportProgress && !exportProgress.done);
-  const selectedProfile = availableProfiles.find((profile) => profile.id === selectedProfileId);
+  const profileOptions = useMemo(
+    () => availableProfiles.map((profile) => ({ value: profile.id, label: profile.name })),
+    [availableProfiles]
+  );
   const progressPercent =
     exportProgress && exportProgress.total > 0
       ? Math.round((exportProgress.processed / exportProgress.total) * 100)
@@ -224,45 +227,13 @@ export function ExportDialog() {
               <div className="text-[13px] font-semibold text-neutral-900">
                 {t("export.profile")}
               </div>
-              <div className="relative">
-                <button
-                  type="button"
-                  className="glass-input no-drag flex h-8 w-full items-center gap-2 px-2.5 text-left text-[13px] disabled:cursor-not-allowed disabled:text-neutral-400"
-                  disabled={isFolderDataset || isExporting}
-                  onClick={() => setProfileMenuOpen((open) => !open)}
-                >
-                  <span className="min-w-0 flex-1 truncate">
-                    {isFolderDataset
-                      ? t("export.folderProfile")
-                      : selectedProfile?.name ?? "-"}
-                  </span>
-                  <ChevronDown size={14} className="shrink-0 text-neutral-400" />
-                </button>
-                {profileMenuOpen && !isFolderDataset ? (
-                  <div className="app-dropdown-menu no-drag absolute left-0 top-9 z-[70] w-full rounded-lg py-2">
-                    <div className="app-dropdown-backdrop" />
-                    {availableProfiles.map((profile) => {
-                      const isSelected = profile.id === selectedProfileId;
-                      return (
-                        <button
-                          key={profile.id}
-                          type="button"
-                          className="app-dropdown-item flex h-9 w-full items-center gap-2 px-3.5 text-left text-[13px] font-medium text-neutral-700 transition hover:bg-neutral-100"
-                          onClick={() => {
-                            setSelectedProfileId(profile.id);
-                            setProfileMenuOpen(false);
-                          }}
-                        >
-                          <span className="flex w-4 shrink-0 justify-center">
-                            {isSelected ? <Check size={14} /> : null}
-                          </span>
-                          <span className="min-w-0 flex-1 truncate">{profile.name}</span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                ) : null}
-              </div>
+              <AppSelect
+                value={isFolderDataset ? 0 : selectedProfileId ?? 0}
+                options={profileOptions}
+                placeholder={isFolderDataset ? t("export.folderProfile") : "-"}
+                disabled={isFolderDataset || isExporting}
+                onChange={setSelectedProfileId}
+              />
             </div>
           </section>
 

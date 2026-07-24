@@ -26,14 +26,14 @@ export function useFloatingDropdown({
   return useFloating({
     placement,
     strategy: "fixed",
-    transform: false,
     whileElementsMounted: autoUpdate,
     middleware: [
       floatingOffset(offset),
-      flip({ padding }),
-      shift({ padding }),
+      flip({ padding, rootBoundary: "viewport" }),
+      shift({ padding, rootBoundary: "viewport" }),
       size({
         padding,
+        rootBoundary: "viewport",
         apply({ availableHeight, elements, rects }) {
           const availableMaxHeight = Math.max(minHeight, availableHeight);
           const resolvedMaxHeight =
