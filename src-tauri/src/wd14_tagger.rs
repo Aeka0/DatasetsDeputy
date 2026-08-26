@@ -614,15 +614,55 @@ where
     Ok(())
 }
 
-fn load_tag_definitions(model_dir: &Path) -> AppResult<Vec<TagDefinition>> {
+fn resolve_tag_csv_path(model_dir: &Path) -> AppResult<PathBuf> {
     let csv_path = model_dir.join("selected_tags.csv");
-    if !csv_path.is_file() {
-        return Err(AppError::InvalidInput(
-            "WD14 model folder does not contain selected_tags.csv".to_owned(),
-        ));
+    if csv_path.is_file() {
+        return Ok(csv_path);
     }
 
-    let content = fs::read_to_string(csv_path)?;
+    let mut candidates = Vec::new();
+    for entry in fs::read_dir(model_dir)? {
+        let path = entry?.path();
+        if path
+            .extension()
+            .and_then(|extension| extension.to_str())
+            .is_some_and(|extension| extension.eq_ignore_ascii_case("csv"))
+            && path.is_file()
+        {
+            candidates.push(path);
+        }
+    }
+    candidates.sort();
+
+    match candidates.len() {
+        0 => Err(AppError::InvalidInput(
+            "WD14 model folder does not contain a tag CSV file".to_owned(),
+        )),
+        1 => Ok(candidates.remove(0)),
+        _ => Err(AppError::InvalidInput(format!(
+            "WD14 model folder contains multiple CSV files ({}); keep only the matching tag CSV or rename it to selected_tags.csv",
+            candidates
+                .iter()
+                .filter_map(|path| path.file_name())
+                .map(|name| name.to_string_lossy())
+                .collect::<Vec<_>>()
+                .join(", ")
+        ))),
+    }
+}
+
+fn load_tag_definitions(model_dir: &Path) -> AppResult<Vec<TagDefinition>> {
+    let csv_path = resolve_tag_csv_path(model_dir)?;
+    let content = fs::read_to_string(&csv_path)?;
+    parse_tag_definitions(&content).map_err(|error| match error {
+        AppError::InvalidInput(message) => {
+            AppError::InvalidInput(format!("{}: {message}", csv_path.display()))
+        }
+        other => other,
+    })
+}
+
+fn parse_tag_definitions(content: &str) -> AppResult<Vec<TagDefinition>> {
     let mut lines = content.lines();
     let header = lines
         .next()
@@ -646,7 +686,7 @@ fn load_tag_definitions(model_dir: &Path) -> AppResult<Vec<TagDefinition>> {
     if !has_contiguous_indexes(&tags) {
         if !layout.uses_explicit_model_index() {
             return Err(AppError::InvalidInput(
-                "selected_tags.csv tag indexes must be contiguous from 0".to_owned(),
+                "Tag indexes must be contiguous from 0".to_owned(),
             ));
         }
         for (index, tag) in tags.iter_mut().enumerate() {
@@ -655,7 +695,7 @@ fn load_tag_definitions(model_dir: &Path) -> AppResult<Vec<TagDefinition>> {
     }
     if tags.is_empty() {
         return Err(AppError::InvalidInput(
-            "selected_tags.csv did not contain usable tag definitions".to_owned(),
+            "CSV did not contain usable tag definitions".to_owned(),
         ));
     }
     Ok(tags)
@@ -736,16 +776,10 @@ impl TagCsvLayout {
         let index = if let Some(column) = self.model_index_column {
             fields
                 .get(column)
-                .ok_or_else(|| {
-                    AppError::InvalidInput(
-                        "selected_tags.csv tag index column is missing".to_owned(),
-                    )
-                })?
+                .ok_or_else(|| AppError::InvalidInput("Tag index column is missing".to_owned()))?
                 .parse::<usize>()
                 .map_err(|error| {
-                    AppError::InvalidInput(format!(
-                        "selected_tags.csv tag index parse failed: {error}"
-                    ))
+                    AppError::InvalidInput(format!("Tag index parse failed: {error}"))
                 })?
         } else {
             ordinal_index
@@ -753,9 +787,7 @@ impl TagCsvLayout {
         let category = fields[self.category_column]
             .parse::<i32>()
             .map_err(|error| {
-                AppError::InvalidInput(format!(
-                    "selected_tags.csv tag category parse failed: {error}"
-                ))
+                AppError::InvalidInput(format!("Tag category parse failed: {error}"))
             })?;
         let intellectual_properties = self
             .intellectual_properties_column
@@ -898,4 +930,116 @@ fn parse_csv_line(line: &str) -> Vec<String> {
 
 fn parse_ip_tags(raw: &str) -> Vec<String> {
     serde_json::from_str(raw).unwrap_or_default()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    const TAG_CSV: &str = "tag_id,name,category,count\n100,general,9,10\n200,blue_hair,0,5\n";
+
+    struct TestModelDir(PathBuf);
+
+    impl TestModelDir {
+        fn new() -> Self {
+            static NEXT_ID: AtomicUsize = AtomicUsize::new(0);
+            let nonce = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos();
+            let path = std::env::temp_dir().join(format!(
+                "datasets-deputy-wd14-{}-{nonce}-{}",
+                std::process::id(),
+                NEXT_ID.fetch_add(1, Ordering::Relaxed)
+            ));
+            fs::create_dir(&path).unwrap();
+            Self(path)
+        }
+    }
+
+    impl Drop for TestModelDir {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.0);
+        }
+    }
+
+    #[test]
+    fn loads_custom_csv_names_and_case_insensitive_extensions() {
+        for name in ["wd-swinv2-tagger-v3.csv", "标签表.CSV"] {
+            let dir = TestModelDir::new();
+            fs::write(dir.0.join(name), TAG_CSV).unwrap();
+            fs::write(dir.0.join("model.onnx"), []).unwrap();
+
+            let tags = load_tag_definitions(&dir.0).unwrap();
+            assert_eq!(tags.len(), 2);
+            assert_eq!(tags[1].index, 1);
+            assert_eq!(tags[1].name, "blue_hair");
+            assert_eq!(tags[1].category, 0);
+        }
+    }
+
+    #[test]
+    fn prefers_selected_tags_over_other_csv_files() {
+        let dir = TestModelDir::new();
+        fs::write(dir.0.join("selected_tags.csv"), TAG_CSV).unwrap();
+        fs::write(dir.0.join("other.csv"), "unrelated data").unwrap();
+
+        assert_eq!(load_tag_definitions(&dir.0).unwrap().len(), 2);
+    }
+
+    #[test]
+    fn ignores_subdirectories_and_files_without_csv_extension() {
+        let dir = TestModelDir::new();
+        fs::create_dir(dir.0.join("nested.csv")).unwrap();
+        fs::write(dir.0.join("nested.csv/selected_tags.csv"), TAG_CSV).unwrap();
+        fs::write(dir.0.join("tags.csv.bak"), TAG_CSV).unwrap();
+
+        let error = resolve_tag_csv_path(&dir.0).unwrap_err().to_string();
+        assert!(error.contains("does not contain a tag CSV file"), "{error}");
+    }
+
+    #[test]
+    fn reports_ambiguous_csv_candidates() {
+        let dir = TestModelDir::new();
+        fs::write(dir.0.join("b.csv"), TAG_CSV).unwrap();
+        fs::write(dir.0.join("a.csv"), TAG_CSV).unwrap();
+
+        let error = resolve_tag_csv_path(&dir.0).unwrap_err().to_string();
+        assert!(
+            error.contains("multiple CSV files (a.csv, b.csv)"),
+            "{error}"
+        );
+        assert!(error.contains("rename it to selected_tags.csv"), "{error}");
+    }
+
+    #[test]
+    fn parse_errors_identify_the_actual_csv_file() {
+        for contents in [
+            "",
+            "tag_id,name,category\n100,blue_hair,invalid\n",
+            "index,name,category\ninvalid,blue_hair,0\n",
+        ] {
+            let dir = TestModelDir::new();
+            fs::write(dir.0.join("custom.csv"), contents).unwrap();
+
+            let error = load_tag_definitions(&dir.0).err().unwrap().to_string();
+            assert!(error.contains("custom.csv"), "{error}");
+            assert!(!error.contains("selected_tags.csv"), "{error}");
+        }
+    }
+
+    #[test]
+    fn invalid_selected_tags_does_not_silently_fall_back() {
+        let dir = TestModelDir::new();
+        fs::write(dir.0.join("selected_tags.csv"), "").unwrap();
+        fs::write(dir.0.join("other.csv"), TAG_CSV).unwrap();
+
+        let error = load_tag_definitions(&dir.0).err().unwrap().to_string();
+        assert!(error.contains("selected_tags.csv"), "{error}");
+        assert!(
+            error.contains("did not contain usable tag definitions"),
+            "{error}"
+        );
+    }
 }
